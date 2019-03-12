@@ -397,7 +397,7 @@
 ##' @export
 ##'
 ##' @examples
-##' library("mgcv")
+##' suppressPackageStartupMessages(library("mgcv"))
 ##' \dontshow{set.seed(2)}
 ##' df <- gamSim(1, n = 400, dist = "normal")
 ##' m <- gam(y ~ s(x0) + s(x1) + offset(x2), data = df, method = "REML")
@@ -448,7 +448,7 @@
 ##' @export
 ##'
 ##' @examples
-##' library("mgcv")
+##' suppressPackageStartupMessages(library("mgcv"))
 ##' df <- gamSim(1, n = 400, dist = "normal")
 ##' m <- gam(y ~ s(x0) + s(x1) + offset(x0), data = df, method = "REML")
 ##' nm <- names(model.frame(m))
@@ -668,7 +668,22 @@
     fam[["rd"]]
 }
 
-`check_user_select_smooths` <- function(smooths, select = NULL) {
+##' @title Select smooths based on user's choices
+##'
+##' @description Given a vector indexing the smooths of a GAM, returns a logical
+##'   vector selecting the requested smooths.
+##'
+##' @param smooths character; a vector of smooth labels.
+##' @param select numeric, logical, or character vector of selected smooths.
+##' @param partial_match logical; in the case of character `select`, should
+##'   `select` match partially against `smooths`? If `partial_match = TRUE`,
+##'   `select` must only be a single string, a character vector of length 1.
+##'
+##' @return A logical vector the same length as `length(smooths)` indicating
+##'   which smooths have been selected.
+##'
+##' @author Gavin L. Simpson
+`check_user_select_smooths` <- function(smooths, select = NULL, partial_match = FALSE) {
     lenSmo <- length(smooths)
     select <- if (!is.null(select)) {
         lenSel <- length(select)
@@ -679,9 +694,18 @@
             if (any(select > lenSmo)) {
                 stop("One or more indices in 'select' > than the number of smooths in the model.")
             }
-            select
+            l <- rep(FALSE, lenSmo)
+            l[select] <- TRUE
+            l
         } else if (is.character(select)) {
-            smooths %in% select
+            if (isTRUE(partial_match)) {
+                if (length(select) != 1L) {
+                    stop("When 'partial_match' is 'TRUE', 'select' must be a single string")
+                }
+                grepl(select, smooths, fixed = TRUE)
+            } else {
+                smooths %in% select
+            }
         } else if (is.logical(select)) {
             if (lenSmo != lenSel) {
                 stop("When 'select' is a logical vector, 'length(select)' must equal\nthe number of smooths in the model.")

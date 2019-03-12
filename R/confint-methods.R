@@ -27,7 +27,7 @@
 ##' @export
 ##'
 ##' @examples
-##' library("mgcv")
+##' suppressPackageStartupMessages(library("mgcv"))
 ##' \dontshow{
 ##' set.seed(2)
 ##' op <- options(digits = 5)
@@ -187,7 +187,7 @@
 ##' @export
 ##'
 ##' @examples
-##' library("mgcv")
+##'suppressPackageStartupMessages(library("mgcv"))
 ##' set.seed(2)
 ##' dat <- gamSim(1, n = 400, dist = "normal", scale = 2)
 ##' mod <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
@@ -302,10 +302,14 @@
         }
     }
 
-    const <- coef(object)
-    nms <- names(const)
-    test <- grep("Intercept", nms)
-    const <- ifelse(length(test) == 0L, 0, const[test])
+    if (shift) {
+        const <- coef(object)
+        nms <- names(const)
+        test <- grep("Intercept", nms)
+        const <- ifelse(length(test) == 0L, 0, const[test])
+    } else {
+        const <- 0
+    }
 
     ## simplify to a data frame for return
     out <- do.call("bind_rows", out)

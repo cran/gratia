@@ -1,6 +1,6 @@
 Package: gratia
-Version: 0.2-1
-Date: 2019-01-25
+Version: 0.2-8
+Date: 2019-03-12
 Title: Graceful 'ggplot'-Based Graphics and Other Functions for GAMs
         Fitted Using 'mgcv'
 Authors@R: c(person(given = "Gavin L.", family = "Simpson",
@@ -20,7 +20,7 @@ BugReports: https://github.com/gavinsimpson/gratia/issues
 RoxygenNote: 6.1.1
 Encoding: UTF-8
 NeedsCompilation: no
-Packaged: 2019-01-25 17:18:41.050 UTC; gavin
+Packaged: 2019-03-12 19:20:29.790 UTC; gavin
 Author: Gavin L. Simpson [aut, cre] (<https://orcid.org/0000-0002-9084-8413>)
 Repository: CRAN
-Date/Publication: 2019-02-01 18:33:19 UTC
+Date/Publication: 2019-03-12 23:00:02 UTC
