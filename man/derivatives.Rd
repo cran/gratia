@@ -13,11 +13,23 @@ derivatives(object, ...)
 
 \method{derivatives}{gamm}(object, ...)
 
-\method{derivatives}{gam}(object, term, newdata, order = 1L,
-  type = c("forward", "backward", "central"), n = 200, eps = 1e-07,
-  interval = c("confidence", "simultaneous"), n_sim = 10000,
-  level = 0.95, unconditional = FALSE, frequentist = FALSE,
-  offset = NULL, ...)
+\method{derivatives}{gam}(
+  object,
+  term,
+  newdata,
+  order = 1L,
+  type = c("forward", "backward", "central"),
+  n = 200,
+  eps = 1e-07,
+  interval = c("confidence", "simultaneous"),
+  n_sim = 10000,
+  level = 0.95,
+  unconditional = FALSE,
+  frequentist = FALSE,
+  offset = NULL,
+  ncores = 1,
+  ...
+)
 }
 \arguments{
 \item{object}{an R object to compute derivatives for.}
@@ -47,8 +59,8 @@ simultaneous intervals.}
 \item{n_sim}{integer; the number of simulations used in computing the
 simultaneous intervals.}
 
-\item{level}{numeric; \code{0 < level < 1}; the confidence level of the
-point-wise or simultaneous interval. The default is \code{0.95} for a 95%
+\item{level}{numeric; \verb{0 < level < 1}; the confidence level of the
+point-wise or simultaneous interval. The default is \code{0.95} for a 95\%
 interval.}
 
 \item{unconditional}{logical; use smoothness selection-corrected Bayesian
@@ -57,13 +69,18 @@ covariance matrix?}
 \item{frequentist}{logical; use the frequentist covariance matrix?}
 
 \item{offset}{numeric; a value to use for any offset term}
+
+\item{ncores}{number of cores for generating random variables from a
+multivariate normal distribution. Passed to \code{\link[mvnfast:rmvn]{mvnfast::rmvn()}}.
+Parallelization will take place only if OpenMP is supported (but appears
+to work on Windows with current \code{R}).}
 }
 \description{
 Derivatives of estimated smooths via finite differences
 }
 \examples{
 
-suppressPackageStartupMessages(library("mgcv"))
+load_mgcv()
 \dontshow{
 set.seed(42)
 op <- options(cli.unicode = FALSE)
@@ -71,9 +88,11 @@ op <- options(cli.unicode = FALSE)
 dat <- gamSim(1, n = 400, dist = "normal", scale = 2, verbose = FALSE)
 mod <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 
-## first derivative of all smooths using central finite differenc
+## first derivatives of all smooths using central finite differences
 derivatives(mod, type = "central")
-\dontshow{options(op)}
+\dontshow{
+options(op)
+}
 }
 \author{
 Gavin L. Simpson

@@ -397,7 +397,7 @@
 ##' @export
 ##'
 ##' @examples
-##' suppressPackageStartupMessages(library("mgcv"))
+##' load_mgcv()
 ##' \dontshow{set.seed(2)}
 ##' df <- gamSim(1, n = 400, dist = "normal")
 ##' m <- gam(y ~ s(x0) + s(x1) + offset(x2), data = df, method = "REML")
@@ -448,7 +448,7 @@
 ##' @export
 ##'
 ##' @examples
-##' suppressPackageStartupMessages(library("mgcv"))
+##' load_mgcv()
 ##' df <- gamSim(1, n = 400, dist = "normal")
 ##' m <- gam(y ~ s(x0) + s(x1) + offset(x0), data = df, method = "REML")
 ##' nm <- names(model.frame(m))
@@ -479,11 +479,27 @@
 ##' @rdname parametric_terms
 `parametric_terms.gam` <- function(model, ...) {
     tt <- model$pterms        # get parametric terms
-    labs <- if (is.list(tt)) {
-        unique(unlist(lapply(tt, function(x) labels(delete.response(x)))))
+    if (is.list(tt)) {
+        ## If a list, we have multiple linear predictors. For terms in the
+        ## nth linear predictor (for n > 1) the covariate gets appended '.{n-1}'
+        ## so store the mgcv names as the names of the labels returned  
+        labs <- unlist(lapply(tt, function(x) labels(delete.response(x))))
+        names(labs) <- unlist(lapply(seq_along(labs),
+                                     function(i, labs) {
+                                         if (i > 1L) {
+                                             paste0(labs[[i]], ".", i-1)
+                                         } else {
+                                             labs[[i]]}
+                                     }, labs))
+        labs
     } else {
-        tt <- delete.response(tt) # remove response so easier to work with
-        labels(tt)                # names of all parametric terms
+        if (length(attr(tt, "term.labels") > 0L)) {
+            tt <- delete.response(tt) # remove response so easier to work with
+            labs <- labels(tt)        # names of all parametric terms
+            names(labs) <- labs
+        } else {
+            labs <- character(0)
+        }
     }
     labs
 }
@@ -587,7 +603,7 @@
 
 ##' Vectorized version of `data.class`
 ##'
-##' @param df a data frame or tibble.##'
+##' @param df a data frame or tibble.
 ##' @return A named character vector of data classes.
 ##'
 ##' @seealso The underlying functionality is provided by [data.class()].
@@ -719,4 +735,48 @@
     }
 
     select
+}
+
+##' Indices of the parametric terms for a particular smooth
+##'
+##' Returns a vector of indices of the parametric terms that represent the
+##' supplied smooth. Useful for extracting model coefficients and columns
+##' of their covariance matrix.
+##' 
+##' @param smooth an object that inherits from class `mgcv.smooth`
+##'
+##' @return A numeric vector of indices.
+##'
+##' @author Gavin L. Simpson
+##' @export
+`smooth_coefs` <- function(smooth) {
+    if(!is_mgcv_smooth(smooth)) {
+        stop("Not an mgcv smooth object")
+    }
+    start <- smooth[["first.para"]]
+    end <- smooth[["last.para"]]
+    seq(from = start, to = end, by = 1L)
+}
+
+##' Load mgcv quietly
+##'
+##' Simple function that loads the *mgcv* package whilst suppressing the startup
+##' messages that it prints to the console.
+##'
+##' @return Returns a logical vectors invisibly, indicating whether the package
+##'   was loaded or not.
+##' 
+##' @export
+`load_mgcv` <- function() {
+    res <- suppressWarnings(requireNamespace("mgcv", quietly = TRUE))
+    if (!res) {
+        stop("Unable to load mgcv. Is it installed?", .call = FALSE)
+    }
+    ## mgcv could be attached already an we don't want to attach again
+    ## as that raises an error
+    attached <- "package:mgcv" %in% search()
+    if(!attached) {
+        suppressPackageStartupMessages(attachNamespace("mgcv"))
+    }
+    invisible(res)
 }

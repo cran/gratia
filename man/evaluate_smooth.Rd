@@ -10,15 +10,22 @@
 \usage{
 evaluate_smooth(object, ...)
 
-\method{evaluate_smooth}{gam}(object, smooth, n = 100, newdata = NULL,
-  unconditional = FALSE, overall_uncertainty = TRUE, dist = 0.1, ...)
+\method{evaluate_smooth}{gam}(
+  object,
+  smooth,
+  n = 100,
+  newdata = NULL,
+  unconditional = FALSE,
+  overall_uncertainty = TRUE,
+  dist = 0.1,
+  ...
+)
 
 \method{evaluate_smooth}{gamm}(object, ...)
 
 evaluate_parametric_term(object, ...)
 
-\method{evaluate_parametric_term}{gam}(object, term,
-  unconditional = FALSE, ...)
+\method{evaluate_parametric_term}{gam}(object, term, unconditional = FALSE, ...)
 }
 \arguments{
 \item{object}{an object of class \code{"gam"} or \code{"gamm"}.}
@@ -60,7 +67,7 @@ covariate associated with the smooth. Alternatively, a set of points at
 which the smooth should be evaluated can be supplied.
 }
 \examples{
-suppressPackageStartupMessages(library("mgcv"))
+load_mgcv()
 \dontshow{
 set.seed(2)
 op <- options(cli.unicode = FALSE, digits = 6)

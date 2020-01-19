@@ -5,32 +5,61 @@
 \alias{confint.gamm}
 \title{Point-wise and simultaneous confidence intervals for smooths}
 \usage{
-\method{confint}{gam}(object, parm, level = 0.95, newdata = NULL,
-  n = 200, type = c("confidence", "simultaneous"), nsim = 10000,
-  shift = FALSE, transform = FALSE, unconditional = FALSE, ...)
+\method{confint}{gam}(
+  object,
+  parm,
+  level = 0.95,
+  newdata = NULL,
+  n = 200,
+  type = c("confidence", "simultaneous"),
+  nsim = 10000,
+  shift = FALSE,
+  transform = FALSE,
+  unconditional = FALSE,
+  ncores = 1,
+  ...
+)
 
 \method{confint}{gamm}(object, ...)
 }
 \arguments{
 \item{object}{an object of class \code{"gam"} or \code{"gamm"}.}
 
-\item{parm}{which parameters (smooth terms) are to be given intervals as a vector of terms. If missing, all parameters are considered, although this is not currently implemented.}
+\item{parm}{which parameters (smooth terms) are to be given intervals as a
+vector of terms. If missing, all parameters are considered, although this
+is not currently implemented.}
 
-\item{level}{numeric, \code{0 < level < 1}; the confidence level of the point-wise or simultaneous interval. The default is \code{0.95} for a 95\% interval.}
+\item{level}{numeric, \verb{0 < level < 1}; the confidence level of the point-wise
+or simultaneous interval. The default is \code{0.95} for a 95\% interval.}
 
-\item{newdata}{data frame; containing new values of the covariates used in the model fit. The selected smooth(s) wil be evaluated at the supplied values.}
+\item{newdata}{data frame; containing new values of the covariates used in
+the model fit. The selected smooth(s) wil be evaluated at the supplied
+values.}
 
 \item{n}{numeric; the number of points to evaluate smooths at.}
 
-\item{type}{character; the type of interval to compute. One of \code{"confidence"} for point-wise intervals, or \code{"simultaneous"} for simultaneous intervals.}
+\item{type}{character; the type of interval to compute. One of \code{"confidence"}
+for point-wise intervals, or \code{"simultaneous"} for simultaneous intervals.}
 
-\item{nsim}{integer; the number of simulations used in computing the simultaneous intervals.}
+\item{nsim}{integer; the number of simulations used in computing the
+simultaneous intervals.}
 
 \item{shift}{logical; should the constant term be add to the smooth?}
 
-\item{transform}{logical; should the smooth be evaluated on a transformed scale? For generalised models, this involves applying the inverse of the link function used to fit the model. Alternatively, the name of, or an actual, function can be supplied to transform the smooth and it's confidence interval.}
+\item{transform}{logical; should the smooth be evaluated on a transformed
+scale? For generalised models, this involves applying the inverse of the
+link function used to fit the model. Alternatively, the name of, or an
+actual, function can be supplied to transform the smooth and it's
+confidence interval.}
 
-\item{unconditional}{logical; if \code{TRUE} (and \code{freq == FALSE}) then the Bayesian smoothing parameter uncertainty corrected covariance matrix is returned, if available.}
+\item{unconditional}{logical; if \code{TRUE} (and \code{freq == FALSE}) then the
+Bayesian smoothing parameter uncertainty corrected covariance matrix is
+returned, if available.}
+
+\item{ncores}{number of cores for generating random variables from a
+multivariate normal distribution. Passed to \code{\link[mvnfast:rmvn]{mvnfast::rmvn()}}.
+Parallelization will take place only if OpenMP is supported (but appears
+to work on Windows with current \code{R}).}
 
 \item{...}{additional arguments for methods}
 }
@@ -42,26 +71,34 @@ a data frame with components:
 \item \code{lower}; lower limit of the confidence or simultaneous interval,
 \item \code{est}; estimated value of the smooth
 \item \code{upper}; upper limit of the confidence or simultaneous interval,
-\item \code{crit}; critical value for the \code{100 * level}% confidence interval.
+\item \code{crit}; critical value for the \code{100 * level}\% confidence interval.
 }
 }
 \description{
 Calculates point-wise confidence or simultaneous intervals for the smooth terms of a fitted GAM.
 }
 \examples{
-suppressPackageStartupMessages(library("mgcv"))
+load_mgcv()
+\dontshow{
 set.seed(2)
-dat <- gamSim(1, n = 400, dist = "normal", scale = 2)
+op <- options(digits = 4, cli.unicode = FALSE)
+}
+dat <- gamSim(1, n = 500, dist = "normal", scale = 2)
 mod <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
-##'
+
 ## point-wise interval
 ci <- confint(mod, parm = "x1", type = "confidence")
-head(ci)
-##'
+ci
+
 ## simultaneous interval for smooth term of x1
+\dontshow{
 set.seed(42)
+}
 si <- confint(mod, parm = "x1", type = "simultaneous", nsim = 100)
-head(si)
+si
+\dontshow{
+options(op)
+}
 }
 \author{
 Gavin L. Simpson

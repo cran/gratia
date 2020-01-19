@@ -48,7 +48,7 @@
 ##' @aliases draw.evaluated_1d_smooth draw.evaluated_2d_smooth geom_rug
 ##'
 ##' @examples
-##' suppressPackageStartupMessages(library("mgcv"))
+##' load_mgcv()
 ##'
 ##' \dontshow{set.seed(2)}
 ##' dat <- gamSim(1, n = 400, dist = "normal", scale = 2)
@@ -237,7 +237,7 @@
 ##' @export
 ##'
 ##' @examples
-##' suppressPackageStartupMessages(library("mgcv"))
+##' load_mgcv()
 ##'
 ##' \dontshow{set.seed(2)}
 ##' dat <- gamSim(1, n = 400, dist = "normal", scale = 2)
@@ -341,9 +341,10 @@
     }
 
     if (isTRUE(parametric)) {
+        leng <- length(g)
         for (i in seq_along(terms)) {
             p[[i]] <- evaluate_parametric_term(object, term = terms[i])
-            g[[i + length(g)]] <- draw(p[[i]])
+            g[[i + leng]] <- draw(p[[i]])
         }
     }
 
@@ -532,7 +533,7 @@
 ##'
 ##' @examples
 ##'
-##' suppressPackageStartupMessages(library("mgcv"))
+##' load_mgcv()
 ##' \dontshow{set.seed(42)}
 ##' dat <- gamSim(1, n = 400, dist = "normal", scale = 2, verbose = FALSE)
 ##' mod <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
@@ -573,4 +574,230 @@
     }
 
     plot_grid(plotlist = plotlist, align = align, axis = axis, ...)
+}
+
+##' Plot basis functions
+##'
+##' Plots basis functions using ggplot2
+##' 
+##' @param object an object, the result of a call to [basis()].
+##' @param legend logical; should a legend by drawn to indicate basis functions?
+##' @param use_facets logical; for factor by smooths, use facets to show the
+##'   basis functions for each level of the factor? If `FALSE`, a separate ggplot
+##'   object will be created for each level and combined using
+##'   [cowplot::plot_grid()]. **Currently ignored**.
+##' @param labeller a labeller function with which to label facets. The default
+##'   is to use [ggplot2::label_both()].
+##' @param xlab character or expression; the label for the x axis. If not
+##'   supplied, a suitable label will be generated from `object`.
+##' @param ylab character or expression; the label for the y axis. If not
+##'   supplied, a suitable label will be generated from `object`.
+##' @param title character or expression; the title for the plot. See
+##'   [ggplot2::labs()].
+##' @param subtitle character or expression; the subtitle for the plot. See
+##'   [ggplot2::labs()].
+##' @param caption character or expression; the plot caption. See
+##'   [ggplot2::labs()].
+##' @param ... arguments passed to other methods. Not used by this method.
+##'
+##' @return A [ggplot2::ggplot()] object.
+##'
+##' @author Gavin L. Simpson
+##'
+##' @importFrom ggplot2 ggplot aes_ labs geom_line guides facet_wrap label_both
+##' 
+##' @export
+##'
+##' @examples
+##' load_mgcv()
+##' \dontshow{set.seed(42)}
+##' df <- gamSim(4, n = 400, verbose = FALSE)
+##'
+##' bf <- basis(s(x0), data = df)
+##' draw(bf)
+##'
+##' bf <- basis(s(x2, by = fac, bs = 'bs'), data = df)
+##' draw(bf)
+`draw.mgcv_smooth` <- function(object,
+                               legend = FALSE,
+                               use_facets = TRUE,
+                               labeller = NULL,
+                               xlab, ylab,
+                               title = NULL, subtitle = NULL,
+                               caption = NULL,
+                               ...) {
+    ## capture the univariate smooth variable
+    smooth_var <- names(object)[5L]
+
+    ## default labeller
+    if (is.null(labeller)) {
+        labeller  <- label_both
+    }
+
+    ## basis plot
+    plt <- ggplot(object, aes_(x = as.name(smooth_var), y = ~ value,
+                               colour = ~ bf)) +
+        geom_line()
+
+    ## default labels if none supplied
+    if (missing(xlab)) {
+        xlab <- smooth_var
+    }
+    if (missing(ylab)) {
+        ylab <- "Value"
+    }
+    if (is.null(title)) {
+        title <- attr(object, "smooth_object")
+    }
+
+    ## fixup for by variable smooths, facet for factor by smooths
+    if (all(!is.na(object[["by_variable"]]))) {
+        by_var_name <- unique(object[["by_variable"]])
+        by_var <- object[[by_var_name]]
+        if (is.character(by_var) || is.factor(by_var)) {
+            plt <- plt + facet_wrap(by_var_name, labeller = labeller)
+        }
+    }
+
+    ## add labelling to plot
+    plt <- plt + labs(x = xlab, y = ylab, title = title, subtitle = subtitle,
+                      caption = caption)
+
+    ## draw a guide?
+    if (!legend) {
+        plt <- plt + guides(colour = "none")
+    }
+
+    plt
+}
+
+##' Plotting posterior smooths
+##' 
+##' @param alpha numeric; alpha transparency for confidence or simultaneous
+##'   interval.
+##' @param colour The colour to use to draw the posterior smooths. Passed to
+##'   [ggplot2::geom_line()] as argument `colour`.
+##' @param xlab character or expression; the label for the x axis. If not
+##'   supplied, a suitable label will be generated from `object`.
+##' @param ylab character or expression; the label for the y axis. If not
+##'   supplied, a suitable label will be generated from `object`.
+##' @param title character or expression; the title for the plot. See
+##'   [ggplot2::labs()].
+##' @param subtitle character or expression; the subtitle for the plot. See
+##'   [ggplot2::labs()].
+##' @param caption character or expression; the plot caption. See
+##'   [ggplot2::labs()].
+##' @param ... arguments to be passed to [cowplot::plot_grid()].
+##'
+##' @export
+##'
+##' @inheritParams draw.gam
+##'
+##' @author Gavin L. Simpson
+##' 
+##' @importFrom dplyr filter
+##' @importFrom purrr map
+##' @importFrom rlang .data
+##'
+##' @examples
+##' load_mgcv()
+##' \dontshow{set.seed(1)}
+##' dat1 <- gamSim(1, n = 400, dist = "normal", scale = 2, verbose = FALSE)
+##' ## a single smooth GAM
+##' m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat1, method = "REML")
+##' ## posterior smooths from m1
+##' sm1 <- smooth_samples(m1, n = 15, seed = 23478)
+##' ## plot
+##' draw(sm1, alpha = 0.7)
+##' 
+##' \dontshow{set.seed(1)}
+##' dat2 <- gamSim(4, verbose = FALSE)
+##' ## a multi-smooth GAM with a factor-by smooth
+##' m2 <- gam(y ~ fac + s(x2, by = fac) + s(x0), data = dat2, method = "REML")
+##' ## posterior smooths from m1
+##' sm2 <- smooth_samples(m2, n = 15, seed = 23478)
+##' ## plot, this time selecting only the factor-by smooth
+##' draw(sm2, select = "s(x2)", partial_match = TRUE, alpha = 0.7)
+`draw.smooth_samples` <- function(object,
+                                  select = NULL,
+                                  xlab = NULL, ylab = NULL, title = NULL,
+                                  subtitle = NULL, caption = NULL,
+                                  alpha = 1, colour = "black",
+                                  scales = c("free", "fixed"),
+                                  align = "hv", axis = "lrtb",
+                                  rug = TRUE,
+                                  partial_match = FALSE, ...) {
+    
+    scales <- match.arg(scales)
+
+    ## select smooths
+    S <- unique(object[["term"]])
+    select <- check_user_select_smooths(smooths = S, select = select,
+                                        partial_match = partial_match)
+    S <- S[select]
+    object <- filter(object, .data$term %in% S)
+
+    ## can only plot 1d smooths - currently - prune S but how?
+    ## FIXME
+    
+    do_plot_smooths <- function(i, tbl, ...) {
+        tbl <- filter(tbl, .data$term == i)
+        plot_posterior_smooths(tbl, ...)
+    }
+
+    plts <- map(S, do_plot_smooths, tbl = object, xlab = xlab, ylab = ylab,
+                title = title, subtitle = subtitle, caption = caption,
+                rug = rug, alpha = alpha, colour = colour)
+
+    if (isTRUE(identical(scales, "fixed"))) {
+        ylims <- range(object[["value"]])
+
+        p <- seq_along(plts)
+        for (i in p) {
+            plts[[i]] <- plts[[i]] + lims(y = ylims)
+        }
+    }
+
+    plot_grid(plotlist = plts, align = align, axis = axis, ...)
+}
+
+`plot_posterior_smooths` <- function(tbl, xlab = NULL, ylab = NULL, title = NULL,
+                                     subtitle = NULL, caption = NULL,
+                                     rug = TRUE, alpha = 1, colour = "black", ...) {
+    data_names <- attr(tbl, "data_names")
+    smooth_var <- data_names[[unique(tbl[["term"]])]]
+    
+    plt <- ggplot(tbl, aes_(x = ~ .x1, y = ~ value, group = ~ draw)) +
+        geom_line(alpha = alpha, colour = colour)
+    
+    ## default axis labels if none supplied
+    if (is.null(xlab)) {
+        xlab <- smooth_var
+    }
+    if (is.null(ylab)) {
+        ylab <- "Effect"
+    }
+    if (is.null(title)) {
+        title <- unique(tbl[["term"]])
+    }
+    if (all(!is.na(tbl[["by_variable"]]))) {
+        spl <- strsplit(title, split = ":")
+        title <- spl[[1L]][[1L]]
+        if (is.null(subtitle)) {
+            by_var <- as.character(unique(tbl[["by_variable"]]))
+            subtitle <- paste0("By: ", by_var, "; ", unique(tbl[[by_var]]))
+        }
+    }
+    
+    ## add labelling to plot
+    plt <- plt + labs(x = xlab, y = ylab, title = title, subtitle = subtitle,
+                      caption = caption)
+    
+    ## add rug?
+    if (!is.null(rug)) {
+        plt <- plt + geom_rug(mapping = aes_string(x = '.x1'),
+                              inherit.aes = FALSE, sides = 'b')
+    }
+    
+    plt
 }

@@ -4,6 +4,8 @@
 library("testthat")
 library("gratia")
 library("mgcv")
+library("ggplot2")
+library("vdiffr")
 
 context("derivatives methods")
 
@@ -298,4 +300,67 @@ test_that("derivatives() returns derivatives with simultaneous intervals for all
     expect_s3_class(df, "derivatives")
     expect_s3_class(df, "tbl_df")
     expect_named(df, c("smooth","var","data","derivative","se","crit","lower","upper"))
+})
+
+test_that("derivatives() works for factor by smooths issue 47", {
+    set.seed(1)
+    dat <- gamSim(4, n = 1000, verbose = FALSE)
+    m <- gam(y ~ fac + s(x2, by = fac), data = dat, method = "REML")
+    expect_silent(d <- derivatives(m))
+    expect_s3_class(d, "derivatives")
+    expect_s3_class(d, "tbl_df")
+    expect_named(d, c("smooth","var","data","derivative","se","crit","lower","upper"))
+    plt <- draw(d)
+    expect_doppelganger("draw issue 47 derivatives for factor by", plt)
+
+    m <- gam(y ~ x1 + s(x2) + fac + s(x0, by = fac), data = dat, method = "REML")
+    expect_silent(d <- derivatives(m))
+    expect_s3_class(d, "derivatives")
+    expect_s3_class(d, "tbl_df")
+    expect_named(d, c("smooth","var","data","derivative","se","crit","lower","upper"))
+    plt <- draw(d)
+    expect_doppelganger("draw issue 47 derivatives for complex factor by", plt)
+    
+    dat <- transform(dat, ofac = ordered(fac))
+    m <- gam(y ~ x1 + s(x2) + ofac + s(x0) + s(x0, by = ofac), data = dat, method = "REML")
+    expect_silent(d <- derivatives(m))
+    expect_s3_class(d, "derivatives")
+    expect_s3_class(d, "tbl_df")
+    expect_named(d, c("smooth","var","data","derivative","se","crit","lower","upper"))
+    plt <- draw(d)
+    expect_doppelganger("draw issue 47 derivatives for complex ordered factor by", plt)    
+
+    m <- gamm(y ~ x1 + s(x2) + fac + s(x0, by = fac), data = dat)
+    expect_silent(d <- derivatives(m))
+    expect_s3_class(d, "derivatives")
+    expect_s3_class(d, "tbl_df")
+    expect_named(d, c("smooth","var","data","derivative","se","crit","lower","upper"))
+    plt <- draw(d)
+    expect_doppelganger("draw issue 47 derivatives for gamm factor by", plt)
+})
+
+test_that("derivatives() works for fs smooths issue 57", {
+    set.seed(1)
+    logistic.growth <- function(t, y0, K, r) {
+        return(K * (y0 / (y0 + (K - y0) * exp(-r * t))))
+    }
+    N <- 16
+    n <- 12
+    y0 <- 0.5
+    r  <- 0.25
+    K  <- rnorm(N, mean=5, sd=1)
+    d <- data.frame(unit = factor(rep(seq_len(N), each = n)),
+                    t = rep(seq(0, 20, length = n), N))
+    d <- transform(d, y = logistic.growth(t, y0, K[unit], r))
+    S  <- 0.25
+    d <- transform(d, y.obs = y + rnorm(nrow(d), sd = S))
+    m <- gam(y.obs ~ s(t, unit, k=5, bs="fs", m=2), data=d, method="REML")
+    
+    expect_silent(d <- derivatives(m))
+    expect_s3_class(d, "derivatives")
+    expect_s3_class(d, "tbl_df")
+    expect_named(d, c("smooth","var","fs_var","data","derivative","se","crit",
+                      "lower","upper"))
+    ## plt <- draw(d) # FIXME: need to update draw(d) so it works with fs smooths
+    ## expect_doppelganger("draw issue 57 derivatives for factor by", plt)
 })

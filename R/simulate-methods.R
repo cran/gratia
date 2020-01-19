@@ -27,7 +27,6 @@
 ##' @author Gavin L. Simpson
 ##'
 ##' @importFrom stats simulate runif family
-##' @importFrom mvtnorm rmvnorm
 ##' @importFrom mgcv fix.family.rd
 ##'
 ##' @export
@@ -35,7 +34,7 @@
 ##' @rdname simulate
 ##'
 ##' @examples
-##' suppressPackageStartupMessages(library("mgcv"))
+##' load_mgcv()
 ##' \dontshow{set.seed(2)}
 ##' dat <- gamSim(1, n = 400, dist = "normal", scale = 2)
 ##' m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
@@ -94,7 +93,6 @@
 
 ##' @rdname simulate
 ##'
-##' @importFrom mvtnorm rmvnorm
 ##'
 ##' @export
 `simulate.scam` <- function(object, nsim = 1, seed = NULL, newdata = NULL,

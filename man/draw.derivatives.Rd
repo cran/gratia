@@ -4,8 +4,15 @@
 \alias{draw.derivatives}
 \title{Plot derivatives of smooths}
 \usage{
-\method{draw}{derivatives}(object, select = NULL, scales = c("free",
-  "fixed"), alpha = 0.2, align = "hv", axis = "lrtb", ...)
+\method{draw}{derivatives}(
+  object,
+  select = NULL,
+  scales = c("free", "fixed"),
+  alpha = 0.2,
+  align = "hv",
+  axis = "lrtb",
+  ...
+)
 }
 \arguments{
 \item{object}{a fitted GAM, the result of a call to \code{\link[mgcv:gam]{mgcv::gam()}}.}
@@ -41,7 +48,7 @@ Plot derivatives of smooths
 }
 \examples{
 
-suppressPackageStartupMessages(library("mgcv"))
+load_mgcv()
 \dontshow{set.seed(42)}
 dat <- gamSim(1, n = 400, dist = "normal", scale = 2, verbose = FALSE)
 mod <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")

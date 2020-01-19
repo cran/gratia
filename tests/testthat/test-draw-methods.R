@@ -311,3 +311,82 @@ test_that("draw.derivates() plots derivatives for a GAM", {
     plt <- draw(d1, scales = "free")
     expect_doppelganger("draw derivatives for a GAM with fixed scales", plt)
 })
+
+## test that issue 39 stays fixed
+test_that("draw.gam doesn't create empty plots with multiple parametric terms", {
+    set.seed(42)
+    dat <- gamSim(4, n = 300, verbose = FALSE)
+    dat <- transform(dat, fac = factor(fac), fac2 = factor(fac)) # second factor
+    ## GAM with 2 factors and 2 numeric terms
+    m2f <- gam(y ~ s(x0) + s(x1) + fac + fac2, data = dat,
+               family = gaussian(link = "identity"))
+    plt <- draw(m2f)
+    expect_doppelganger("draw issue 39 empty plots", plt)
+})
+
+test_that("draw.mgcv_smooth() can plot basic smooth bases", {
+    set.seed(42)
+    dat <- gamSim(1, n = 400, verbose = FALSE)
+    bs <- basis(s(x0), data = dat)
+    plt <- draw(bs)
+    expect_doppelganger("draw basic tprs basis", plt)
+})
+
+test_that("draw.mgcv_smooth() can plot by factor basis smooth bases", {
+    set.seed(42)
+    dat <- gamSim(4, n = 400, verbose = FALSE)
+    bs <- basis(s(x2, by = fac), data = dat)
+    plt <- draw(bs)
+    expect_doppelganger("draw by factor basis", plt)
+})
+
+test_that("draw() works with a ziplss models; issue #45", {
+    ## simulate some data...
+    f0 <- function(x) 2 * sin(pi * x); f1 <- function(x) exp(2 * x)
+    f2 <- function(x) 0.2 * x^11 * (10 * (1 - x))^6 + 10 * 
+                          (10 * x)^3 * (1 - x)^10
+    n <- 500
+    set.seed(5)
+    x0 <- runif(n)
+    x1 <- runif(n)
+    x2 <- runif(n)
+    x3 <- runif(n)
+    
+    ## Simulate probability of potential presence...
+    eta1 <- f0(x0) + f1(x1) - 3
+    p <- binomial()$linkinv(eta1) 
+    y <- as.numeric(runif(n) < p) ## 1 for presence, 0 for absence
+    
+    ## Simulate y given potentially present (not exactly model fitted!)...
+    ind <- y > 0
+    eta2 <- f2(x2[ind])/3
+    y[ind] <- rpois(exp(eta2), exp(eta2))
+    df <- data.frame(y, x0, x1, x2, x3)
+    b1 <- gam(list(y ~ s(x2) + x3,
+                   ~ s(x0) + x1), family = ziplss(), data = df)
+    plt <- draw(b1)
+    vdiffr::expect_doppelganger("draw ziplss parametric terms issue 45", plt)
+})
+
+test_that("draw works for sample_smooths objects", {
+    sm1 <- smooth_samples(m1, n = 15, seed = 23478)
+    plt <- draw(sm1, alpha = 0.7)
+    vdiffr:::expect_doppelganger("draw smooth_samples for GAM m1", plt)
+    
+    sm2 <- smooth_samples(m2, n = 15, seed = 23478)
+    plt <- draw(sm2, alpha = 0.7)
+    vdiffr:::expect_doppelganger("draw smooth_samples for GAM m2", plt)
+    
+    sm3 <- smooth_samples(m3, n = 15, seed = 23478)
+    plt <- draw(sm3, alpha = 0.7)
+    vdiffr:::expect_doppelganger("draw smooth_samples for GAM m3", plt)
+})
+
+test_that("draw works for sample_smooths objects with user specified smooth", {
+    sm3 <- smooth_samples(m3, n = 15, seed = 23478)
+    plt <- draw(sm3, select = "s(x0)", alpha = 0.7)
+    vdiffr:::expect_doppelganger("draw selected smooth_samples for GAM m3", plt)
+    
+    plt <- draw(sm3, select = "s(x2)", alpha = 0.7, partial_match = TRUE)
+    vdiffr:::expect_doppelganger("draw selected factor by smooth_samples for GAM m3", plt)
+})

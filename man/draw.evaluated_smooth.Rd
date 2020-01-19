@@ -10,23 +10,63 @@
 \alias{draw.evaluated_parametric_term}
 \title{Plot estimated smooths}
 \usage{
-\method{draw}{evaluated_1d_smooth}(object, rug = NULL, xlab, ylab,
-  title = NULL, subtitle = NULL, caption = NULL, ...)
+\method{draw}{evaluated_1d_smooth}(
+  object,
+  rug = NULL,
+  xlab,
+  ylab,
+  title = NULL,
+  subtitle = NULL,
+  caption = NULL,
+  ...
+)
 
-\method{draw}{evaluated_2d_smooth}(object, show = c("estimate", "se"),
-  contour = TRUE, xlab, ylab, title = NULL, subtitle = NULL,
-  caption = NULL, ...)
+\method{draw}{evaluated_2d_smooth}(
+  object,
+  show = c("estimate", "se"),
+  contour = TRUE,
+  xlab,
+  ylab,
+  title = NULL,
+  subtitle = NULL,
+  caption = NULL,
+  ...
+)
 
-\method{draw}{evaluated_re_smooth}(object, qq_line = TRUE, xlab, ylab,
-  title = NULL, subtitle = NULL, caption = NULL, ...)
+\method{draw}{evaluated_re_smooth}(
+  object,
+  qq_line = TRUE,
+  xlab,
+  ylab,
+  title = NULL,
+  subtitle = NULL,
+  caption = NULL,
+  ...
+)
 
-\method{draw}{evaluated_fs_smooth}(object, rug = NULL, xlab, ylab,
-  title = NULL, subtitle = NULL, caption = NULL,
-  colour_scale = scale_colour_discrete, ...)
+\method{draw}{evaluated_fs_smooth}(
+  object,
+  rug = NULL,
+  xlab,
+  ylab,
+  title = NULL,
+  subtitle = NULL,
+  caption = NULL,
+  colour_scale = scale_colour_discrete,
+  ...
+)
 
-\method{draw}{evaluated_parametric_term}(object, xlab, ylab,
-  title = NULL, subtitle = NULL, caption = NULL, rug = TRUE,
-  position = "identity", ...)
+\method{draw}{evaluated_parametric_term}(
+  object,
+  xlab,
+  ylab,
+  title = NULL,
+  subtitle = NULL,
+  caption = NULL,
+  rug = TRUE,
+  position = "identity",
+  ...
+)
 }
 \arguments{
 \item{object}{an object, the result of a call to \code{\link[=evaluate_smooth]{evaluate_smooth()}}.}
@@ -74,7 +114,7 @@ A \code{\link[ggplot2:ggplot]{ggplot2::ggplot()}} object.
 Plots estimated univariate and bivariate smooths using ggplot2.
 }
 \examples{
-suppressPackageStartupMessages(library("mgcv"))
+load_mgcv()
 
 \dontshow{set.seed(2)}
 dat <- gamSim(1, n = 400, dist = "normal", scale = 2)

@@ -4,10 +4,21 @@
 \alias{draw.gam}
 \title{Plot estimated smooths from a fitted GAM}
 \usage{
-\method{draw}{gam}(object, parametric = NULL, select = NULL,
-  scales = c("free", "fixed"), align = "hv", axis = "lrtb",
-  n = 100, unconditional = FALSE, overall_uncertainty = TRUE,
-  dist = 0.1, rug = TRUE, partial_match = FALSE, ...)
+\method{draw}{gam}(
+  object,
+  parametric = NULL,
+  select = NULL,
+  scales = c("free", "fixed"),
+  align = "hv",
+  axis = "lrtb",
+  n = 100,
+  unconditional = FALSE,
+  overall_uncertainty = TRUE,
+  dist = 0.1,
+  rug = TRUE,
+  partial_match = FALSE,
+  ...
+)
 }
 \arguments{
 \item{object}{a fitted GAM, the result of a call to \code{\link[mgcv:gam]{mgcv::gam()}}.}
@@ -77,7 +88,7 @@ it is not possible to use \code{+} to add to the plots in the way one might
 typically work with \code{ggplot()} plots.
 }
 \examples{
-suppressPackageStartupMessages(library("mgcv"))
+load_mgcv()
 
 \dontshow{set.seed(2)}
 dat <- gamSim(1, n = 400, dist = "normal", scale = 2)

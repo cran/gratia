@@ -49,6 +49,10 @@
 ##'   covariance matrix?
 ##' @param frequentist logical; use the frequentist covariance matrix?
 ##' @param offset numeric; a value to use for any offset term
+##' @param ncores number of cores for generating random variables from a
+##'   multivariate normal distribution. Passed to [mvnfast::rmvn()].
+##'   Parallelization will take place only if OpenMP is supported (but appears
+##'   to work on Windows with current `R`).
 ##'
 ##' @export
 ##'
@@ -56,7 +60,7 @@
 ##'
 ##' @examples
 ##'
-##' suppressPackageStartupMessages(library("mgcv"))
+##' load_mgcv()
 ##' \dontshow{
 ##' set.seed(42)
 ##' op <- options(cli.unicode = FALSE)
@@ -64,16 +68,18 @@
 ##' dat <- gamSim(1, n = 400, dist = "normal", scale = 2, verbose = FALSE)
 ##' mod <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 ##'
-##' ## first derivative of all smooths using central finite differenc
+##' ## first derivatives of all smooths using central finite differences
 ##' derivatives(mod, type = "central")
-##' \dontshow{options(op)}
+##' \dontshow{
+##' options(op)
+##' }
 `derivatives.gam` <- function(object, term, newdata, order = 1L,
                               type = c("forward", "backward", "central"),
                               n = 200, eps = 1e-7,
                               interval = c("confidence", "simultaneous"),
                               n_sim = 10000, level = 0.95,
                               unconditional = FALSE, frequentist = FALSE,
-                              offset = NULL, ...) {
+                              offset = NULL, ncores = 1, ...) {
     ## handle term
     smooth_ids <- if (!missing(term)) {
         which_smooths(object, term) # which smooths match 'term'
@@ -90,22 +96,13 @@
     }
 
     ## handle newdata
+    need_newdata <- FALSE
     if (missing(newdata)) {
-        ## newdata <- prediction_data(object, n = n, offset = offset, eps = eps)
-        newdata <- derivative_data(object, n = n, offset = offset,
-                                   order = order, type = type, eps = eps)
+        need_newdata <- TRUE
     }
 
     ## handle interval
     interval <- match.arg(interval)
-
-    ## generate list of finite difference predictions for the first or second
-    ##   derivatives or the required type
-    fd <- finite_diff_lpmatrix(object, type = type, order = order,
-                               newdata = newdata, h = eps)
-
-    ## compute the finite differences
-    X <- finite_difference(fd, order, type, eps)
 
     ## get the required covariance matrix
     Vb <- get_vcov(object, unconditional = unconditional,
@@ -115,23 +112,40 @@
 
     ## how many smooths need working on
     ns <- length(smooth_ids)
-    result <- Xis <- vector(mode = "list", length = ns)
+    result <- vector(mode = "list", length = ns)
 
     ## loop over the smooths and compute derivatives from finite differences
     for (i in seq_along(smooth_ids)) {
+        ## generate newdata if not supplied
+        if (need_newdata) {
+            newdata <- derivative_data(object, id = smooth_ids[[i]], n = n,
+                                       offset = offset, order = order,
+                                       type = type, eps = eps)
+        }
+
+        ## generate list of finite difference predictions for the first or second
+        ##   derivatives or the required type
+        fd <- finite_diff_lpmatrix(object, type = type, order = order,
+                                   newdata = newdata, h = eps)
+
+        ## compute the finite differences
+        X <- finite_difference(fd, order, type, eps)
+
+        ## compute derivatives
         d <- compute_derivative(smooth_ids[[i]], lpmatrix = X, betas = betas,
                                 Vb = Vb, model = object, newdata = newdata)
+
+        ## compute intervals
         if (identical(interval, "confidence")) {
             result[[i]] <- derivative_pointwise_int(d[["deriv"]], level = level,
                                                     distrib = "normal")
         } else {
             result[[i]] <- derivative_simultaneous_int(d[["deriv"]], d[["Xi"]],
                                                        level = level, Vb = Vb,
-                                                       n_sim = n_sim)
+                                                       n_sim = n_sim,
+                                                       ncores = ncores)
         }
     }
-
-    ## confidence/simultaneous intervals
 
     ## results in a list of tibbles that we need to bind row-wise
     result <- do.call("bind_rows", result)
@@ -159,10 +173,10 @@
 
 ##' @importFrom tibble add_column
 ##' @importFrom stats quantile
-##' @importFrom mvtnorm rmvnorm
-`derivative_simultaneous_int` <- function(x, Xi, level, Vb, n_sim) {
+##' @importFrom mvnfast rmvn
+`derivative_simultaneous_int` <- function(x, Xi, level, Vb, n_sim, ncores) {
     ## simulate un-biased deviations given bayesian covariance matrix
-    buDiff <- rmvnorm(n = n_sim, mean = rep(0, nrow(Vb)), sigma = Vb)
+    buDiff <- rmvn(n = n_sim, mu = rep(0, nrow(Vb)), sigma = Vb, ncores = ncores)
     simDev <- tcrossprod(Xi, buDiff) # Xi %*% t(bu) # simulate deviations from expected
     absDev <- abs(sweep(simDev, 1L, x[["se"]], FUN = "/")) # absolute deviations
     masd <- apply(absDev, 2L, max)  # & max abs deviation per sim
@@ -196,22 +210,32 @@
     X
 }
 
-##' @importFrom tibble data_frame
+##' @importFrom tibble tibble
 `compute_derivative` <- function(id, lpmatrix, betas, Vb, model, newdata) {
     sm <- get_smooths_by_id(model, id)[[1L]]
     sm_var <- smooth_variable(sm)
+    ## handle fs smooths
+    fs_var <- NULL
+    if (is_fs_smooth(sm)) {
+        fs_var <- sm_var[-1L]
+        sm_var <- sm_var[1L]
+    }
     sm_lab <- smooth_label(sm)
     want <- grep(sm_lab, colnames(lpmatrix), fixed = TRUE)
     Xi <- lpmatrix * 0                  # zero out the Xp matrix
     Xi[, want] <- lpmatrix[, want]      # copy bits of Xp we need
     d <- drop(Xi %*% betas)             # estimate derivative
     se <- rowSums(Xi %*% Vb * Xi)^0.5   # standard errors
-    result <- list(deriv = data_frame(smooth = rep(sm_lab, length(d)),
-                                      var = rep(sm_var, length(d)),
-                                      data = newdata[[sm_var]],
-                                      derivative = d,
-                                      se = se),
-                   Xi = Xi)
+    ## build return tibble
+    deriv <- tibble(smooth = rep(sm_lab, length(d)),
+                    var = rep(sm_var, length(d)),
+                    data = newdata[[sm_var]],
+                    derivative = d,
+                    se = se)
+    if (!is.null(fs_var)) {
+        deriv <- add_column(deriv, fs_var = newdata[[fs_var]], .after = 2L)
+    }
+    result <- list(deriv = deriv, Xi = Xi)
     result
 }
 
@@ -357,9 +381,11 @@
     list(xf = x0, xb = x1, x = x2)
 }
 
-##' @importFrom dplyr bind_cols
+##' @importFrom dplyr bind_cols setdiff
 ##' @importFrom tibble as_tibble
-`derivative_data` <- function(model, n, offset = NULL,
+##' @importFrom rlang exec !!!
+##' @importFrom tidyr expand_grid
+`derivative_data` <- function(model, id, n, offset = NULL,
                               order = NULL, type = NULL, eps = NULL) {
     mf <- model.frame(model)           # model.frame used to fit model
 
@@ -377,31 +403,82 @@
     }
     mf <- fix_offset(model, mf, offset_val = offset)
     ff <- vapply(mf, is.factor, logical(1L)) # which, if any, are factors vars
-    m.terms <- names(mf)        # list of model terms (variable names)
+    ## list of model terms (variable names); extract these from `var.summary`
+    ## because model.frame() on a gamm() contains extraneous variables, related
+    ## to the mixed model form for lme()
+    m.terms <- names(model[["var.summary"]])
 
-    if (any(ff)) {
-        ## need to supply something for each factor
-        f.mf <- as_tibble(lapply(mf[, ff, drop = FALSE], rep_first_factor_value, n = n))
-        mf <- mf[, !ff, drop = FALSE] # remove factors from model frame
+    ## need a list of terms used in current smooth
+    sm <- get_smooths_by_id(model, id)[[1L]]
+    smooth_vars <- unique(smooth_variable(sm))
+    ## Handle special smooths, like 'fs', which involves a factor
+    fs_var <- NULL
+    if (is_fs_smooth(sm)) {
+        ## second element of smooth_var will be a factor
+        fs_var <- smooth_vars[ff]
+        smooth_vars <- smooth_vars[!ff]
     }
-
-    ## generate newdata at `n` locations
-    newdata <- as_tibble(vapply(mf, seq_min_max_eps, numeric(n), n = n,
-                                order = order, type = type, eps = eps))
-
-    ## if there were any factors, add back the factor columns
-    if (any(ff)) {
-        newdata <- bind_cols(newdata, f.mf)
+    ## is smooth a factor by? If it is, extract the by variable
+    by_var <- if (is_factor_by_smooth(sm)) {
+        by_variable(sm)
+    } else {
+        NULL
     }
-    names(newdata) <- c(m.terms[!ff], m.terms[ff])
+    used_vars <- c(smooth_vars, fs_var, by_var)
+
+    ## generate covariate values for the smooth
+    newlist <- lapply(mf[smooth_vars], seq_min_max_eps, n = n,
+                      order = order, type = type, eps = eps)
+    ## handle fs smooths
+    if (!is.null(fs_var)) {
+        fs_levs <- levels(mf[[fs_var]])
+        new_fs <- setNames(list(factor(fs_levs, levels = fs_levs)), fs_var)
+        newlist <- append(newlist, new_fs)
+    }
+    ## handle factor by --- FIXME: what about numeric by?
+    if (!is.null(by_var)) {
+        ## ordered or simple factor? Grab class as a function to apply below
+        FUN <- match.fun(data.class(mf[[by_var]]))
+        ## extract levels of factor by var,
+        levs <- levels(mf[[by_var]])
+        ## coerce level for this smooth to correct factor type with FUN
+        ##   return as a list with the correct names
+        newfac <- setNames(list(FUN(by_level(sm), levels = levs)), by_var)
+        ## append this list to the list of new smooth covariate values
+        newlist <- append(newlist, newfac)
+    }
+    newdata <- exec(expand_grid, !!!newlist) # actually compute expand.grid-alike
+
+    ## need to provide single values for all other covariates in data
+    unused_vars <- dplyr::setdiff(m.terms, used_vars)
+    unused_summ <- model[["var.summary"]][unused_vars]
+    ## FIXME: put this in utils.R with a better name!
+    ## this basically just reps the data (scalar) for the closest observation
+    ## to the median over all observations
+    `rep_fun` <- function(x, n) {
+        ## if `x` isn't a factor, select the second element of `x` which
+        ## is the value of the observation in the data closest to median
+        ## of set of observations in data used to fit the model.
+        if (!is.factor(x)) {
+            x <- x[2L]
+        }
+        ## repeat `x` as many times as is needed
+        rep(x, times = n)
+    }
+    n_new <- NROW(newdata)
+    unused_data <- as_tibble(lapply(unused_summ, FUN = rep_fun, n = n_new))
+    ## add unnused_data to newdata so we're ready to predict
+    newdata <- bind_cols(newdata, unused_data)
 
     newdata <- newdata[, m.terms, drop = FALSE] # re-arrange
     newdata
 }
 
-##' @importFrom dplyr bind_cols
+##' @importFrom dplyr bind_cols setdiff
 ##' @importFrom tibble as_tibble
-`prediction_data` <- function(model, n, offset = NULL) {
+##' @importFrom rlang exec !!!
+##' @importFrom tidyr nesting
+`smooth_data` <- function(model, id, n, offset = NULL) {
     mf <- model.frame(model)           # model.frame used to fit model
 
     ## remove response
@@ -418,23 +495,58 @@
     }
     mf <- fix_offset(model, mf, offset_val = offset)
     ff <- vapply(mf, is.factor, logical(1L)) # which, if any, are factors vars
-    m.terms <- names(mf)        # list of model terms (variable names)
+    ## list of model terms (variable names); extract these from `var.summary`
+    ## because model.frame() on a gamm() contains extraneous variables, related
+    ## to the mixed model form for lme()
+    m.terms <- names(model[["var.summary"]])
 
-    if (any(ff)) {
-        ## need to supply something for each factor
-        f.mf <- as_tibble(lapply(mf[, ff, drop = FALSE], rep_first_factor_value, n = n))
-        mf <- mf[, !ff, drop = FALSE] # remove factors from model frame
+    ## need a list of terms used in current smooth
+    sm <- get_smooths_by_id(model, id)[[1L]]
+    smooth_vars <- unique(smooth_variable(sm))
+    ## is smooth a factor by? If it is, extract the by variable
+    by_var <- if (is_factor_by_smooth(sm)) {
+        by_variable(sm)
+    } else {
+        NULL
     }
+    used_vars <- c(smooth_vars, by_var)
 
-    ## generate newdata at `n` locations
-    newdata <- as_tibble(vapply(mf, seq_min_max, numeric(n), n = n))
-
-    ## if there were any factors, add back the factor columns
-    if (any(ff)) {
-        newdata <- bind_cols(newdata, f.mf)
+    ## generate covariate values for the smooth
+    newlist <- lapply(mf[smooth_vars], seq_min_max, n = n)
+    if (!is.null(by_var)) {
+        ## ordered or simple factor? Grab class as a function to apply below
+        FUN <- match.fun(data.class(mf[[by_var]]))
+        ## extract levels of factor by var,
+        levs <- levels(mf[[by_var]])
+        ## coerce level for this smooth to correct factor type with FUN
+        ##   return as a list with the correct names
+        newfac <- setNames(list(FUN(by_level(sm), levels = levs)), by_var)
+        ## append this list to the list of new smooth covariate values
+        newlist <- append(newlist, newfac)
     }
-    names(newdata) <- c(m.terms[!ff], m.terms[ff])
+    newdata <- exec(nesting, !!!newlist) # actually compute expand.grid-alike
 
-    newdata <- newdata[, m.terms, drop = FALSE] # re-arrange
+    ## need to provide single values for all other covariates in data
+    unused_vars <- dplyr::setdiff(m.terms, used_vars)
+    unused_summ <- model[["var.summary"]][unused_vars]
+    ## FIXME: put this in utils.R with a better name!
+    ## this basically just reps the data (scalar) for the closest observation
+    ## to the median over all observations
+    `rep_fun` <- function(x, n) {
+        ## if `x` isn't a factor, select the second element of `x` which
+        ## is the value of the observation in the data closest to median
+        ## of set of observations in data used to fit the model.
+        if (!is.factor(x)) {
+            x <- x[2L]
+        }
+        ## repeat `x` as many times as is needed
+        rep(x, times = n)
+    }
+    n_new <- NROW(newdata)
+    ## unused_data <- as_tibble(lapply(unused_summ, FUN = rep_fun, n = n_new))
+    ## add unnused_data to newdata so we're ready to predict
+    ## newdata <- bind_cols(newdata, unused_data)
+
+    ## newdata <- newdata[, m.terms, drop = FALSE] # re-arrange
     newdata
 }

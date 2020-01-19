@@ -8,8 +8,16 @@
 \usage{
 fderiv(model, ...)
 
-\method{fderiv}{gam}(model, newdata, term, n = 200, eps = 1e-07,
-  unconditional = FALSE, offset = NULL, ...)
+\method{fderiv}{gam}(
+  model,
+  newdata,
+  term,
+  n = 200,
+  eps = 1e-07,
+  unconditional = FALSE,
+  offset = NULL,
+  ...
+)
 
 \method{fderiv}{gamm}(model, ...)
 }
@@ -37,7 +45,7 @@ An object of class \code{"fderiv"} is returned.
 The first derivative of the smooth functions of a GAM model calculated using finite differences.
 }
 \examples{
-suppressPackageStartupMessages(library("mgcv"))
+load_mgcv()
 \dontshow{set.seed(2)}
 dat <- gamSim(1, n = 400, dist = "normal", scale = 2)
 mod <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
