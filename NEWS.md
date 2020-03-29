@@ -1,4 +1,24 @@
-# gratia 0.3.0 (2020-01-16)
+# gratia 0.3.1 (in development)
+
+## New features
+
+* New functions `link()` and `inv_link()` to access the link function and its
+  inverse from fitted models and family functions.
+  
+  Methods for classes: `"glm"`, `"gam"`, `"bam"`, `"gamm"` currently. [#58](https://github.com/gavinsimpson/gratia/issues/58)
+
+* Adds explicit `family()` methods for objects of classes `"gam"`, `"bam"`, and
+  `"gamm"`.
+
+* `derivatives()` now handles non-numeric when creating shifted data for finite
+  differences. Fixes a problem with `stringsAsFactors = FALSE` default in R-devel.
+  [#64](https://github.com/gavinsimpson/gratia/issues/64)
+
+## Bug fixes
+
+* Updated *gratia* to work with *tibble* versions >= 3.0
+
+# gratia 0.3.0
 
 ## New features
 

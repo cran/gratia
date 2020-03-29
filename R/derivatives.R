@@ -58,6 +58,18 @@
 ##'
 ##' @rdname derivatives
 ##'
+##' @return A tibble, currently with the following variables:
+##' * `smooth`: the smooth each row refers to,
+##' * `var`: the name of the variable involved in the smooth,
+##' * `data`: values of `var` at which the derivative was evaluated,
+##' * `derivative`: the estimated derivative,
+##' * `se`: the standard error of the estimated derivative,
+##' * `crit`: the critical value such that `derivative` ± `(crit * se)` gives
+##'   the upper and lower bounds of the requested confidence or simultaneous
+##'   interval (given `level`),
+##' * `lower`: the lower bound of the confidence or simultaneous interval,
+##' * `upper`: the upper bound of the confidence or simultaneous interval.
+##'
 ##' @examples
 ##'
 ##' load_mgcv()
@@ -257,12 +269,14 @@
 }
 
 `forward_finite_diff1` <- function(model, newdata, h = 1e-7) {
-    ind <- is_factor_var(newdata)       # exclude factors
+    ## need to exclude anything not numeric (from R's point of view)
+    ## negate result as TRUE == numeric and we want opposite
+    ind <- !is_numeric_var(newdata) # exclude non numerics
     if (all(ind)) {
         stop("Can't compute finite differences for all non-numeric data.")
     }
 
-    ## create newdata2 as newdata + h
+    ## create newdata2 as newdata + h - negate ind as TRUE == numeric
     newdata2 <- shift_values(newdata, h = h, i = ind, FUN = '+')
 
     ## predict for x
@@ -275,7 +289,9 @@
 }
 
 `backward_finite_diff1` <- function(model, newdata, h = 1e-7) {
-    ind <- is_factor_var(newdata)       # exclude factors
+    ## need to exclude anything not numeric (from R's point of view)
+    ## negate result as TRUE == numeric and we want opposite
+    ind <- !is_numeric_var(newdata) # exclude non numerics
     if (all(ind)) {
         stop("Can't compute finite differences for all non-numeric data.")
     }
@@ -293,7 +309,9 @@
 }
 
 `central_finite_diff1` <- function(model, newdata, h = 1e-7) {
-    ind <- is_factor_var(newdata)       # exclude factors
+    ## need to exclude anything not numeric (from R's point of view)
+    ## negate result as TRUE == numeric and we want opposite
+    ind <- !is_numeric_var(newdata) # exclude non numerics
     if (all(ind)) {
         stop("Can't compute finite differences for all non-numeric data.")
     }
@@ -313,7 +331,9 @@
 }
 
 `forward_finite_diff2` <- function(model, newdata, h = 1e-7) {
-    ind <- is_factor_var(newdata)       # exclude factors
+    ## need to exclude anything not numeric (from R's point of view)
+    ## negate result as TRUE == numeric and we want opposite
+    ind <- !is_numeric_var(newdata) # exclude non numerics
     if (all(ind)) {
         stop("Can't compute finite differences for all non-numeric data.")
     }
@@ -336,7 +356,9 @@
 }
 
 `backward_finite_diff2` <- function(model, newdata, h = 1e-7) {
-    ind <- is_factor_var(newdata)       # exclude factors
+    ## need to exclude anything not numeric (from R's point of view)
+    ## negate result as TRUE == numeric and we want opposite
+    ind <- !is_numeric_var(newdata) # exclude non numerics
     if (all(ind)) {
         stop("Can't compute finite differences for all non-numeric data.")
     }
@@ -359,7 +381,9 @@
 }
 
 `central_finite_diff2` <- function(model, newdata, h = 1e-7) {
-    ind <- is_factor_var(newdata)       # exclude factors
+    ## need to exclude anything not numeric (from R's point of view)
+    ## negate result as TRUE == numeric and we want opposite
+    ind <- !is_numeric_var(newdata) # exclude non numerics
     if (all(ind)) {
         stop("Can't compute finite differences for all non-numeric data.")
     }
