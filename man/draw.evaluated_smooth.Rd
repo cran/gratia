@@ -13,11 +13,14 @@
 \method{draw}{evaluated_1d_smooth}(
   object,
   rug = NULL,
+  ci_level = 0.95,
   xlab,
   ylab,
   title = NULL,
   subtitle = NULL,
   caption = NULL,
+  partial_residuals = NULL,
+  response_range = NULL,
   ...
 )
 
@@ -25,11 +28,14 @@
   object,
   show = c("estimate", "se"),
   contour = TRUE,
+  contour_col = "black",
+  n_contour = NULL,
   xlab,
   ylab,
   title = NULL,
   subtitle = NULL,
   caption = NULL,
+  response_range = NULL,
   ...
 )
 
@@ -41,6 +47,7 @@
   title = NULL,
   subtitle = NULL,
   caption = NULL,
+  response_range = NULL,
   ...
 )
 
@@ -53,11 +60,13 @@
   subtitle = NULL,
   caption = NULL,
   colour_scale = scale_colour_discrete,
+  response_range = NULL,
   ...
 )
 
 \method{draw}{evaluated_parametric_term}(
   object,
+  ci_level = 0.95,
   xlab,
   ylab,
   title = NULL,
@@ -65,6 +74,7 @@
   caption = NULL,
   rug = TRUE,
   position = "identity",
+  response_range = NULL,
   ...
 )
 }
@@ -75,6 +85,8 @@
 location of data on the x axis. The default of \code{NULL} results in no
 rug plot being drawn. For \code{evaluate_parametric_terms()}, a logical to
 indicate if a rug plot should be drawn.}
+
+\item{ci_level}{numeric between 0 and 1; the coverage of credible interval.}
 
 \item{xlab}{character or expression; the label for the x axis. If not
 supplied, a suitable label will be generated from \code{object}.}
@@ -91,6 +103,14 @@ supplied, a suitable label will be generated from \code{object}.}
 \item{caption}{character or expression; the plot caption. See
 \code{\link[ggplot2:labs]{ggplot2::labs()}}.}
 
+\item{partial_residuals}{data frame; partial residuals and data values if
+partial residuals are drawn. Should have names \code{..p_resid} and \code{..orig_x} if
+supplied.}
+
+\item{response_range}{numeric; a vector of two values giving the range of
+response data for the guide. Used to fix plots to a common scale/range.
+Ignored if \code{show} is set to \code{"se"}.}
+
 \item{...}{arguments passed to other methods.}
 
 \item{show}{character; plot the estimated smooth (\code{"estimate"}) or its
@@ -98,6 +118,11 @@ standard error (\code{"se"}).}
 
 \item{contour}{logical; should contours be draw on the plot using
 \code{\link[ggplot2:geom_contour]{ggplot2::geom_contour()}}.}
+
+\item{contour_col}{colour specification for contour lines.}
+
+\item{n_contour}{numeric; the number of contour bins. Will result in
+\code{n_contour - 1} contour lines being drawn. See \code{\link[ggplot2:geom_contour]{ggplot2::geom_contour()}}.}
 
 \item{qq_line}{logical; draw a reference line through the lower and upper
 theoretical quartiles.}

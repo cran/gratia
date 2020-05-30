@@ -475,25 +475,28 @@
 
     ## need to provide single values for all other covariates in data
     unused_vars <- dplyr::setdiff(m.terms, used_vars)
-    unused_summ <- model[["var.summary"]][unused_vars]
-    ## FIXME: put this in utils.R with a better name!
-    ## this basically just reps the data (scalar) for the closest observation
-    ## to the median over all observations
-    `rep_fun` <- function(x, n) {
-        ## if `x` isn't a factor, select the second element of `x` which
-        ## is the value of the observation in the data closest to median
-        ## of set of observations in data used to fit the model.
-        if (!is.factor(x)) {
-            x <- x[2L]
+    ## only processed unusaed_vars if length() > 0L
+    if (length(unused_vars) > 0L) {
+        unused_summ <- model[["var.summary"]][unused_vars]
+        ## FIXME: put this in utils.R with a better name!
+        ## this basically just reps the data (scalar) for the closest observation
+        ## to the median over all observations
+        `rep_fun` <- function(x, n) {
+            ## if `x` isn't a factor, select the second element of `x` which
+            ## is the value of the observation in the data closest to median
+            ## of set of observations in data used to fit the model.
+            if (!is.factor(x)) {
+                x <- x[2L]
+            }
+            ## repeat `x` as many times as is needed
+            rep(x, times = n)
         }
-        ## repeat `x` as many times as is needed
-        rep(x, times = n)
+        n_new <- NROW(newdata)
+        unused_data <- as_tibble(lapply(unused_summ, FUN = rep_fun, n = n_new))
+        ## add unnused_data to newdata so we're ready to predict
+        newdata <- bind_cols(newdata, unused_data)
     }
-    n_new <- NROW(newdata)
-    unused_data <- as_tibble(lapply(unused_summ, FUN = rep_fun, n = n_new))
-    ## add unnused_data to newdata so we're ready to predict
-    newdata <- bind_cols(newdata, unused_data)
-
+    
     newdata <- newdata[, m.terms, drop = FALSE] # re-arrange
     newdata
 }
@@ -501,8 +504,8 @@
 ##' @importFrom dplyr bind_cols setdiff
 ##' @importFrom tibble as_tibble
 ##' @importFrom rlang exec !!!
-##' @importFrom tidyr nesting
-`smooth_data` <- function(model, id, n, offset = NULL) {
+##' @importFrom tidyr expand_grid
+`smooth_data` <- function(model, id, n, offset = NULL, include_all = FALSE) {
     mf <- model.frame(model)           # model.frame used to fit model
 
     ## remove response
@@ -527,8 +530,8 @@
     ## need a list of terms used in current smooth
     sm <- get_smooths_by_id(model, id)[[1L]]
     smooth_vars <- unique(smooth_variable(sm))
-    ## is smooth a factor by? If it is, extract the by variable
-    by_var <- if (is_factor_by_smooth(sm)) {
+    ## is smooth a by? If it is, extract the by variable
+    by_var <- if (is_by_smooth(sm)) {
         by_variable(sm)
     } else {
         NULL
@@ -538,39 +541,49 @@
     ## generate covariate values for the smooth
     newlist <- lapply(mf[smooth_vars], seq_min_max, n = n)
     if (!is.null(by_var)) {
-        ## ordered or simple factor? Grab class as a function to apply below
-        FUN <- match.fun(data.class(mf[[by_var]]))
-        ## extract levels of factor by var,
-        levs <- levels(mf[[by_var]])
-        ## coerce level for this smooth to correct factor type with FUN
-        ##   return as a list with the correct names
-        newfac <- setNames(list(FUN(by_level(sm), levels = levs)), by_var)
-        ## append this list to the list of new smooth covariate values
-        newlist <- append(newlist, newfac)
-    }
-    newdata <- exec(nesting, !!!newlist) # actually compute expand.grid-alike
-
-    ## need to provide single values for all other covariates in data
-    unused_vars <- dplyr::setdiff(m.terms, used_vars)
-    unused_summ <- model[["var.summary"]][unused_vars]
-    ## FIXME: put this in utils.R with a better name!
-    ## this basically just reps the data (scalar) for the closest observation
-    ## to the median over all observations
-    `rep_fun` <- function(x, n) {
-        ## if `x` isn't a factor, select the second element of `x` which
-        ## is the value of the observation in the data closest to median
-        ## of set of observations in data used to fit the model.
-        if (!is.factor(x)) {
-            x <- x[2L]
+        if (is_factor_by_smooth(sm)) {
+            ## ordered or simple factor? Grab class as a function to apply below
+            FUN <- match.fun(data.class(mf[[by_var]]))
+            ## extract levels of factor by var,
+            levs <- levels(mf[[by_var]])
+            ## coerce level for this smooth to correct factor type with FUN
+            ##   return as a list with the correct names
+            newfac <- setNames(list(FUN(by_level(sm), levels = levs)), by_var)
+            ## append this list to the list of new smooth covariate values
+            newlist <- append(newlist, newfac)
+        } else {
+            ## continuous by var; set to median among observed values?
+            newby <- setNames(list(median(mf[[by_var]]), na.rm = TRUE), by_var)
+            newlist <- append(newlist, newby)
         }
-        ## repeat `x` as many times as is needed
-        rep(x, times = n)
     }
-    n_new <- NROW(newdata)
-    ## unused_data <- as_tibble(lapply(unused_summ, FUN = rep_fun, n = n_new))
-    ## add unnused_data to newdata so we're ready to predict
-    ## newdata <- bind_cols(newdata, unused_data)
+    newdata <- exec(expand_grid, !!!newlist) # actually compute expand.grid-alike
 
-    ## newdata <- newdata[, m.terms, drop = FALSE] # re-arrange
-    newdata
+    if (isTRUE(include_all)) {
+        ## need to provide single values for all other covariates in data
+        unused_vars <- dplyr::setdiff(m.terms, used_vars)
+        ## only processed unused_vars if length() > 0L
+        if (length(unused_vars) > 0L) {
+            unused_summ <- model[["var.summary"]][unused_vars]
+            ## FIXME: put this in utils.R with a better name!
+            ## this basically just reps the data (scalar) for the closest observation
+            ## to the median over all observations
+            `rep_fun` <- function(x, n) {
+                ## if `x` isn't a factor, select the second element of `x` which
+                ## is the value of the observation in the data closest to median
+                ## of set of observations in data used to fit the model.
+                if (!is.factor(x)) {
+                    x <- x[2L]
+                }
+                ## repeat `x` as many times as is needed
+                rep(x, times = n)
+            }
+            n_new <- NROW(newdata)
+            unused_data <- as_tibble(lapply(unused_summ, FUN = rep_fun, n = n_new))
+            ## add unnused_data to newdata so we're ready to predict
+            newdata <- bind_cols(newdata, unused_data)
+        }
+    }
+    
+    newdata # return
 }

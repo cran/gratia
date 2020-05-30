@@ -4,6 +4,7 @@
 \alias{evaluate_smooth}
 \alias{evaluate_smooth.gam}
 \alias{evaluate_smooth.gamm}
+\alias{evaluate_smooth.list}
 \alias{evaluate_parametric_term}
 \alias{evaluate_parametric_term.gam}
 \title{Evaluate a smooth}
@@ -22,6 +23,8 @@ evaluate_smooth(object, ...)
 )
 
 \method{evaluate_smooth}{gamm}(object, ...)
+
+\method{evaluate_smooth}{list}(object, ...)
 
 evaluate_parametric_term(object, ...)
 
@@ -70,7 +73,7 @@ which the smooth should be evaluated can be supplied.
 load_mgcv()
 \dontshow{
 set.seed(2)
-op <- options(cli.unicode = FALSE, digits = 6)
+op <- options(cli.unicode = FALSE, digits = 5)
 }
 dat <- gamSim(1, n = 400, dist = "normal", scale = 2)
 m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
@@ -78,7 +81,7 @@ m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 evaluate_smooth(m1, "s(x1)")
 
 ## 2d example
-set.seed(2)
+\dontshow{set.seed(2)}
 dat <- gamSim(2, n = 1000, dist = "normal", scale = 1)
 m2 <- gam(y ~ s(x, z, k = 30), data = dat$data, method = "REML")
 

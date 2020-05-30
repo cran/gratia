@@ -1,36 +1,24 @@
 ##' Generate data over the range of variables used in smooths
 ##'
-##' For each smooth in a GAM, generate new data over the range of the variables in volved in a smooth.
+##' For each smooth in a GAM, generate new data over the range of the variables
+##' involved in a smooth.
 ##'
-##' @param x an object for which new data is required. Currently objects of classes `"gam"`, and `"gamm"` are supported, as are smooths from **mgcv** inheriting from class `"mgcv.smooth"`.
-##' @param n numeric; the number of data values to generate per term in each smooth.
-##' @param data data frame; for `"mgcv.smooth"` objects, the data used to fit the GAM need to be supplied.
+##' @param x an object for which new data is required. Currently objects of
+##'   classes `"gam"`, and `"gamm"` are supported, as are smooths from **mgcv**
+##'   inheriting from class `"mgcv.smooth"`.
+##' @param n numeric; the number of data values to generate per term in each
+##'   smooth.
+##' @param data data frame; for `"mgcv.smooth"` objects, the data used to fit
+##'   the GAM need to be supplied.
 ##' @param ... arguments passed to methods
-##' @return A data frame of new values spread over the range of the observed values.
+##' @return A data frame of new values spread over the range of the
+##'   observed values.
 ##'
 ##' @author Gavin L. Simpson
 ##'
-##' @export
 ##' @rdname datagen
 ##'
-##' @examples
-##' load_mgcv()
-##'
-##' ## 1d example
-##' set.seed(2)
-##' dat <- gamSim(1, n = 400, dist = "normal", scale = 2)
-##' m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
-##' df <- datagen(m1)
-##' head(df)
-##'
-##' ## 2d example
-##' dat <- gamSim(2, n = 400, dist = "normal", scale = 2)
-##' m2 <- gam(y ~ s(x, z), data = dat$data, method = "REML")
-##' df <- datagen(m2)
-##' head(df)
-##' ## alternative showing using the mgcv.smooth method for a single smooth
-##' df2 <- datagen(m2[["smooth"]][[1L]], data = dat$data)
-##' head(df2)
+##' @keywords internal
 `datagen` <- function(x, ...) {
     UseMethod("datagen")
 }
@@ -48,15 +36,17 @@
 
     if (d == 1L) {                      # 1-d smooths
         xvals <- data[[term]]
-        newvals <- seq(min(xvals), max(xvals), length.out = n)
-        out <- data.frame(term = rep(smooth_label(x), n), x = newvals)
-    } else {                            # 2-d smooths
+        newvals <- seq_min_max(xvals, n = n)
+        out <- data.frame(smooth = rep(smooth_label(x), n), x = newvals)
+    } else if (d == 2L) {                            # 2-d smooths
         xvals <- data[[term[1]]]
         zvals <- data[[term[2]]]
-        newx <- seq(min(xvals), max(xvals), length.out = n)
-        newz <- seq(min(zvals), max(zvals), length.out = n)
+        newx <- seq_min_max(xvals, n = n)
+        newz <- seq_min_max(zvals, n = n)
         out <- expand.grid(x1 = newx, x2 = newz)
         out <- cbind(smooth = rep(smooth_label(x), n^2), out)
+    } else {
+        stop("Cannot handle smooths of three (3) or more terms.")
     }
 
     ## return
@@ -96,14 +86,34 @@
 
 ##' @export
 ##' @rdname datagen
-`datagen.gam` <- function(x, n = 200, ...) {
-    out <- lapply(x[["smooth"]], datagen, n = n, data = x[["model"]])
-    do.call("rbind", out)               # FIXME: this can't possibly be right for multiple smooths
+`datagen.gam` <- function(x, smooth = NULL, n = 200, ...) {
+    if (is.null(smooth)) {
+        stop("Argument 'smooth' must be specified and not 'NULL'.")
+    }
+    if (length(smooth) > 1L) {
+        stop("More than one smooth requested in argument 'smooth'.")
+    }
+    sm <- smooths(x)
+    select <- check_user_select_smooths(sm, select = smooth)
+    datagen(get_smooths_by_id(x, which(select))[[1L]],
+            n = n, data = x[["model"]])
 }
 
 ##' @export
 ##' @rdname datagen
 `datagen.gamm` <- function(x, ...) {
-    datagen(x[["gam"]])
+    if (!is.gamm(x)) {
+        stop("Model doesn't appear to be a 'gamm()' model object.")
+    }
+    datagen(x[["gam"]], ...)
+}
+
+##' @export
+##' @rdname datagen
+`datagen.list` <- function(x, ...) {
+    if (!is_gamm4(x)) {
+        stop("Model doesn't appear to be a 'gamm4()' model object.")
+    }
+    datagen(x[["gam"]], ...)
 }
 

@@ -24,6 +24,10 @@
 ##'   location of data on the x axis. The default of `NULL` results in no
 ##'   rug plot being drawn. For `evaluate_parametric_terms()`, a logical to
 ##'   indicate if a rug plot should be drawn.
+##' @param ci_level numeric between 0 and 1; the coverage of credible interval.
+##' @param partial_residuals data frame; partial residuals and data values if
+##'   partial residuals are drawn. Should have names `..p_resid` and `..orig_x` if
+##'   supplied.
 ##' @param xlab character or expression; the label for the x axis. If not
 ##'   supplied, a suitable label will be generated from `object`.
 ##' @param ylab character or expression; the label for the y axis. If not
@@ -34,13 +38,16 @@
 ##'   [ggplot2::labs()].
 ##' @param caption character or expression; the plot caption. See
 ##'   [ggplot2::labs()].
+##' @param response_range numeric; a vector of two values giving the range of
+##'   response data for the guide. Used to fix plots to a common scale/range.
+##'   Ignored if `show` is set to `"se"`.
 ##' @param ... arguments passed to other methods.
 ##'
 ##' @return A [ggplot2::ggplot()] object.
 ##'
 ##' @author Gavin L. Simpson
 ##'
-##' @importFrom ggplot2 ggplot aes_ aes_string labs geom_line geom_ribbon
+##' @importFrom ggplot2 ggplot aes_ aes_string labs geom_line geom_ribbon expand_limits
 ##' @importFrom grid unit
 ##'
 ##' @export
@@ -65,20 +72,34 @@
 ##' draw(sm)
 `draw.evaluated_1d_smooth` <- function(object,
                                        rug = NULL,
+                                       ci_level = 0.95,
                                        xlab, ylab,
                                        title = NULL, subtitle = NULL,
                                        caption = NULL,
+                                       partial_residuals = NULL,
+                                       response_range = NULL,
                                        ...) {
     smooth_var <- names(object)[3L]
 
     ## Add confidence interval
-    object[["upper"]] <- object[["est"]] + (2 * object[["se"]])
-    object[["lower"]] <- object[["est"]] - (2 * object[["se"]])
+    crit <- qnorm((1 - ci_level) / 2, lower.tail = FALSE)
+    object[["upper"]] <- object[["est"]] + (crit * object[["se"]])
+    object[["lower"]] <- object[["est"]] - (crit * object[["se"]])
 
-    plt <- ggplot(object, aes_(x = as.name(smooth_var), y = ~ est, group = ~ smooth)) +
-        geom_ribbon(mapping = aes_string(ymin = "lower",
-                                         ymax = "upper"),
-                    alpha = 0.2) +
+    plt <- ggplot(object, aes_(x = as.name(smooth_var), y = ~ est, group = ~ smooth))
+
+    ## do we want partial residuals? Only for univariate smooths without by vars
+    if (!is.null(partial_residuals)) {
+        plt <- plt + geom_point(data = partial_residuals,
+                                aes_string(x = "..orig_x", y = "..p_resid"),
+                                inherit.aes = FALSE,
+                                colour = "steelblue3", alpha = 0.5)
+    }
+
+    ## plot the confidence interval
+    plt <- plt + geom_ribbon(mapping = aes_string(ymin = "lower",
+                                                  ymax = "upper"),
+                             alpha = 0.3) +
         geom_line()
 
     ## default axis labels if none supplied
@@ -106,10 +127,14 @@
 
     ## add rug?
     if (!is.null(rug)) {
-        plt <- plt + geom_rug(data = data.frame(x = rug),
-                              mapping = aes_string(x = 'x'),
-                              inherit.aes = FALSE,
-                              sides = 'b')
+        plt <- plt +
+            geom_rug(data = data.frame(x = rug), mapping = aes_string(x = 'x'),
+                     inherit.aes = FALSE, sides = 'b')
+    }
+
+    ## fixing the y axis limits?
+    if (!is.null(response_range)) {
+        plt <- plt + expand_limits(y = response_range)
     }
 
     plt
@@ -119,6 +144,12 @@
 ##'   standard error (`"se"`).
 ##' @param contour logical; should contours be draw on the plot using
 ##'   [ggplot2::geom_contour()].
+##' @param contour_col colour specification for contour lines.
+##' @param n_contour numeric; the number of contour bins. Will result in
+##'   `n_contour - 1` contour lines being drawn. See [ggplot2::geom_contour()].
+##' @param response_range numeric; a vector of two values giving the range of
+##'   response data for the guide. Used to fix plots to a common scale/range.
+##'   Ignored if `show` is set to `"se"`.
 ##'
 ##' @importFrom ggplot2 ggplot aes_string geom_raster geom_contour labs guides guide_colourbar scale_fill_distiller theme
 ##' @importFrom grid unit
@@ -127,16 +158,23 @@
 ##' @rdname draw.evaluated_smooth
 `draw.evaluated_2d_smooth` <- function(object, show = c("estimate","se"),
                                        contour = TRUE,
+                                       contour_col = "black",
+                                       n_contour = NULL,
                                        xlab, ylab,
                                        title = NULL, subtitle = NULL,
                                        caption = NULL,
+                                       response_range = NULL,
                                        ...) {
     smooth_vars <- names(object)[3:4]
     show <- match.arg(show)
     if (isTRUE(identical(show, "estimate"))) {
         guide_title <- "Effect" # unique(object[["smooth"]])
         plot_var <- "est"
-        guide_limits <- c(-1, 1) * max(abs(object[[plot_var]]))
+        guide_limits <- if (is.null(response_range)) {
+            c(-1, 1) * max(abs(object[[plot_var]]))
+        } else {
+            response_range
+        }
     } else {
         guide_title <- "Std. err." # bquote(SE * (.(unique(object[["smooth"]]))))
         plot_var <- "se"
@@ -147,7 +185,9 @@
         geom_raster(mapping = aes_string(fill = plot_var))
 
     if (isTRUE(contour)) {
-        plt <- plt + geom_contour(mapping = aes_string(z = plot_var))
+        plt <- plt + geom_contour(mapping = aes_string(z = plot_var),
+                                  colour = contour_col,
+                                  bins = n_contour)
     }
 
     ## default axis labels if none supplied
@@ -205,6 +245,8 @@
 ##'   as shown for example in the output from `summary(object)`. Logical
 ##'   `select` operates as per numeric `select` in the order that smooths are
 ##'   stored.
+##' @param residuals logical; should partial residuals for a smooth be drawn?
+##'   Ignored for anything but a simple univariate smooth.
 ##' @param scales character; should all univariate smooths be plotted with the
 ##'   same y-axis scale? The default, `scales = "fixed"`, ensures this is done.
 ##'   If `scales = "free"` each univariate smooth has its own y-axis scale.
@@ -214,7 +256,13 @@
 ##'   Defaults to `"hv"` so that plots are nicely aligned.
 ##' @param axis characer; see argument `axis` in `cowplot::plot_grid()`.
 ##'   Defaults to `"lrtb"` so that plots are nicely aligned.
+##' @param ci_level numeric between 0 and 1; the coverage of credible interval.
 ##' @param rug logical; draw a rug plot at the botom of each plot?
+##' @param contour logical; should contours be draw on the plot using
+##'   [ggplot2::geom_contour()].
+##' @param contour_col colour specification for contour lines.
+##' @param n_contour numeric; the number of contour bins. Will result in
+##'   `n_contour - 1` contour lines being drawn. See [ggplot2::geom_contour()].
 ##' @param partial_match logical; should smooths be selected by partial matches
 ##'   with `select`? If `TRUE`, `select` can only be a single string to match
 ##'   against.
@@ -244,14 +292,32 @@
 ##' m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 ##'
 ##' draw(m1)
+##'
+##' ## can add partial residuals
+##' draw(m1, residuals = TRUE)
+##'
+##' \dontshow{set.seed(2)}
+##' dat <- gamSim(2, n = 1000, dist = "normal", scale = 1)
+##' m2 <- gam(y ~ s(x, z, k = 40), data = dat$data, method = "REML")
+##' draw(m2, contour = FALSE)
+##'
+##' ## change the number of contours drawn
+##' draw(m2, n_contour = 5)
 `draw.gam` <- function(object,
                        parametric = NULL,
                        select = NULL,
+                       residuals = FALSE,
                        scales = c("free", "fixed"),
-                       align = "hv", axis = "lrtb",
+                       align = "hv",
+                       axis = "lrtb",
+                       ci_level = 0.95,
                        n = 100, unconditional = FALSE,
                        overall_uncertainty = TRUE,
-                       dist = 0.1, rug = TRUE,
+                       dist = 0.1,
+                       rug = TRUE,
+                       contour = TRUE,
+                       contour_col = "black",
+                       n_contour = NULL,
                        partial_match = FALSE, ...) {
     scales <- match.arg(scales)
     S <- smooths(object)                # vector of smooth labels - "s(x)"
@@ -294,7 +360,8 @@
     if (isTRUE(parametric)) {
         terms <- parametric_terms(object)
         npara <- length(terms)
-        p <- vector("list", length = npara)    }
+        p <- vector("list", length = npara)
+    }
 
     g <- l <- vector("list", length = nsmooth)
     ## g <- vector("list", length = nsmooth + npara)
@@ -318,12 +385,74 @@
         return(invisible(g))
     }
 
+    ## evaluate parametric terms here
+    if (isTRUE(parametric)) {
+        leng <- length(g)
+        for (i in seq_along(terms)) {
+            p[[i]] <- evaluate_parametric_term(object, term = terms[i])
+        }
+    }
+
     ## model frame may be needed for rugs
     mf  <- model.frame(object)
 
+    ## get the terms predictions if we need partial residuals
+    if (isTRUE(residuals)) {
+        if (is.null(object$residuals) || is.null(object$weights)) {
+            residuals <- FALSE
+        } else {
+            pred_terms <- predict(object, type = "terms")
+            w_resid <- object$residuals * sqrt(object$weights)
+            pred_terms <- pred_terms + w_resid
+        }
+    }
+
+    ylims <- NULL
+    crit <- qnorm((1 - ci_level) / 2, lower.tail = FALSE)
+    if (isTRUE(identical(scales, "fixed"))) {
+        wrapper <- function(x, var, crit) {
+            range(x[[var]] + (crit * x[["se"]]),
+                  x[[var]] - (crit * x[["se"]]))
+        }
+
+        if (isTRUE(residuals)) {
+            want_presids <- function(x) {
+                sm <- get_smooth(object, term = x)
+                (! is_by_smooth(sm)) && smooth_dim(sm) == 1L
+            }
+            take_presids <- vapply(colnames(pred_terms), want_presids, logical(1L))
+            p_resids_lims <- if (NCOL(pred_terms[, take_presids]) > 0) {
+                range(pred_terms[, take_presids])
+            }
+        } else {
+            p_resids_lims <- rep(0, 2)
+        }
+        
+        ylims <- range(c(unlist(lapply(l, wrapper, var = "est", crit = crit)),
+                         p_resids_lims))
+        
+        if (isTRUE(parametric)) {
+            ylims <- range(ylims,
+                           unlist(lapply(p, wrapper, var = "partial", crit = crit)))
+        }
+    }
+
+    ## p_resid_range <- vector("list", length = length(l))
+    
     for (i in seq_along(l)) {
+        partial_residuals <- NULL
+        sname <- unique(l[[i]][["smooth"]])
+
+        ## add partial_residuals
+        if (isTRUE(residuals )) {
+            sm <- get_smooth(object, term = sname)
+            if ((! is_by_smooth(sm)) && smooth_dim(sm) == 1L) {
+                partial_residuals <- tibble(..p_resid = pred_terms[, sname],
+                                            ..orig_x = mf[, smooth_variable(sm)])
+            }
+        }
+        
         if (isTRUE(rug)) {
-            sname <- unique(l[[i]][["smooth"]])
             ## could be a by smooth, strip off the by variable bit
             sname <- strsplit(sname, ":")[[1L]][[1L]]
             sm <- get_smooth(object, term = sname)
@@ -334,35 +463,23 @@
             if (is_fs_smooth(sm)) {
                 svar <- svar[[1L]]
             }
-            g[[i]] <- draw(l[[i]], rug = mf[[svar]])
+            g[[i]] <- draw(l[[i]], rug = mf[[svar]],
+                           partial_residuals = partial_residuals,
+                           contour = contour, contour_col = contour_col,
+                           n_contour = n_contour, ci_level = ci_level,
+                           response_range = ylims)
         } else {
-            g[[i]] <- draw(l[[i]])
+            g[[i]] <- draw(l[[i]], partial_residuals = partial_residuals,
+                           contour = contour, contour_col = contour_col,
+                           n_contour = n_contour, ci_level = ci_level,
+                           response_range = ylims)
         }
     }
 
     if (isTRUE(parametric)) {
         leng <- length(g)
         for (i in seq_along(terms)) {
-            p[[i]] <- evaluate_parametric_term(object, term = terms[i])
-            g[[i + leng]] <- draw(p[[i]])
-        }
-    }
-
-    if (isTRUE(identical(scales, "fixed"))) {
-        wrapper <- function(x) {
-            range(x[["est"]] + (2 * x[["se"]]),
-                  x[["est"]] - (2 * x[["se"]]))
-        }
-        ylims <- range(unlist(lapply(l, wrapper)))
-        if (isTRUE(parametric)) {
-            ylims <- range(ylims,
-                           unlist(lapply(p, function(x) range(x[["upper"]],
-                                                              x[["lower"]]))))
-        }
-
-        gg <- seq_along(g)[c(d==1L, rep(TRUE, npara))]
-        for (i in gg) { # only the univariate smooths; FIXME: "re" smooths too?
-            g[[i]] <- g[[i]] + lims(y = ylims)
+            g[[i + leng]] <- draw(p[[i]], response_range = ylims)
         }
     }
 
@@ -372,15 +489,16 @@
 ##' @param qq_line logical; draw a reference line through the lower and upper
 ##'   theoretical quartiles.
 ##'
-##' @importFrom ggplot2 geom_abline geom_point labs
+##' @importFrom ggplot2 geom_abline geom_point labs expand_limits
 ##' @importFrom stats quantile qnorm
 ##'
 ##' @export
 ##' @rdname draw.evaluated_smooth
 `draw.evaluated_re_smooth` <- function(object, qq_line = TRUE, xlab, ylab,
                                        title = NULL, subtitle = NULL,
-                                       caption = NULL, ...) {
-    smooth_var <- names(object)[3L]
+                                       caption = NULL,
+                                       response_range = NULL, ...) {
+    smooth_var <- unique(object[["smooth"]]) ## names(object)[3L]
 
     ## base plot with computed QQs
     plt <- ggplot(object, aes_string(sample = "est")) +
@@ -419,12 +537,17 @@
     plt <- plt + labs(x = xlab, y = ylab, title = title, subtitle = subtitle,
                       caption = caption)
 
+    ## fixing the y axis limits?
+    if (!is.null(response_range)) {
+        plt <- plt + expand_limits(y = response_range)
+    }
+
     plt
 }
 
 ##' @param colour_scale function; an appropriate discrete colour scale from `ggplot2`.
 ##'
-##' @importFrom ggplot2 geom_line theme scale_colour_discrete geom_rug
+##' @importFrom ggplot2 geom_line theme scale_colour_discrete geom_rug expand_limits
 ##' @export
 ##' @rdname draw.evaluated_smooth
 `draw.evaluated_fs_smooth` <- function(object,
@@ -433,6 +556,7 @@
                                        title = NULL, subtitle = NULL,
                                        caption = NULL,
                                        colour_scale = scale_colour_discrete,
+                                       response_range = NULL,
                                        ...) {
     smooth_var <- names(object)[3L]
     smooth_fac <- names(object)[4L]
@@ -474,24 +598,37 @@
                               sides = 'b')
     }
 
+    ## fixing the y axis limits?
+    if (!is.null(response_range)) {
+        plt <- plt + expand_limits(y = response_range)
+    }
+
     plt
 }
 
 ##' @param position Position adjustment, either as a string, or the result of a
 ##'   call to a position adjustment function.
 ##'
-##' @importFrom ggplot2 ggplot geom_pointrange geom_rug geom_ribbon geom_line aes_string
+##' @importFrom ggplot2 ggplot geom_pointrange geom_rug geom_ribbon geom_line aes_string expand_limits
 ##' @export
 ##' @rdname draw.evaluated_smooth
 `draw.evaluated_parametric_term` <- function(object,
+                                             ci_level = 0.95,
                                              xlab, ylab,
                                              title = NULL, subtitle = NULL,
                                              caption = NULL,
                                              rug = TRUE,
                                              position = "identity",
+                                             response_range = NULL,
                                              ...) {
     is_fac <- object[["type"]][1L] == "factor"
     term_label <- object[["term"]][1L]
+
+    ## add a CI
+    crit <- qnorm((1 - ci_level) / 2, lower.tail = FALSE)
+    object <- mutate(object,
+                     lower = .data$partial - (crit * .data$se),
+                     upper = .data$partial + (crit * .data$se))
 
     plt <- ggplot(object, aes_string(x = "value", y = "partial"))
 
@@ -502,7 +639,7 @@
             plt <- plt + geom_rug(sides = "b", position = position)
         }
         plt <- plt + geom_ribbon(aes_string(ymin = "lower", ymax = "upper"),
-                                 alpha = 0.2) +
+                                 alpha = 0.3) +
             geom_line()
     }
 
@@ -517,6 +654,11 @@
     ## add labelling to plot
     plt <- plt + labs(x = xlab, y = ylab, title = title, subtitle = subtitle,
                       caption = caption)
+
+    ## fixing the y axis limits?
+    if (!is.null(response_range)) {
+        plt <- plt + expand_limits(y = response_range)
+    }
 
     plt
 }
@@ -552,17 +694,18 @@
     ## select smooths
     select <- check_user_select_smooths(smooths = sm, select = select)
     sm <- sm[select]
-    xvar <- unique(object[["var"]])[select]
+    
     plotlist <- vector("list", length = length(sm))
 
     for (i in seq_along(sm)) {
         take <- object[["smooth"]] == sm[i]
         df <- object[take, ]
+        xvar <- unique(df[['var']])
         plotlist[[i]] <- ggplot(df, aes_string(x = "data", y = "derivative")) +
             geom_ribbon(aes_string(ymin = "lower", ymax = "upper", y = NULL),
                         alpha = alpha) +
             geom_line() +
-            labs(title = sm[i], x = xvar[i], y = "Derivative")
+            labs(title = sm[i], x = xvar, y = "Derivative")
     }
 
     if (isTRUE(identical(scales, "fixed"))) {
@@ -671,7 +814,7 @@
     plt
 }
 
-##' Plotting posterior smooths
+##' Plot posterior smooths
 ##' 
 ##' @param alpha numeric; alpha transparency for confidence or simultaneous
 ##'   interval.
@@ -800,4 +943,245 @@
     }
     
     plt
+}
+
+##' Plot differences of smooths
+##'
+##' @param rug logical;
+##' @param ref_line logical;
+##' @param contour logical;
+##' @param ci_alpha numeric; alpha transparency for confidence or simultaneous
+##'   interval.
+##' @param ci_colour colour specification for the confidence/credible intervals
+##'   band.
+##' @param line_col colour specicification for drawing lines
+##' @param ncol,nrow numeric; the numbers of rows and columns over which to
+##'   spread the plots
+##' @param xlab,ylab,title,subtitle,caption character; labels with which to
+##'   annotate plots
+##' @param guides character; one of `"keep"` (the default), `"collect"`, or
+##'   `"auto"`. Passed to [patchwork::plot_layout()]
+##' @inheritParams draw.gam
+##'
+##' @importFrom ggplot2 ggplot geom_ribbon aes_string geom_line labs
+##' @importFrom patchwork wrap_plots
+##' @importFrom purrr map
+##' @export
+##'
+##' @examples
+##'
+##' load_mgcv()
+##' \dontshow{set.seed(42)}
+##' df <- data_sim("eg4", seed = 42)
+##' m <- gam(y ~ fac + s(x2, by = fac) + s(x0), data = df, method = "REML")
+##'
+##' diffs <- difference_smooths(m, smooth = "s(x2)")
+##' draw(diffs)
+`draw.difference_smooth` <- function(object,
+                                     select = NULL,
+                                     rug = FALSE,
+                                     ref_line = FALSE,
+                                     contour = FALSE,
+                                     contour_col = "black",
+                                     n_contour = NULL,
+                                     ci_alpha = 0.2,
+                                     ci_colour = "black",
+                                     line_col = "steelblue",
+                                     scales = c("free", "fixed"),
+                                     ncol = NULL, nrow = NULL,
+                                     guides = "keep",
+                                     xlab = NULL,
+                                     ylab = NULL,
+                                     title = NULL,
+                                     subtitle = NULL,
+                                     caption = NULL, ...) {
+    scales <- match.arg(scales)
+
+    ## how many smooths
+    sm <- unique(object[["smooth"]])
+    ## select smooths
+    select <- check_user_select_smooths(smooths = sm, select = select)
+    sm <- sm[select]
+    
+    plotlist <- vector("list", length = length(sm))
+
+    df_list <- split(object, f = paste(object$level_1, object$level_2, sep = "-"))
+
+    plotlist <- map(df_list, draw_difference, ci_alpha = ci_alpha,
+                    line_col = line_col, rug = rug, ref_line = ref_line,
+                    ci_colour = ci_colour, contour = contour,
+                    contour_col = contour_col, n_contour = n_contour,
+                    xlab = xlab, ylab = ylab, title = title,
+                    subtitle = subtitle, caption = caption)
+
+    if (isTRUE(identical(scales, "fixed"))) {
+        ylims <- range(object[["lower"]], object[["upper"]])
+
+        for (i in seq_along(plotlist)) {
+            plotlist[[i]] <- plotlist[[i]] + lims(y = ylims)
+        }
+    }
+
+    ## plot_grid(plotlist = plotlist, align = align, axis = axis, ...)
+    n_plots <- length(plotlist)
+    if (is.null(ncol) && is.null(nrow)) {
+        ncol <- ceiling(sqrt(n_plots))
+        nrow <- ceiling(n_plots / ncol)
+    }
+    wrap_plots(plotlist, byrow = TRUE, ncol = ncol, nrow = nrow, guides = guides,
+               ...)
+}
+
+`draw_difference` <- function(object,
+                              rug = NULL,
+                              ref_line = NULL,
+                              contour = NULL,
+                              ci_alpha = NULL,
+                              ci_colour = NULL,
+                              line_col = NULL,
+                              contour_col = "black",
+                              n_contour = NULL,
+                              xlab = NULL, ylab = NULL,
+                              title = NULL, subtitle = NULL, caption = NULL) {
+    xvars <- unique(object[["smooth"]])
+    xvars <- vars_from_label(xvars)
+    n_xvars <- length(xvars)
+    plt <- if (identical(n_xvars, 1L)) {
+      draw_1d_difference(object, xvars, rug = rug, ref_line = ref_line,
+                         ci_alpha = ci_alpha, line_col = line_col,
+                         ci_colour = ci_colour, xlab = xlab, ylab = ylab,
+                         title = title, subtitle = subtitle,
+                         caption = caption)
+    } else if (identical(n_xvars, 2L)) {
+        draw_2d_difference(object, xvars, contour = contour,
+                           contour_col = contour_col, n_contour = n_contour,
+                           xlab = xlab, ylab = ylab,
+                           title = title, subtitle = subtitle,
+                           caption = caption)
+    } else if (identical(n_xvars, 3L)) {
+        draw_3d_difference(object, xvars, contour = contour,
+                           contour_col = contour_col, n_contour = n_contour,
+                           xlab = xlab, ylab = ylab,
+                           title = title, subtitle = subtitle,
+                           caption = caption)
+    } else if (identical(n_xvars, 4L)) {
+        draw_4d_difference(object, xvars, contour = contour,
+                           contour_col = contour_col, n_contour = n_contour,
+                           xlab = xlab, ylab = ylab,
+                           title = title, subtitle = subtitle,
+                           caption = caption)
+    } else {
+        message("Can't plot differences for smooths of more than 4 variables.")
+        NULL
+    }
+
+    plt #return
+}
+
+##' @importFrom ggplot2 ggplot aes_string geom_ribbon geom_line labs geom_hline geom_rug
+`draw_1d_difference` <- function(object, xvars,
+                                 rug = FALSE,
+                                 ref_line = FALSE,
+                                 ci_alpha = 0.2,
+                                 ci_colour = "black",
+                                 line_col = "red",
+                                 xlab = NULL,
+                                 ylab = NULL,
+                                 title = NULL,
+                                 subtitle = NULL,
+                                 caption = NULL) {
+    sm_label <- unique(object$smooth)
+    by_var <- unique(object$by)
+    f1 <- unique(object$level_1)
+    f2 <- unique(object$level_2)
+    plt_title1 <- mgcv_by_smooth_labels(sm_label, by_var, f1)
+    plt_title2 <- mgcv_by_smooth_labels(sm_label, by_var, f2)
+    plt_title <- paste(plt_title1, plt_title2, sep = " - ")
+    y_label <- "Difference"
+    
+    plt <- ggplot(object, aes_(x = as.name(xvars[1L]), y = ~ diff))
+
+    if (isTRUE(ref_line)) {
+        plt <- plt + geom_hline(yintercept = 0, colour = line_col)
+    }
+    plt <- plt +
+        geom_ribbon(aes_string(ymin = "lower", ymax = "upper", y = NULL),
+                    alpha = ci_alpha) +
+        geom_line() +
+        labs(title = plt_title, x = xvars, y = y_label)
+
+    if(isTRUE(rug)) {
+        plt <- plt + geom_rug(sides = "b")
+    }
+    plt
+}
+
+##' @importFrom ggplot2 ggplot guides aes_ geom_raster geom_contour labs scale_fill_distiller guide_colourbar
+##' @importFrom grid unit
+`draw_2d_difference` <- function(object, xvars,
+                                 contour = FALSE,
+                                 contour_col = "black", ## "#3366FF",
+                                 n_contour = NULL,
+                                 xlab = NULL,
+                                 ylab = NULL,
+                                 title = NULL,
+                                 subtitle = NULL,
+                                 caption = NULL) {
+    if (is.null(xlab)) {
+        xlab <- xvars[1]
+    }
+    if (is.null(ylab)) {
+        ylab <- xvars[2]
+    }
+    if (is.null(title)) {
+        sm_label <- unique(object$smooth)
+        by_var <- unique(object$by)
+        f1 <- unique(object$level_1)
+        f2 <- unique(object$level_2)
+        plt_title1 <- mgcv_by_smooth_labels(sm_label, by_var, f1)
+        plt_title2 <- mgcv_by_smooth_labels(sm_label, by_var, f2)
+        title <- paste(plt_title1, plt_title2, sep = " - ")
+    }
+    
+    plt <- ggplot(object, aes_(x = as.name(xvars[1L]), y = as.name(xvars[2L]))) +
+        geom_raster(aes_(fill = ~ diff))
+
+    if (contour) {
+        plt <- plt + geom_contour(aes_(z = ~ diff), bins = n_contour,
+                                  colour = contour_col)
+    }
+
+    plt <- plt +
+        labs(title =title, x = xlab, y = ylab, subtitle = subtitle,
+             caption = caption)
+
+    plt <- plt + scale_fill_distiller(palette = "RdBu", type = "div")
+    plt <- plt +
+        guides(fill = guide_colourbar(title = "Difference", 
+                                      direction = "vertical",
+                                      barheight = grid::unit(0.25, "npc")))
+    
+    plt
+}
+
+`draw_3d_difference` <- function(object, xvars, contour = FALSE,
+                                 contour_col = "black", n_contour = NULL,
+                                 xlab = NULL,
+                                 ylab = NULL,
+                                 title = NULL,
+                                 subtitle = NULL,
+                                 caption = NULL) {
+    warning("Plotting differences of 3D smooths is not yet implemented")
+    return(NULL)
+}
+
+`draw_4d_difference` <- function(object, xvars, contour = FALSE,
+                                 contour_col = "black", n_contour = NULL,
+                                 xlab = NULL,
+                                 ylab = NULL,
+                                 title = NULL,
+                                 subtitle = NULL,
+                                 caption = NULL) {
+    warning("Plotting differences of 4D smooths is not yet implemented")
+    return(NULL)
 }

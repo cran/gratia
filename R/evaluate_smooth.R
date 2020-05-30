@@ -36,7 +36,7 @@
 ##' load_mgcv()
 ##' \dontshow{
 ##' set.seed(2)
-##' op <- options(cli.unicode = FALSE, digits = 6)
+##' op <- options(cli.unicode = FALSE, digits = 5)
 ##' }
 ##' dat <- gamSim(1, n = 400, dist = "normal", scale = 2)
 ##' m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
@@ -44,7 +44,7 @@
 ##' evaluate_smooth(m1, "s(x1)")
 ##'
 ##' ## 2d example
-##' set.seed(2)
+##' \dontshow{set.seed(2)}
 ##' dat <- gamSim(2, n = 1000, dist = "normal", scale = 1)
 ##' m2 <- gam(y ~ s(x, z, k = 30), data = dat$data, method = "REML")
 ##'
@@ -109,6 +109,16 @@
     evaluate_smooth(object[["gam"]], ...)
 }
 
+##' @export
+##' @rdname evaluate_smooth
+`evaluate_smooth.list` <- function(object, ...) {
+    ## Is this list likely to be a gamm4 list?
+    if (! is_gamm4(object)) {
+        stop("`object` does not appear to a `gamm4` model object", call. = FALSE)
+    }
+    evaluate_smooth(object[["gam"]], ...)
+}
+
 ## Random effect smooth
 ##' @importFrom tibble add_column tibble
 `evaluate_re_smooth` <- function(object, model = NULL, newdata = NULL,
@@ -139,7 +149,13 @@
     ## need `drop = FALSE` (the default) here because by default mgcv doesn't
     ## drop the unused levels; hence we get a coef for all combinations of
     ## vars in the ranef smooth
-    levs <- levels(interaction(model[["model"]][smooth_var], drop = FALSE))
+    var_types <- attr(terms(model), "dataClasses")[smooth_var]
+    levs <- if (all(var_types == "factor")) {
+        levels(interaction(model[["model"]][smooth_var], drop = FALSE))
+    } else {
+        take <- smooth_var[which(var_types == "factor")]
+        levels(interaction(model[["model"]][take]))
+    }
 
     ## if we have a by variable
     is.factor.by <- vapply(object, FUN = is_factor_by_smooth,
@@ -559,41 +575,63 @@
     }
 
     mf <- model.frame(object)  # data used to fit model
-    is_fac <- is.factor(mf[[term]]) # is term a factor?
+    
+    ## is_fac <- is.factor(mf[[term]]) # is term a factor?
+    is_fac <- is_factor_term(tt, term)
 
     ## match the specific term, with term names mgcv actually uses
     ## for example in a model with multiple linear predictors, terms in
     ## nth linear predictor (for n > 1) get appended .{n-1}  
     ind <- match(term, vars)
-
-    ## take the actual mgcv version of the names for the `terms` argument
-    evaluated <- as.data.frame(predict(object, newdata = mf, type = 'terms',
-                                       terms = mgcv_names[ind], se = TRUE,
-                                       unconditional = unconditional))
-    evaluated <- setNames(evaluated, c("partial", "se"))
-    evaluated <- as_tibble(evaluated)
-
+    
     if (is_fac) {
-        levs <- levels(mf[, term])
-        newd <- setNames(data.frame(fac = factor(levs, levels = levs)), "value")
-        spl <- lapply(split(evaluated, mf[, term]), `[`, i = 1, j = )
-        evaluated <- bind_rows(spl)
+        ## check order of term; if > 1 interaction and not handled
+        ord <- attr(tt, "order")[match(term, attr(tt, "term.labels"))]
+        if (ord > 1) {
+            stop("Interaction terms are not currently supported.")
+        }
+        ## facs <- attr(tt, 'factors')[, term]
+        newd <- unique(mf[, term, drop = FALSE])
+        ## ##fac_vars <- rownames(facs)
+        ## fac_vars <- names(facs)[as.logical(facs)]
+        ## facs <- attr(tt, 'factors')[, term]
+        ## newd <- unique(mf[, names(facs)[as.logical(facs)], drop = FALSE])
+        ## ##fac_vars <- rownames(facs)
+        ## fac_vars <- names(facs)[as.logical(facs)]
+        ## ##newd <- unique(mf[, fac_vars, drop = FALSE])
+        other_vars <- setdiff(names(mf), term)
+        other_data <- as_tibble(lapply(mf[other_vars], value_closest_to_median))
+        pred_data <- exec(expand_grid, !!!list(newd, other_data))
+        evaluated <- as.data.frame(predict(object, newdata = pred_data,
+                             type = 'terms',
+                             terms = term, se = TRUE,
+                             unconditional = unconditional,
+                             newdata.guaranteed = FALSE))
+        evaluated <- setNames(evaluated, c("partial", "se"))
+        evaluated <- as_tibble(evaluated)
         nr <- NROW(evaluated)
+        newd <- setNames(newd, "value")
         evaluated <- bind_cols(term = rep(term, nr),
-                               type = rep(ifelse(is_fac, "factor", "numeric"), nr),
+                               type = rep("factor", nr),
                                newd, evaluated)
     } else {
+        ## take the actual mgcv version of the names for the `terms` argument
+        evaluated <- as.data.frame(predict(object, newdata = mf, type = 'terms',
+                                           terms = mgcv_names[ind], se = TRUE,
+                                           unconditional = unconditional))
+        evaluated <- setNames(evaluated, c("partial", "se"))
+        evaluated <- as_tibble(evaluated)
         nr <- NROW(evaluated)
         evaluated <- bind_cols(term = rep(term, nr),
-                               type = rep(ifelse(is_fac, "factor", "numeric"), nr),
+                               type = rep("numeric", nr),
                                value = mf[[term]],
                                evaluated)
     }
 
-    ## add confidence interval
-    evaluated <- mutate(evaluated,
-                        upper = .data$partial + (2 * .data$se),
-                        lower = .data$partial - (2 * .data$se))
+    ## add confidence interval -- be consistent and don't add this, but could?
+    ## evaluated <- mutate(evaluated,
+    ##                     upper = .data$partial + (2 * .data$se),
+    ##                     lower = .data$partial - (2 * .data$se))
 
     class(evaluated) <- c("evaluated_parametric_term", class(evaluated))
     evaluated                           # return

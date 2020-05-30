@@ -2,9 +2,13 @@
 % Please edit documentation in R/diagnose.R
 \name{appraise}
 \alias{appraise}
+\alias{appraise.gam}
+\alias{appraise.lm}
 \title{Model diagnostic plots}
 \usage{
-appraise(
+appraise(model, ...)
+
+\method{appraise}{gam}(
   model,
   method = c("direct", "simulate", "normal"),
   n_uniform = 10,
@@ -13,12 +17,21 @@ appraise(
   n_bins = c("sturges", "scott", "fd"),
   ncol = 2,
   level = 0.9,
-  alpha = 0.2,
+  ci_col = "black",
+  ci_alpha = 0.2,
+  point_col = "black",
+  point_alpha = 1,
+  line_col = "red",
   ...
 )
+
+\method{appraise}{lm}(model, ...)
 }
 \arguments{
 \item{model}{a fitted model. Currently only class \code{"gam"}.}
+
+\item{...}{arguments passed to \code{\link[cowplot:plot_grid]{cowplot::plot_grid()}}, except for \code{align}
+and \code{axis}, which are set internally.}
 
 \item{method}{character; method used to generate theoretical quantiles.}
 
@@ -41,11 +54,17 @@ indicating how to calculate the number of bins.}
 \item{level}{numeric; the coverage level for QQ plot reference intervals.
 Must be strictly \verb{0 < level < 1}. Only used with \code{method = "simulate"}.}
 
-\item{alpha}{numeric; the level of alpha transparency for the QQ plot
-reference interval when \code{method = "simulate"}.}
+\item{ci_alpha, ci_col}{numeric; the level of alpha transparency for the
+QQ plot reference interval when \code{method = "simulate"}, or points drawn in
+plots.}
 
-\item{...}{arguments passed to \code{\link[cowplot:plot_grid]{cowplot::plot_grid()}}, except for \code{align}
-and \code{axis}, which are set internally.}
+\item{point_col, point_alpha}{colour and transparency used to draw points in
+the plots. See \code{\link[graphics:par]{graphics::par()}} section \strong{Color Specification}. This is
+passed to the individual plotting functions, and therefore affects the
+points of all plots.}
+
+\item{line_col}{colour specification for the 1:1 line in the QQ plot and the
+reference line in the residuals vs linear predictor plot.}
 }
 \description{
 Model diagnostic plots
@@ -56,9 +75,8 @@ library(mgcv)
 ## simulate some data...
 dat <- gamSim(1, n = 400, dist = "normal", scale = 2)
 mod <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat)
-## run some basic model checks, including checking
-## smoothing basis dimensions...
-appraise(mod)
+## run some basic model checks
+appraise(mod, point_col = "steelblue", point_alpha = 0.4)
 }
 \seealso{
 The plots are produced by functions \code{\link[gratia:qq_plot]{gratia::qq_plot()}},

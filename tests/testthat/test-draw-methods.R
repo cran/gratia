@@ -85,10 +85,34 @@ test_that("draw.gam works with select and parametric", {
     expect_doppelganger("draw gam without select and parametric is FALSE", plt)
 })
 
-test_that("draw.evaluated_2d_smooth() plots the smooth & SE", {
+test_that("draw.evaluated_2d_smooth() plots the smooth", {
+    skip_on_os("mac")
     sm <- evaluate_smooth(m2, "s(x,z)", n = 100)
     plt <- draw(sm)
     expect_doppelganger("draw 2d smooth", plt)
+    plt <- draw(sm, contour_col = "red")
+    expect_doppelganger("draw 2d smooth diff contour colour", plt)
+})
+
+test_that("draw.evaluated_2d_smooth() plots the smooth without contours", {
+    skip_on_os("mac")
+    sm <- evaluate_smooth(m2, "s(x,z)", n = 100)
+    plt <- draw(sm, contour = FALSE)
+    expect_doppelganger("draw 2d smooth without contours", plt)
+})
+
+test_that("draw.evaluated_2d_smooth() plots the smooth with different contour bins", {
+    skip_on_os("mac")
+    sm <- evaluate_smooth(m2, "s(x,z)", n = 100)
+    plt <- draw(sm, n_contour = 5)
+    expect_doppelganger("draw 2d smooth with 5 contour bins", plt)
+    plt <- draw(sm, n_contour = 20)
+    expect_doppelganger("draw 2d smooth with 20 contour bins", plt)
+})
+
+test_that("draw.evaluated_2d_smooth() plots the SE", {
+    skip_on_os("mac")
+    sm <- evaluate_smooth(m2, "s(x,z)", n = 100)
     plt <- draw(sm, show = "se")
     expect_doppelganger("draw std error of 2d smooth", plt)
 })
@@ -101,7 +125,16 @@ test_that("draw.gam() plots a simple multi-smooth AM", {
     expect_doppelganger("draw simple multi-smooth AM with fixed scales", plt)
 })
 
+test_that("draw.gam() can draw partial residuals", {
+    plt <- draw(m1, residuals = TRUE)
+    expect_doppelganger("draw simple partial residuals", plt)
+
+    plt <- draw(m1, residuals = TRUE, scales = "fixed")
+    expect_doppelganger("draw simple partial residuals with fixed scales", plt)
+})
+
 test_that("draw.gam() plots an AM with a single 2d smooth", {
+    skip_on_os("mac")
     plt <- draw(m2)
     expect_doppelganger("draw AM with 2d smooth", plt)
 
@@ -261,9 +294,8 @@ test_that("draw() works with parametric terms", {
     ## evaluate parametric terms directly
     e1 <- evaluate_parametric_term(mod, term = "x0")
     expect_s3_class(e1, "evaluated_parametric_term")
-    expect_equal(ncol(e1), 7L)
-    expect_equal(names(e1), c("term", "type", "value", "partial", "se",
-                              "upper", "lower"))
+    expect_equal(ncol(e1), 5L)
+    expect_named(e1, c("term", "type", "value", "partial", "se"))
     p1 <- draw(e1)
     expect_doppelganger("draw.evaluated_parametric_term with linear parametric term", p1)
 
@@ -308,7 +340,7 @@ test_that("draw.derivates() plots derivatives for a GAM", {
     plt <- draw(d1)
     expect_doppelganger("draw derivatives for a GAM", plt)
 
-    plt <- draw(d1, scales = "free")
+    plt <- draw(d1, scales = "fixed")
     expect_doppelganger("draw derivatives for a GAM with fixed scales", plt)
 })
 
@@ -373,9 +405,10 @@ test_that("draw works for sample_smooths objects", {
     plt <- draw(sm1, alpha = 0.7)
     vdiffr:::expect_doppelganger("draw smooth_samples for GAM m1", plt)
     
-    sm2 <- smooth_samples(m2, n = 15, seed = 23478)
-    plt <- draw(sm2, alpha = 0.7)
-    vdiffr:::expect_doppelganger("draw smooth_samples for GAM m2", plt)
+    sm2 <- smooth_samples(m2, n = 4, seed = 23478)
+    ## FIXME #71
+    ##plt <- draw(sm2, alpha = 0.7)
+    ##vdiffr:::expect_doppelganger("draw smooth_samples for GAM m2", plt)
     
     sm3 <- smooth_samples(m3, n = 15, seed = 23478)
     plt <- draw(sm3, alpha = 0.7)
@@ -389,4 +422,19 @@ test_that("draw works for sample_smooths objects with user specified smooth", {
     
     plt <- draw(sm3, select = "s(x2)", alpha = 0.7, partial_match = TRUE)
     vdiffr:::expect_doppelganger("draw selected factor by smooth_samples for GAM m3", plt)
+})
+
+## Issue #22
+test_that("draw() can handle a mixture of numeric and factor random effects", {
+    df <- data_sim("eg4", seed = 42)
+    m <- gam(y ~ s(x2, fac, bs = "re"), data = df, method = "REML")
+    plt <- draw(m)
+    vdiffr:::expect_doppelganger("issue 22 draw with mixed random effects", plt)
+})
+
+test_that("draw.gam uses fixed scales if asked for them: #73", {
+    skip_on_cran()
+    m <- gam(y ~ s(x1) + s(x2) + ti(x1, x2), data = dat1, method = "REML")
+    plt <- draw(m, scales = "fixed")
+    vdiffr:::expect_doppelganger("issue 73 draw uses fixed scales if asked for them", plt)
 })

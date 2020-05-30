@@ -19,7 +19,8 @@
 ##'   multivariate normal distribution. Passed to [mvnfast::rmvn()].
 ##'   Parallelization will take place only if OpenMP is supported (but appears
 ##'   to work on Windows with current `R`).
-##' @param ... arguments passed to other methods
+##' @param ... arguments passed to other methods. For `fitted_samples()`, these
+##'   are passed on to `predict.gam()`.
 ##'
 ##' @return A tibble (data frame) with 3 columns containing the posterior
 ##'   predicted values in long format. The columns are
@@ -122,7 +123,7 @@
 
     V <- get_vcov(model, frequentist = freq, unconditional = unconditional)
     Rbeta <- rmvn(n = n, mu = coef(model), sigma = V, ncores = ncores)
-    Xp <- predict(model, newdata = newdata, type = "lpmatrix")
+    Xp <- predict(model, newdata = newdata, type = "lpmatrix", ...)
     sims <- Xp %*% t(Rbeta)
 
     if (isTRUE(identical(scale, "response"))) {
@@ -264,7 +265,8 @@
 ##'
 ##' ## fit model...
 ##' m2 <- gam(y ~ fac + s(x2, by = fac) + s(x0), data = dat)
-##' smooth_samples(m2, n = 5, seed = 42)
+##' sms <- smooth_samples(m2, n = 5, seed = 42)
+##' draw(sms)
 ##' \dontshow{options(op)}
 `smooth_samples` <- function(model, ...) {
     UseMethod("smooth_samples")
@@ -343,6 +345,7 @@
         simu <- Xp %*% t(betas)
         colnames(simu) <- paste0("..V", seq_len(NCOL(simu)))
         simu <- as_tibble(simu)
+        nr_simu <- nrow(simu)
         ## names(simu) <- paste0("..V", seq_len(NCOL(simu)))
         is_fac_by <- is_factor_by_smooth(sm)
         if (is_fac_by) {
@@ -351,7 +354,7 @@
                                        by_data = newdata, before = 1L)
         } else {
             simu <- add_column(simu,
-                               by_variable = rep(NA_character_, times = n_vals))
+                               by_variable = rep(NA_character_, times = nr_simu))#n_vals))
         }
         simu <- add_smooth_var_data(simu, smooth_variable(sm), newdata)
         sims[[i]] <- simu
@@ -363,9 +366,9 @@
     sims <- do.call("bind_rows", sims)
     sims <- add_column(sims,
                        smooth = rep(unlist(lapply(strsplit(S, ":"), `[`, 1L)),
-                                    each = n_vals),
+                                    each = nr_simu),
                        .before = 1L)
-    sims <- add_column(sims, term = rep(S, each = n_vals), .before = 2L)
+    sims <- add_column(sims, term = rep(S, each = nr_simu), .before = 2L)
     sims <- add_column(sims, row = rep(seq_len(nrow(newdata)), times = length(S)))
     sims <- gather(sims, key = "draw", value = "value", dplyr::starts_with("..V"))
     sims[["draw"]] <- as.integer(sub("\\.\\.V", "", sims[["draw"]]))

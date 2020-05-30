@@ -8,14 +8,19 @@
   object,
   parametric = NULL,
   select = NULL,
+  residuals = FALSE,
   scales = c("free", "fixed"),
   align = "hv",
   axis = "lrtb",
+  ci_level = 0.95,
   n = 100,
   unconditional = FALSE,
   overall_uncertainty = TRUE,
   dist = 0.1,
   rug = TRUE,
+  contour = TRUE,
+  contour_col = "black",
+  n_contour = NULL,
   partial_match = FALSE,
   ...
 )
@@ -35,6 +40,9 @@ as shown for example in the output from \code{summary(object)}. Logical
 \code{select} operates as per numeric \code{select} in the order that smooths are
 stored.}
 
+\item{residuals}{logical; should partial residuals for a smooth be drawn?
+Ignored for anything but a simple univariate smooth.}
+
 \item{scales}{character; should all univariate smooths be plotted with the
 same y-axis scale? The default, \code{scales = "fixed"}, ensures this is done.
 If \code{scales = "free"} each univariate smooth has its own y-axis scale.
@@ -46,6 +54,8 @@ Defaults to \code{"hv"} so that plots are nicely aligned.}
 
 \item{axis}{characer; see argument \code{axis} in \code{cowplot::plot_grid()}.
 Defaults to \code{"lrtb"} so that plots are nicely aligned.}
+
+\item{ci_level}{numeric between 0 and 1; the coverage of credible interval.}
 
 \item{n}{numeric; the number of points over the range of the covariate at
 which to evaluate the smooth.}
@@ -65,6 +75,14 @@ and \code{dist} is a distance within the unit square. See
 \code{\link[mgcv:exclude.too.far]{mgcv::exclude.too.far()}} for further details.}
 
 \item{rug}{logical; draw a rug plot at the botom of each plot?}
+
+\item{contour}{logical; should contours be draw on the plot using
+\code{\link[ggplot2:geom_contour]{ggplot2::geom_contour()}}.}
+
+\item{contour_col}{colour specification for contour lines.}
+
+\item{n_contour}{numeric; the number of contour bins. Will result in
+\code{n_contour - 1} contour lines being drawn. See \code{\link[ggplot2:geom_contour]{ggplot2::geom_contour()}}.}
 
 \item{partial_match}{logical; should smooths be selected by partial matches
 with \code{select}? If \code{TRUE}, \code{select} can only be a single string to match
@@ -95,6 +113,17 @@ dat <- gamSim(1, n = 400, dist = "normal", scale = 2)
 m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 
 draw(m1)
+
+## can add partial residuals
+draw(m1, residuals = TRUE)
+
+\dontshow{set.seed(2)}
+dat <- gamSim(2, n = 1000, dist = "normal", scale = 1)
+m2 <- gam(y ~ s(x, z, k = 40), data = dat$data, method = "REML")
+draw(m2, contour = FALSE)
+
+## change the number of contours drawn
+draw(m2, n_contour = 5)
 }
 \author{
 Gavin L. Simpson
