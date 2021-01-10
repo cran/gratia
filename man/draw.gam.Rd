@@ -16,12 +16,17 @@
   n = 100,
   unconditional = FALSE,
   overall_uncertainty = TRUE,
+  constant = NULL,
+  fun = NULL,
   dist = 0.1,
   rug = TRUE,
   contour = TRUE,
   contour_col = "black",
   n_contour = NULL,
   partial_match = FALSE,
+  discrete_colour = NULL,
+  continuous_colour = NULL,
+  continuous_fill = NULL,
   ...
 )
 }
@@ -68,6 +73,15 @@ covariance matrix will be used.}
 constant term be included in the standard error of the evaluate values of
 the smooth?}
 
+\item{constant}{numeric; a constant to add to the estimated values of the
+smooth. \code{constant}, if supplied, will be added to the estimated value
+before the confidence band is computed.}
+
+\item{fun}{function; a function that will be applied to the estimated values
+and confidence interval before plotting. Can be a function or the name of a
+function. Function \code{fun} will be applied after adding any \code{constant}, if
+provided.}
+
 \item{dist}{numeric; if greater than 0, this is used to determine when
 a location is too far from data to be plotted when plotting 2-D smooths.
 The data are scaled into the unit square before deciding what to exclude,
@@ -87,6 +101,9 @@ and \code{dist} is a distance within the unit square. See
 \item{partial_match}{logical; should smooths be selected by partial matches
 with \code{select}? If \code{TRUE}, \code{select} can only be a single string to match
 against.}
+
+\item{discrete_colour, continuous_colour, continuous_fill}{suitable scales
+for the types of data.}
 
 \item{...}{arguments passed to \code{cowplot::plot_grid()}. Any arguments to
 \code{plot_grid()} may be supplied, except for: \code{plotlist} and \code{align}.}
@@ -124,6 +141,11 @@ draw(m2, contour = FALSE)
 
 ## change the number of contours drawn
 draw(m2, n_contour = 5)
+
+## change the fill scale used for the surface
+draw(m2,
+    continuous_fill = ggplot2::scale_fill_distiller(palette = "Spectral",
+                                                    type = "div"))
 }
 \author{
 Gavin L. Simpson

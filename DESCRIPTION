@@ -1,6 +1,6 @@
 Package: gratia
-Version: 0.4.1
-Date: 2020-05-29
+Version: 0.5.0
+Date: 2021-01-09
 Title: Graceful 'ggplot'-Based Graphics and Other Functions for GAMs
         Fitted Using 'mgcv'
 Authors@R: c(person(given = "Gavin L.", family = "Simpson",
@@ -18,13 +18,13 @@ Suggests: gamm4, testthat, vdiffr, MASS, scam, datasets
 Description: Graceful 'ggplot'-based graphics and utility functions for working with generalized additive models (GAMs) fitted using the 'mgcv' package. Provides a reimplementation of the plot() method for GAMs that 'mgcv' provides, as well as 'tidyverse' compatible representations of estimated smooths.
 License: MIT + file LICENSE
 LazyData: true
-URL: https://gavinsimpson.github.io/gratia
+URL: https://gavinsimpson.github.io/gratia/
 BugReports: https://github.com/gavinsimpson/gratia/issues
-RoxygenNote: 7.1.0
+RoxygenNote: 7.1.1
 Encoding: UTF-8
 NeedsCompilation: no
-Packaged: 2020-05-29 18:21:20 UTC; gavin
+Packaged: 2021-01-10 19:47:42 UTC; gavin
 Author: Gavin L. Simpson [aut, cre] (<https://orcid.org/0000-0002-9084-8413>),
   Henrik Singmann [ctb] (<https://orcid.org/0000-0002-4842-3657>)
 Repository: CRAN
-Date/Publication: 2020-05-31 00:00:10 UTC
+Date/Publication: 2021-01-10 23:20:02 UTC

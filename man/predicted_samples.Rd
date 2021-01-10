@@ -28,8 +28,6 @@ predicted_samples(model, ...)
   n = 1,
   newdata = NULL,
   seed = NULL,
-  freq = FALSE,
-  unconditional = FALSE,
   weights = NULL,
   ...
 )
@@ -50,13 +48,13 @@ the model will be used for \code{newdata}, if available in \code{model}.}
 
 \item{scale}{character;}
 
-\item{freq}{logical; \code{TRUE} to return the frequentist covariance matrix of
-the parameter estimators, \code{FALSE} to return the Bayesian posterior
+\item{freq}{logical; \code{TRUE} to use the frequentist covariance matrix of
+the parameter estimators, \code{FALSE} to use the Bayesian posterior
 covariance matrix of the parameters.}
 
 \item{unconditional}{logical; if \code{TRUE} (and \code{freq == FALSE}) then the
 Bayesian smoothing parameter uncertainty corrected covariance matrix is
-returned, if available.}
+used, if available.}
 
 \item{ncores}{number of cores for generating random variables from a
 multivariate normal distribution. Passed to \code{\link[mvnfast:rmvn]{mvnfast::rmvn()}}.
@@ -113,9 +111,23 @@ set.seed(2)
 op <- options(cli.unicode = FALSE)
 }
 dat <- gamSim(1, n = 1000, dist = "normal", scale = 2)
-m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
+m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 
-predicted_samples(m1, n = 5, seed = 42)
+predicted_samples(m, n = 5, seed = 42)
+
+## Can pass arguments to predict.gam()
+newd <- data.frame(x0 = runif(10), x1 = runif(10), x2 = runif(10),
+                   x3 = runif(10))
+
+## Exclude s(x2)
+predicted_samples(m, n = 5, newd, exclude = "s(x2)", seed = 25)
+
+## Exclude s(x1)
+predicted_samples(m, n = 5, newd, exclude = "s(x1)", seed = 25)
+
+## Select which terms --- result same as previous
+predicted_samples(m, n = 5, newd, seed = 25,
+                  terms = c("s(x0)", "s(x2)", "s(x3)"))
 \dontshow{options(op)}
 }
 \author{

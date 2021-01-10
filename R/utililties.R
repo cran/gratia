@@ -458,7 +458,7 @@
     grepl("offset\\(", terms)
 }
 
-##' Names of any parametrix terms in a GAM
+##' Names of any parametric terms in a GAM
 ##'
 ##' @param model a fitted model.
 ##' @param ... arguments passed to other methods.
@@ -608,7 +608,7 @@
 ##'
 ##' @seealso The underlying functionality is provided by [data.class()].
 ##'
-##' @export
+##' @noRd
 `data_class` <- function(df) {
     vapply(df, data.class, character(1L))
 }
@@ -616,6 +616,8 @@
 ##' Names of any factor variables in model data
 ##'
 ##' @param df a data frame or tibble
+##'
+##' @noRd
 `factor_var_names` <- function(df) {
     ind <- is_factor_var(df)
     result <- if (any(ind)) {
@@ -629,12 +631,16 @@
 ##' Vectorised checks for variable types
 ##'
 ##' @param df a data frame or tibble
+##'
+##' @noRd
 `is_factor_var` <- function(df) {
     result <- vapply(df, is.factor, logical(1L))
     result
 }
 
 ##' @rdname is_factor_var
+##'
+##' @noRd
 `is_numeric_var` <- function(df) {
     result <- vapply(df, is.numeric, logical(1L))
     result
@@ -885,7 +891,7 @@
 ##' Names of variables involved in a specified model term
 ##'
 ##' Given the name (a term label) of a term in a model, returns the names
-##' of the variables involved in ther term.
+##' of the variables involved in the term.
 ##'
 ##' @param object an R object on which method dispatch is performed
 ##' @param term character; the name of a model term, in the sense of
@@ -948,4 +954,94 @@ vars_from_label <- function(label) {
                  "\\1",
                  label)
     vec_c(strsplit(vars, ",")[[1L]])
+}
+
+##' Add a constant to estimated values
+##'
+##' @param object a object to add a constant to.
+##' @param constant the constant to add.
+##' @param ... additional arguments passed to methods.
+##'
+##' @return Returns `object` but with the estimate shifted by the addition of
+##'   the supplied constant.
+##'
+##' @author Gavin L. Simpson
+`add_constant` <- function(object, constant = NULL, ...) {
+    UseMethod("add_constant")
+}
+
+##' @rdname add_constant
+`add_constant.evaluated_smooth` <- function(object, constant = NULL, ...) {
+    ## If constant supplied, add it to `est`
+    if (!is.null(constant)) {
+        if (!is.numeric(constant)) {
+            stop("'constant' must be numeric, but was supplied <", constant, ">",
+                 call. = FALSE)
+        }
+        object[["est"]] <- object[["est"]] + constant
+    }
+
+    object
+}
+
+##' @rdname add_constant
+`add_constant.evaluated_parametric_term` <- function(object, constant = NULL, ...) {
+    ## If constant supplied, add it to `est`
+    if (!is.null(constant)) {
+        if (!is.numeric(constant)) {
+            stop("'constant' must be numeric, but was supplied <", constant, ">",
+                 call. = FALSE)
+        }
+        object[["est"]] <- object[["est"]] + constant
+    }
+
+    object
+}
+
+##' Transform estimated values and confidence intervals by applying a function
+##'
+##' @param object an object to apply the transform function to.
+##' @param fun the function to apply.
+##' @param ... additional arguments passed to methods.
+##'
+##' @return Returns `object` but with the estimate and upper and lower values
+##'   of the confidence interval transformed via the function.
+##'
+##' @author Gavin L. Simpson
+`transform_fun` <- function(object, fun = NULL , ...) {
+    UseMethod("add_constant")
+}
+
+##' @rdname transform_fun
+`transform_fun.evaluated_smooth` <- function(object, fun = NULL, ...) {
+    ## If fun supplied, use it to transform est and the upper and lower interval
+    if (!is.null(fun)) {
+        fun <- match.fun(fun)
+        object[["est"]] <- fun(object[["est"]])
+        if (!is.null(object[["upper"]])) {
+            object[["upper"]] <- fun(object[["upper"]])
+        }
+        if (!is.null(object[["lower"]])) {
+            object[["lower"]] <- fun(object[["lower"]])
+        }
+    }
+
+    object
+}
+
+##' @rdname transform_fun
+`transform_fun.evaluated_parametric_term` <- function(object, fun = NULL, ...) {
+    ## If fun supplied, use it to transform est and the upper and lower interval
+    if (!is.null(fun)) {
+        fun <- match.fun(fun)
+        object[["est"]] <- fun(object[["est"]])
+        if (!is.null(object[["upper"]])) {
+            object[["upper"]] <- fun(object[["upper"]])
+        }
+        if (!is.null(object[["lower"]])) {
+            object[["lower"]] <- fun(object[["lower"]])
+        }
+    }
+
+    object
 }

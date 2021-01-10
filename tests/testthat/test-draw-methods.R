@@ -5,9 +5,14 @@ library("testthat")
 library("gratia")
 library("mgcv")
 library("ggplot2")
-library("vdiffr")
 
 context("draw-methods")
+
+## Need a local wrapper to allow conditional use of vdiffr
+`expect_doppelganger` <- function(title, fig, path = NULL, ...) {
+  testthat::skip_if_not_installed("vdiffr")
+  vdiffr::expect_doppelganger(title, fig, path = path, ...)
+}
 
 ## Fit models
 set.seed(1)
@@ -232,40 +237,40 @@ test_that("draw() can handle non-standard names -- a function call as a name", {
     expect_doppelganger("draw.gam model with non-standard names", p1)
 })
 
+## simulate example... from ?mgcv::factor.smooth.interaction
+set.seed(0)
+## simulate data...
+f0 <- function(x) 2 * sin(pi * x)
+f1 <- function(x, a=2, b=-1) exp(a * x)+b
+f2 <- function(x) 0.2 * x^11 * (10 * (1 - x))^6 + 10 *
+                      (10 * x)^3 * (1 - x)^10
+n <- 500
+nf <- 10
+fac <- sample(1:nf, n, replace=TRUE)
+x0 <- runif(n)
+x1 <- runif(n)
+x2 <- runif(n)
+a <- rnorm(nf) * .2 + 2;
+b <- rnorm(nf) * .5
+f <- f0(x0) + f1(x1, a[fac], b[fac]) + f2(x2)
+fac <- factor(fac)
+y <- f + rnorm(n) * 2
+
+df <- data.frame(y = y, x0 = x0, x1 = x1, x2 = x2, fac = fac)
+mod_fs <- gam(y~s(x0) + s(x1, fac, bs="fs", k=5) + s(x2, k=20),
+              method = "ML")
+
 test_that("draw() works with factor-smooth interactions (bs = 'fs')", {
-    ## simulate example... from ?mgcv::factor.smooth.interaction
-    set.seed(0)
-    ## simulate data...
-    f0 <- function(x) 2 * sin(pi * x)
-    f1 <- function(x, a=2, b=-1) exp(a * x)+b
-    f2 <- function(x) 0.2 * x^11 * (10 * (1 - x))^6 + 10 *
-                          (10 * x)^3 * (1 - x)^10
-    n <- 500
-    nf <- 10
-    fac <- sample(1:nf, n, replace=TRUE)
-    x0 <- runif(n)
-    x1 <- runif(n)
-    x2 <- runif(n)
-    a <- rnorm(nf) * .2 + 2;
-    b <- rnorm(nf) * .5
-    f <- f0(x0) + f1(x1, a[fac], b[fac]) + f2(x2)
-    fac <- factor(fac)
-    y <- f + rnorm(n) * 2
-
-    df <- data.frame(y = y, x0 = x0, x1 = x1, x2 = x2, fac = fac)
-    mod <- gam(y~s(x0) + s(x1, fac, bs="fs", k=5) + s(x2, k=20),
-               method = "ML")
-
-    sm <- evaluate_smooth(mod, "s(x1,fac)")
+    sm <- evaluate_smooth(mod_fs, "s(x1,fac)")
     expect_s3_class(sm, "evaluated_fs_smooth")
 
     p1 <- draw(sm)
     expect_doppelganger("draw.evaluated_fs_smooth", p1)
 
-    p2 <- draw(mod, ncol = 2)
+    p2 <- draw(mod_fs, ncol = 2)
     expect_doppelganger("draw.gam model with fs smooth", p2)
 
-    p3 <- draw(mod, ncol = 2, scales = "fixed")
+    p3 <- draw(mod_fs, ncol = 2, scales = "fixed")
     expect_doppelganger("draw.gam model with fs smooth fixed scales", p3)
 })
 
@@ -397,31 +402,31 @@ test_that("draw() works with a ziplss models; issue #45", {
     b1 <- gam(list(y ~ s(x2) + x3,
                    ~ s(x0) + x1), family = ziplss(), data = df)
     plt <- draw(b1)
-    vdiffr::expect_doppelganger("draw ziplss parametric terms issue 45", plt)
+    expect_doppelganger("draw ziplss parametric terms issue 45", plt)
 })
 
 test_that("draw works for sample_smooths objects", {
     sm1 <- smooth_samples(m1, n = 15, seed = 23478)
     plt <- draw(sm1, alpha = 0.7)
-    vdiffr:::expect_doppelganger("draw smooth_samples for GAM m1", plt)
+    expect_doppelganger("draw smooth_samples for GAM m1", plt)
     
     sm2 <- smooth_samples(m2, n = 4, seed = 23478)
     ## FIXME #71
     ##plt <- draw(sm2, alpha = 0.7)
-    ##vdiffr:::expect_doppelganger("draw smooth_samples for GAM m2", plt)
+    ##expect_doppelganger("draw smooth_samples for GAM m2", plt)
     
     sm3 <- smooth_samples(m3, n = 15, seed = 23478)
     plt <- draw(sm3, alpha = 0.7)
-    vdiffr:::expect_doppelganger("draw smooth_samples for GAM m3", plt)
+    expect_doppelganger("draw smooth_samples for GAM m3", plt)
 })
 
 test_that("draw works for sample_smooths objects with user specified smooth", {
     sm3 <- smooth_samples(m3, n = 15, seed = 23478)
     plt <- draw(sm3, select = "s(x0)", alpha = 0.7)
-    vdiffr:::expect_doppelganger("draw selected smooth_samples for GAM m3", plt)
+    expect_doppelganger("draw selected smooth_samples for GAM m3", plt)
     
     plt <- draw(sm3, select = "s(x2)", alpha = 0.7, partial_match = TRUE)
-    vdiffr:::expect_doppelganger("draw selected factor by smooth_samples for GAM m3", plt)
+    expect_doppelganger("draw selected factor by smooth_samples for GAM m3", plt)
 })
 
 ## Issue #22
@@ -429,12 +434,26 @@ test_that("draw() can handle a mixture of numeric and factor random effects", {
     df <- data_sim("eg4", seed = 42)
     m <- gam(y ~ s(x2, fac, bs = "re"), data = df, method = "REML")
     plt <- draw(m)
-    vdiffr:::expect_doppelganger("issue 22 draw with mixed random effects", plt)
+    expect_doppelganger("issue 22 draw with mixed random effects", plt)
 })
 
 test_that("draw.gam uses fixed scales if asked for them: #73", {
     skip_on_cran()
+    skip_on_ci()
+    df <- data_sim("eg1", n = 1000, seed = 1)
     m <- gam(y ~ s(x1) + s(x2) + ti(x1, x2), data = dat1, method = "REML")
     plt <- draw(m, scales = "fixed")
-    vdiffr:::expect_doppelganger("issue 73 draw uses fixed scales if asked for them", plt)
+    expect_doppelganger("issue 73 draw uses fixed scales if asked for them",
+                                 plt)
+})
+
+test_that("draw.gam can take user specified scales", {
+    plt <- draw(m2, continuous_fill = scale_fill_distiller(palette = "Spectral",
+                                                           type = "div"))
+    expect_doppelganger("draw 2d smooth with spectral palette", plt)
+
+    plt <- draw(mod_fs,
+                discrete_colour = scale_colour_viridis_d(option = "plasma"))
+    expect_doppelganger("draw fs smooth with discrete plasma palette",
+                                 plt)
 })

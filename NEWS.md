@@ -1,3 +1,67 @@
+# gratia 0.5.0
+
+## New features
+
+* Partial residuals for models can be computed with `partial_residuals()`. The
+  partial residuals are the weighted residuals of the model added to the
+  contribution of each smooth term (as returned by `predict(model, type = "terms")`.
+  
+  Wish of [#76](https://github.com/gavinsimpson/gratia/issues/76) (@noamross)
+
+  Also, new function `add_partial_residuals()` can be used to add the partial
+  residuals to data frames.
+
+* Users can now control to some extent what colour or fill scales are used when
+  plotting smooths in those `draw()` methods that use them. This is most useful
+  to change the fill scale when plotting 2D smooths, or to change the discrete
+  colour scale used when plotting random factor smooths (`bs = "fs"`).
+  
+  The user can pass scales via arguments `discrete_colour` and
+  `continuous_fill`.
+
+* The effects of certain smooths can be excluded from data simulated from a model
+  using `simulate.gam()` and `predicted_samples()` by passing `exclude` or `terms`
+  on to `predict.gam()`. This allows for excluding random effects, for example, from
+  model predicted values that are then used to simulate new data from the conditional
+  distribution. See the example in `predicted_samples()`.
+  
+  Wish of [#74](https://github.com/gavinsimpson/gratia/issues/74) (@hgoldspiel)
+
+* `draw.gam()` and related functions gain arguments `constant` and `fun` to allow
+  for user-defined constants and transformations of smooth estimates and
+  confidence intervals to be applied.
+  
+  Part of wish of Wish of [#79](https://github.com/gavinsimpson/gratia/issues/79).
+
+* `confint.gam()` now works for 2D smooths also.
+
+* `smooth_estimates()` is an early version of code to replace (or more likely
+  supersede) `evaluate_smooth()`. `smooth_estimates()` can currently only handle
+  1D smooths of the standard types. 
+
+## User visible changes
+
+* The meaning of `parm` in `confint.gam` has changed. This argument now requires
+  a smooth label to match a smooth. A vector of labels can be provided, but
+  partial matching against a smooth label only works with a single `parm` value.
+  
+  The default behaviour remains unchanged however; if `parm` is `NULL` then all
+  smooths are evaluated and returned with confidence intervals.
+
+* `data_class()` is no longer exported; it was only ever intended to be an internal
+  function.
+
+## Bug Fixes
+
+* `confint.gam()` was failing on a tensor product smooth due to matching issues.
+  Reported by @tamas-ferenci [#88](https://github.com/gavinsimpson/gratia/issues/88)
+  
+  This also fixes [#80](https://github.com/gavinsimpson/gratia/issues/80)
+  (@butellyn) which was a related issue with selecting a specific smooth.
+
+* The **vdiffr** package is now used conditionally in package tests.
+  Reported by Brian Ripley [#93](https://github.com/gavinsimpson/gratia/issues/93)
+
 # gratia 0.4.1
 
 ## User visible changes
@@ -25,16 +89,16 @@
   is drawn. This feature is not available for smooths of more than one variable,
   by smooths, or factor-smooth interactions (`bs = "fs"`).
 
-* The coverage of credible and ocnfidence intervals drawn by `draw.gam()` can be
+* The coverage of credible and confidence intervals drawn by `draw.gam()` can be
   specified via argument `ci_level`. The default is arbitrarily `0.95` for no
   other reason than (rough) compatibility with `plot.gam()`.
   
-  This chance has had the effect of making the intervals slightly narrower than
+  This change has had the effect of making the intervals slightly narrower than
   in previous versions of *gratia*; intervals were drawn at &plusmn; 2 &times;
   the standard error. The default intervals are now drawn at &plusmn; ~1.96
   &times; the standard error.
 
-* New function `difference_smooth()` for computing differences between factor
+* New function `difference_smooths()` for computing differences between factor
   smooth interactions. Methods available for `gam()`, `bam()`, `gamm()` and
   `gamm4::gamm4()`. Also has a `draw()` method, which can handle differences of
   1D and 2D smooths currently (handling 3D and 4D smooths is planned).
@@ -83,7 +147,7 @@
   underlying functions it calls, especially `qq_plot`.
   
   `appraise()` also works for models fitted with family `gaulss()`. Further
-  locational scale models and models fitted with extended family functions will
+  location scale models and models fitted with extended family functions will
   be supported in upcoming releases.
 
 ## User visible changes
@@ -91,7 +155,7 @@
 * `datagen()` is now an *internal* function and is no longer exported. Use
   `data_slice()` instead.
 
-* `evaluate_parametric_terms()` is now much stricter and can only evaluate main
+* `evaluate_parametric_term()` is now much stricter and can only evaluate main
   effect terms, i.e. those whose order, as stored in the `terms` object of the
   model is `1`.
 

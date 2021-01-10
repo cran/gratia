@@ -6,9 +6,14 @@ library("gratia")
 library("mgcv")
 library("ggplot2")
 library("datasets")
-library("vdiffr")
 
 context("test-hgam-paper-models")
+
+## Need a local wrapper to allow conditional use of vdiffr
+`expect_doppelganger` <- function(title, fig, path = NULL, ...) {
+  testthat::skip_if_not_installed("vdiffr")
+  vdiffr::expect_doppelganger(title, fig, path = path, ...)
+}
 
 ## data load and prep
 data(CO2, package = "datasets")
@@ -84,6 +89,7 @@ test_that("draw() can plot CO2 model 4", {
 test_that("draw() can plot CO2 model 5", {
     skip_on_cran()
     skip_on_travis()
+    skip_on_ci()
     CO2_mod5 <- gam(log(uptake) ~ s(log(conc), by = Plant_uo, k = 5, bs = "tp", m = 2) +
                         s(Plant_uo, bs="re", k=12),
                     data = CO2, method = "REML",
