@@ -4,7 +4,7 @@
 ##' @param smooth character; a single smooth to evaluate.
 ##' @param n numeric; the number of points over the range of the covariate at
 ##'   which to evaluate the smooth.
-##' @param newdata a vector or data frame of points at which to evaluate the
+##' @param data a vector or data frame of points at which to evaluate the
 ##'   smooth.
 ##' @param unconditional logical; should confidence intervals include the
 ##'   uncertainty due to smoothness selection? If `TRUE`, the corrected Bayesian
@@ -48,8 +48,12 @@
 ##' @rdname smooth_estimates
 ##' @importFrom dplyr bind_rows all_of
 ##' @importFrom tidyr unnest
-`smooth_estimates.gam` <- function(object, smooth = NULL, n = 100, newdata = NULL,
-                                   unconditional = FALSE, overall_uncertainty = TRUE,
+`smooth_estimates.gam` <- function(object,
+                                   smooth = NULL,
+                                   n = 100,
+                                   data = NULL,
+                                   unconditional = FALSE,
+                                   overall_uncertainty = TRUE,
                                    dist = 0.1, ...) {
     ## if particular smooths selected
     smooth_ids <- if (!is.null(smooth)) {
@@ -58,7 +62,8 @@
         seq_len(n_smooths(object))
     }
 
-    smooths <- get_smooths_by_id(object, smooth_ids) # extract the mgcv.smooth objects
+    ## extract the mgcv.smooth objects
+    smooths <- get_smooths_by_id(object, smooth_ids)
 
     ## loop over the smooths and evaluate them
     sm_list <- vector(mode = "list", length = length(smooths))
@@ -67,9 +72,10 @@
         sm_list[[i]] <- eval_smooth(smooths[[i]],
                                     model = object,
                                     n = n,
-                                    data = newdata,
+                                    data = data,
                                     unconditional = unconditional,
-                                    overall_uncertainty = overall_uncertainty)
+                                    overall_uncertainty = overall_uncertainty,
+                                    dist = dist)
     }
 
     ## create a single df of all the smooths
@@ -82,6 +88,11 @@
 
     ## return
     sm_list
+}
+
+##' @export
+`smooth_estimates.gamm` <- function(object, ...) {
+    smooth_estimates(object[["gam"]], ...)
 }
 
 ##' Determine the type of smooth and return it n a human readble form
@@ -105,18 +116,18 @@
         "P spline"
     } else if (inherits(smooth, "cp.smooth")) {
         "Cyclic P spline"
-    } else if (inherits(smooth, "Bspline")) {
+    } else if (inherits(smooth, "Bspline.smooth")) {
         "B spline"
     } else if (inherits(smooth, "duchon.spline")) {
         "Duchon"
     } else if (inherits(smooth, "fs.interaction")) {
-        "FS"
+        "Factor smooth"
     } else if (inherits(smooth, "gp.smooth")) {
         "GP"
     } else if (inherits(smooth, "mrf.smooth")) {
         "MRF"
     } else if (inherits(smooth, "random.effect")) {
-        "Ranef"
+        "Random effect"
     } else if (inherits(smooth, "sw")) {
         "Soap (wiggly)"
     } else if (inherits(smooth, "sf")) {
@@ -130,7 +141,7 @@
     } else if (inherits(smooth, "tensor.smooth")) {
         "Tensor"
     } else {
-        stop("Uknown type of smooth")
+        stop("Unknown type of smooth")
     }
 
     sm_type
@@ -140,7 +151,7 @@
 ##'
 ##' @param data a data frame of variables to be checked.
 ##' @param vars character; vector of terms.
-##' 
+##'
 ##' @importFrom tibble tibble
 ##' @importFrom rlang := !!
 ##'
@@ -151,29 +162,22 @@
         smooth_vars <- vars %in% names(data)
         if (!all(vars %in% names(data))) {
             stop(paste("Variable(s)",
-                       paste(vars[!smooth_vars], collapse = ', '),
-                       "not found in 'data'."))
+                       paste(paste0("'", vars[!smooth_vars], "'"),
+                             collapse = ", "),
+                       "not found in 'data'."),
+                 call. = FALSE)
         }
     } else if (is.numeric(data)) {   # vector; coerce to data frame
         if (length(vars) > 1L) {
-            stop("'smooth' requires multiple data vectors but only 1 provided.")
+            stop("'smooth' requires multiple data vectors but only 1 provided.",
+                 call. = FALSE)
         }
         data <- tibble(!!(vars) := data)
     } else {                            # object we can't handle; bail out
-        stop("'data', if supplied, must be a numeric vector or a data frame.")
+        stop("'data', if supplied, must be a numeric vector or a data frame.",
+             call. = FALSE)
     }
     data
-}
-
-##' Returns the type of smoother as far as mgcv is concerned
-##'
-##' @keywords internal
-##' @noRd
-`mgcv_type` <- function(smooth) {
-    stopifnot(is_mgcv_smooth(smooth))
-    cls <- class(smooth)[1L]
-    cls <- sub("\\.smooth$", "", cls)
-    cls
 }
 
 ##' Evaluate estimated spline values
@@ -189,6 +193,7 @@
 ##' @importFrom rlang := !!
 ##' @importFrom dplyr pull all_of
 ##' @importFrom tidyr nest unnest
+##' @importFrom mgcv PredictMat
 ##'
 ##' @keywords internal
 ##' @noRd
@@ -234,10 +239,10 @@
     ## Return object
     out <- if (d == 1L) {
         if (is_fs_smooth(smooth)) {
-            stop("Not yet implemented.")
-            tibble(smooth = rep(label, nrow(X)),
-                   est = fit, se = se.fit,
-                   x = data[, 1L], f = data[, 2L])
+            tbl <- tibble(smooth = rep(label, nrow(X)),
+                          est = fit, se = se.fit)
+            tbl <- bind_cols(tbl, data)
+            nest(tbl, data = all_of(names(data)))
         } else {
             tbl <- tibble(smooth = rep(label, nrow(X)),
                           est = fit, se = se.fit,
@@ -245,12 +250,10 @@
             nest(tbl, data = !!(sm_var))
         }
      } else {
-        ## need to adapt this to n dimensions!       
-        tbl <- tibble(smooth = rep(label, nrow(X)),
-                      est = fit, se = se.fit,
-                      !!(sm_var[1L]) := pull(data, sm_var[1L]),
-                      !!(sm_var[2L]) := pull(data, sm_var[2L]))
-        nest(tbl, data = c(!!(sm_var[1L]), !!(sm_var[2L])))
+        tbl <- bind_cols(tibble(smooth = rep(label, nrow(X)),
+                                est = fit, se = se.fit),
+                         data)
+        nest(tbl, data = all_of(names(data)))
     }
 
     nr <- nrow(out)
@@ -281,8 +284,6 @@
                                       overall_uncertainty = TRUE,
                                       ...) {
     by_var <- by_variable(smooth) # even if not a by as we want NA later
-
-    ## sm_var <- smooth_variable(smooth)
 
     ## deal with data if supplied
     data <- process_user_data_for_eval(data = data, model = model, n = n,
@@ -322,10 +323,10 @@
     data <- if (is.null(data)) {
         smooth_data(model = model, n = n, id = id)
    } else {
-        smooth <- get_smooths_by_id(id)        
+        smooth <- get_smooths_by_id(model, id)[[1L]]
         vars <- smooth_variable(smooth)
         by_var <- by_variable(smooth)
-        if (!is.na(by_var)) {
+        if (!identical(by_var, "NA")) {
             vars <- append(vars, by_var)
         }
         check_user_data(data, vars)
@@ -340,7 +341,30 @@
                                          unconditional = FALSE,
                                          overall_uncertainty = TRUE,
                                          ...) {
-    .NotYetImplemented()
+    
+    by_var <- by_variable(smooth) # even if not a by as we want NA later
+
+    ## deal with data if supplied
+    data <- process_user_data_for_eval(data = data, model = model, n = n,
+                                       id = which_smooth(model,
+                                                         smooth_label(smooth)))
+
+    ## values of spline at data
+    eval_sm <- spline_values2(smooth, data = data,
+                              unconditional = unconditional,
+                              model = model,
+                              overall_uncertainty = overall_uncertainty)
+
+    ## add on info regarding by variable
+    nr <- nrow(eval_sm)
+    eval_sm <- add_column(eval_sm, by = rep(by_var, nr),
+                          .after = 1L)
+    ## add on spline type info
+    sm_type <- smooth_type(smooth)
+    eval_sm <- add_column(eval_sm, type = rep(sm_type, nr),
+                          .after = 1L)
+    ## return
+    eval_sm
 }
 
 ##' @rdname eval_smooth
@@ -350,9 +374,29 @@
                                         unconditional = FALSE,
                                         overall_uncertainty = TRUE,
                                         ...) {
-    .NotYetImplemented()
-    is_by <- is_by_smooth(smooth)
-    by_var <- by_variable(smooth) # get even if not a by as we want NA later
+    by_var <- by_variable(smooth) # even if not a by as we want NA later
+
+    ## deal with data if supplied
+    data <- process_user_data_for_eval(data = data, model = model, n = n,
+                                       id = which_smooth(model,
+                                                         smooth_label(smooth)))
+
+    ## values of spline at data
+    eval_sm <- spline_values2(smooth, data = data,
+                              unconditional = unconditional,
+                              model = model,
+                              overall_uncertainty = overall_uncertainty)
+
+    ## add on info regarding by variable
+    nr <- nrow(eval_sm)
+    eval_sm <- add_column(eval_sm, by = rep(by_var, nr),
+                          .after = 1L)
+    ## add on spline type info
+    sm_type <- smooth_type(smooth)
+    eval_sm <- add_column(eval_sm, type = rep(sm_type, nr),
+                          .after = 1L)
+    ## return
+    eval_sm
 }
 
 ##' @rdname eval_smooth
@@ -371,8 +415,29 @@
 `eval_smooth.t2.smooth` <- function(smooth, model, n = 100, data = NULL,
                                     unconditional = FALSE,
                                     overall_uncertainty = TRUE,
-                                    ...) {
-    .NotYetImplemented()
+                                    dist = 0.1, ...) {
+    by_var <- by_variable(smooth) # even if not a by as we want NA later
+
+    ## deal with data if supplied
+    data <- process_user_data_for_eval(data = data, model = model, n = n,
+                                       id = which_smooth(model,
+                                                         smooth_label(smooth)))
+
+    ## values of spline at data
+    eval_sm <- spline_values2(smooth, data = data,
+                              unconditional = unconditional,
+                              model = model,
+                              overall_uncertainty = overall_uncertainty)
+
+    ## add on info regarding by variable
+    nr <- nrow(eval_sm)
+    eval_sm <- add_column(eval_sm, by = rep(by_var, nr), .after = 1L)
+    ## add on spline type info
+    sm_type <- smooth_type(smooth)
+    eval_sm <- add_column(eval_sm, type = rep(sm_type, nr), .after = 1L)
+
+    ## return
+    eval_sm
 }
 
 ##' @rdname eval_smooth
@@ -382,5 +447,27 @@
                                         unconditional = FALSE,
                                         overall_uncertainty = TRUE,
                                         ...) {
-    .NotYetImplemented()
+    by_var <- by_variable(smooth) # even if not a by as we want NA later
+
+    ## deal with data if supplied
+    data <- process_user_data_for_eval(data = data, model = model, n = n,
+                                       id = which_smooth(model,
+                                                         smooth_label(smooth)))
+
+    ## values of spline at data
+    eval_sm <- spline_values2(smooth, data = data,
+                              unconditional = unconditional,
+                              model = model,
+                              overall_uncertainty = overall_uncertainty)
+
+    ## add on info regarding by variable
+    nr <- nrow(eval_sm)
+    eval_sm <- add_column(eval_sm, by = rep(by_var, nr),
+                          .after = 1L)
+    ## add on spline type info
+    sm_type <- smooth_type(smooth)
+    eval_sm <- add_column(eval_sm, type = rep(sm_type, nr),
+                          .after = 1L)
+    ## return
+    eval_sm
 }

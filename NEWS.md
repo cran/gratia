@@ -1,3 +1,27 @@
+# gratia 0.5.1
+
+## New features
+
+* `smooth_estimates()` can now handle
+
+    * bivariate and multivariate thinplate regression spline smooths, e.g. 
+      `s(x, z, a)`,
+    * tensor product smooths (`te()`, `t2()`, & `ti()`), e.g. `te(x, z, a)`
+    * factor smooth interactions, e.g. `s(x, f, bs = "fs")`
+    * random effect smooths, e.g. `s(f, bs = "re")`
+
+* `penalty()` provides a tidy representation of the penalty matrices of
+  smooths. The tidy representation is most suitable for plotting with
+  `ggplot()`.
+
+  A `draw()` method is provided, which represents the penalty matrix as a
+  heatmap.
+
+## User visible changes
+
+* The `newdata` argument to `smooth_estimates()` has been changed to `data` as
+  was originally intended.
+
 # gratia 0.5.0
 
 ## New features

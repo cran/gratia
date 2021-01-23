@@ -457,3 +457,40 @@ test_that("draw.gam can take user specified scales", {
     expect_doppelganger("draw fs smooth with discrete plasma palette",
                                  plt)
 })
+
+test_that("draw.penalty_df works", {
+    expect_silent(pen <- penalty(m1))
+    plt <- draw(pen)
+    expect_doppelganger("draw penalty_df with multiple smooths",
+                        plt)
+
+    plt <- draw(penalty(m1, "s(x1)"))
+    expect_doppelganger("draw penalty_df with single smooths",
+                        plt)
+})
+
+test_that("draw.penalty_df accepts user-specified continuous_fill", {
+    expect_silent(pen <- penalty(m1))
+    plt <- draw(pen,
+                continuous_fill = scale_fill_distiller(palette = "Spectral",
+                                                       type = "div"))
+    expect_doppelganger("draw penalty_df with multiple smooths user continous fill",
+                        plt)
+
+    plt <- draw(penalty(m1, "s(x1)"),
+                continuous_fill = scale_fill_distiller(palette = "Spectral",
+                                                       type = "div"))
+    expect_doppelganger("draw penalty_df with single smooths user continous fill",
+                        plt)
+})
+
+test_that("draw.penalty_df works with normalization", {
+    expect_silent(pen <- penalty(m1))
+    plt <- draw(pen, normalize = TRUE)
+    expect_doppelganger("draw penalty_df with multiple smooths normalized",
+                        plt)
+
+    plt <- draw(penalty(m1, "s(x1)"), normalize = TRUE)
+    expect_doppelganger("draw penalty_df with single smooths normalized",
+                        plt)
+})
