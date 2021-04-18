@@ -292,10 +292,6 @@
 ##'   and confidence interval before plotting. Can be a function or the name of a
 ##'   function. Function `fun` will be applied after adding any `constant`, if
 ##'   provided.
-##' @param align characer; see argument `align` in `cowplot::plot_grid()`.
-##'   Defaults to `"hv"` so that plots are nicely aligned.
-##' @param axis characer; see argument `axis` in `cowplot::plot_grid()`.
-##'   Defaults to `"lrtb"` so that plots are nicely aligned.
 ##' @param ci_level numeric between 0 and 1; the coverage of credible interval.
 ##' @param rug logical; draw a rug plot at the botom of each plot?
 ##' @param contour logical; should contours be draw on the plot using
@@ -308,22 +304,25 @@
 ##'   against.
 ##' @param discrete_colour,continuous_colour,continuous_fill suitable scales
 ##'   for the types of data.
-##' @param ... arguments passed to `cowplot::plot_grid()`. Any arguments to
-##'   `plot_grid()` may be supplied, except for: `plotlist` and `align`.
+##' @param ncol,nrow numeric; the numbers of rows and columns over which to
+##'   spread the plots
+##' @param guides character; one of `"keep"` (the default), `"collect"`, or
+##'   `"auto"`. Passed to [patchwork::plot_layout()]
+##' @param ... additional arguments passed to [patchwork::wrap_plots()].
 ##'
 ##' @inheritParams evaluate_smooth
 ##'
 ##' @note Internally, plots of each smooth are created using [ggplot2::ggplot()]
-##'   and composed into a single plot using [cowplot::plot_grid()]. As a result,
+##'   and composed into a single plot using [patchwork::wrap_plots()]. As a result,
 ##'   it is not possible to use `+` to add to the plots in the way one might
 ##'   typically work with `ggplot()` plots.
 ##'
-##' @return The object returned is created by [cowplot::plot_grid()].
+##' @return The object returned is created by [patchwork::wrap_plots()].
 ##'
 ##' @author Gavin L. Simpson
 ##'
 ##' @importFrom ggplot2 scale_colour_discrete scale_colour_continuous scale_fill_distiller
-##' @importFrom cowplot plot_grid
+##' @importFrom patchwork wrap_plots
 ##' @export
 ##'
 ##' @examples
@@ -353,8 +352,6 @@
                        select = NULL,
                        residuals = FALSE,
                        scales = c("free", "fixed"),
-                       align = "hv",
-                       axis = "lrtb",
                        ci_level = 0.95,
                        n = 100,
                        unconditional = FALSE,
@@ -370,6 +367,8 @@
                        discrete_colour = NULL,
                        continuous_colour = NULL,
                        continuous_fill = NULL,
+                       ncol = NULL, nrow = NULL,
+                       guides = "keep",
                        ...) {
     scales <- match.arg(scales)
 
@@ -556,7 +555,14 @@
         }
     }
 
-    plot_grid(plotlist = g, align = align, axis = axis, ...)
+    ## return
+    n_plots <- length(g)
+    if (is.null(ncol) && is.null(nrow)) {
+        ncol <- ceiling(sqrt(n_plots))
+        nrow <- ceiling(n_plots / ncol)
+    }
+    wrap_plots(g, byrow = TRUE, ncol = ncol, nrow = nrow, guides = guides,
+               ...)
 }
 
 ##' @param qq_line logical; draw a reference line through the lower and upper
@@ -774,23 +780,26 @@
 ##' @inheritParams draw.gam
 ##'
 ##' @importFrom ggplot2 ggplot geom_ribbon aes_string geom_line labs
-##' @importFrom cowplot plot_grid
+##' @importFrom patchwork wrap_plots
 ##' @export
 ##'
 ##' @examples
 ##'
 ##' load_mgcv()
-##' \dontshow{set.seed(42)}
-##' dat <- gamSim(1, n = 400, dist = "normal", scale = 2, verbose = FALSE)
+##' dat <- data_sim("eg1", n = 800, dist = "normal", scale = 2, seed = 42)
 ##' mod <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 ##'
 ##' ## first derivative of all smooths
-##' df <- derivatives(mod)
+##' df <- derivatives(mod, type = "central")
 ##' draw(df)
+##' ## fixed axis scales
+##' draw(df, scales = "fixed")
 `draw.derivatives` <- function(object,
                                select = NULL,
                                scales = c("free", "fixed"), alpha = 0.2,
-                               align = "hv", axis = "lrtb", ...) {
+                               ncol = NULL, nrow = NULL,
+                               guides = "keep",
+                               ...) {
     scales <- match.arg(scales)
 
     ## how many smooths
@@ -819,8 +828,14 @@
             plotlist[[i]] <- plotlist[[i]] + lims(y = ylims)
         }
     }
-
-    plot_grid(plotlist = plotlist, align = align, axis = axis, ...)
+    ## return
+    n_plots <- length(plotlist)
+    if (is.null(ncol) && is.null(nrow)) {
+        ncol <- ceiling(sqrt(n_plots))
+        nrow <- ceiling(n_plots / ncol)
+    }
+    wrap_plots(plotlist, byrow = TRUE, ncol = ncol, nrow = nrow, guides = guides,
+               ...)
 }
 
 ##' Plot basis functions
@@ -832,7 +847,7 @@
 ##' @param use_facets logical; for factor by smooths, use facets to show the
 ##'   basis functions for each level of the factor? If `FALSE`, a separate ggplot
 ##'   object will be created for each level and combined using
-##'   [cowplot::plot_grid()]. **Currently ignored**.
+##'   [patchwork::wrap_plots()]. **Currently ignored**.
 ##' @param labeller a labeller function with which to label facets. The default
 ##'   is to use [ggplot2::label_both()].
 ##' @param xlab character or expression; the label for the x axis. If not
@@ -934,7 +949,7 @@
 ##'   [ggplot2::labs()].
 ##' @param caption character or expression; the plot caption. See
 ##'   [ggplot2::labs()].
-##' @param ... arguments to be passed to [cowplot::plot_grid()].
+##' @param ... arguments to be passed to [patchwork::wrap_plots()].
 ##'
 ##' @export
 ##'
@@ -945,6 +960,7 @@
 ##' @importFrom dplyr filter
 ##' @importFrom purrr map
 ##' @importFrom rlang .data
+##' @importFrom patchwork wrap_plots
 ##'
 ##' @examples
 ##' load_mgcv()
@@ -971,9 +987,10 @@
                                   subtitle = NULL, caption = NULL,
                                   alpha = 1, colour = "black",
                                   scales = c("free", "fixed"),
-                                  align = "hv", axis = "lrtb",
                                   rug = TRUE,
-                                  partial_match = FALSE, ...) {
+                                  partial_match = FALSE,
+                                  ncol = NULL, nrow = NULL,
+                                  guides = "keep", ...) {
     
     scales <- match.arg(scales)
 
@@ -1005,7 +1022,14 @@
         }
     }
 
-    plot_grid(plotlist = plts, align = align, axis = axis, ...)
+    ## return
+    n_plots <- length(plts)
+    if (is.null(ncol) && is.null(nrow)) {
+        ncol <- ceiling(sqrt(n_plots))
+        nrow <- ceiling(n_plots / ncol)
+    }
+    wrap_plots(plts, byrow = TRUE, ncol = ncol, nrow = nrow, guides = guides,
+               ...)
 }
 
 `plot_posterior_smooths` <- function(tbl, xlab = NULL, ylab = NULL, title = NULL,
@@ -1296,7 +1320,7 @@
 ##'
 ##' @param normalize logical; normalize the penalty to the range -1, 1?
 ##' @param ncol,nrow numeric; the numbers of rows and columns over which to
-##'   spread the plots
+##'   spread the plots.
 ##' @param xlab character or expression; the label for the x axis. If not
 ##'   supplied, no axis label will be drawn. May be a vector, one per penalty.
 ##' @param ylab character or expression; the label for the y axis.  If not
@@ -1381,6 +1405,12 @@
                            subtitle = NULL,
                            caption = NULL) {
 
+    ## fix ordering of levels so the heatmap matches a matrix
+    ## Don't reverse the cols!!
+    object <- mutate(object,
+                     row = factor(.data$row, levels = rev(sort(unique(.data$row)))),
+                     col = factor(.data$col, levels = sort(unique(.data$col))))
+    
     ## rescale to -1 -- 1
     if (as.logical(normalize)) {
         object <- mutate(object, value = norm_minus_one_to_one(.data$value))

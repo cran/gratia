@@ -8,6 +8,8 @@
 ##'   will be undone to put the penalty matrix back on the original scale.
 ##' @param margins logical; extract the penalty matrices for the tensor
 ##'   product or the marginal smooths of the tensor product?
+##' @param data data frame; a data frame of values for terms mentioned in the
+##'   smooth specification.
 ##' @param ... additional arguments passed to methods.
 ##'
 ##' @return A 'tibble' (data frame) of class `penalty_df` inheriting from
@@ -81,8 +83,13 @@
     sm_type <- smooth_type(object)
     ## extract the set of penalty matrices
     S <- object[["S"]] # S is a list even if length(S) == 1
-    sp_label <- names(object[["sp"]]) # penalty matrix label
-    pen <- vector("list", length = length(S))
+    len_S <- length(S)
+    sp_label <- if (is.null(object[["sp"]])) {
+        paste(sm_lab, seq_len(len_S), sep = ".")
+    } else {
+        names(object[["sp"]]) # penalty matrix label
+    }
+    pen <- vector("list", length = len_S)
     ## loop over penalty matrices & tidy each of them
     pen_seq <- seq_along(pen)
     for (i in pen_seq) {
@@ -123,11 +130,16 @@
 ##' @importFrom tibble add_column as_tibble
 ##' @importFrom tidyr pivot_longer
 ##' @importFrom dplyr starts_with
+##' @importFrom rlang set_names
 `tidy_penalty` <- function(s, smooth, type, label) {
-    rownames(s) <- paste0("f", seq_len(nrow(s)))
-    colnames(s) <- paste0("f", seq_len(ncol(s)))
-    s <- as_tibble(s)
-    s <- add_column(s, row = paste0("f", seq_len(nrow(s))), .before = 1L)
+    ## rownames(s) <- paste0("f", seq_len(nrow(s)))
+    ## colnames(s) <- paste0("f", seq_len(ncol(s)))
+    nc <- ncol(s)
+    new_names <- formatC(seq_len(nc), width = nchar(nc), flag = "0")
+    new_names <- paste0("F", new_names)
+    s <- as_tibble(s, .name_repair = "minimal")
+    s <- set_names(s, new_names)
+    s <- add_column(s, row = new_names, .before = 1L)
     s <- pivot_longer(s, cols = starts_with("f"), names_to = "col",
                       values_to = "value")
     ns <- nrow(s)
@@ -143,4 +155,16 @@
 `print.penalty_df` <- function(x, ...) {
     x <- mutate(x, value = zapsmall(.data$value))
     NextMethod()
+}
+
+##' @export
+##' @importFrom mgcv smoothCon
+##' @importFrom dplyr bind_rows
+##'
+##' @rdname penalty
+`penalty.re.smooth.spec` <- function(object, data, ...) {
+    sm <- smoothCon(object, data, ...)
+    pen <- lapply(sm, penalty, ...)
+    pen <- bind_rows(pen)
+    pen
 }

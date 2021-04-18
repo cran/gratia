@@ -2,15 +2,19 @@
 % Please edit documentation in R/diagnose.R
 \name{qq_plot}
 \alias{qq_plot}
+\alias{qq_plot.default}
 \alias{qq_plot.gam}
 \alias{qq_plot.glm}
+\alias{qq_plot.lm}
 \title{Quantile-quantile plot of model residuals}
 \usage{
 qq_plot(model, ...)
 
+\method{qq_plot}{default}(model, ...)
+
 \method{qq_plot}{gam}(
   model,
-  method = c("direct", "simulate", "normal"),
+  method = c("uniform", "simulate", "normal", "direct"),
   type = c("deviance", "response", "pearson"),
   n_uniform = 10,
   n_simulate = 50,
@@ -29,19 +33,22 @@ qq_plot(model, ...)
 )
 
 \method{qq_plot}{glm}(model, ...)
+
+\method{qq_plot}{lm}(model, ...)
 }
 \arguments{
 \item{model}{a fitted model. Currently only class \code{"gam"}.}
 
 \item{...}{arguments passed ot other methods.}
 
-\item{method}{character; method used to generate theoretical quantiles.}
+\item{method}{character; method used to generate theoretical quantiles. Note
+that \code{method = "direct"} is deprecated in favour of \code{method = "uniform"}.}
 
 \item{type}{character; type of residuals to use. Only \code{"deviance"},
 \code{"response"}, and \code{"pearson"} residuals are allowed.}
 
 \item{n_uniform}{numeric; number of times to randomize uniform quantiles
-in the direct computation method (\code{method = "direct"}).}
+in the direct computation method (\code{method = "uniform"}).}
 
 \item{n_simulate}{numeric; number of data sets to simulate from the estimated
 model when using the simulation method (\code{method = "simulate"}).}
@@ -70,19 +77,22 @@ interval when \code{method = "simulate"}.}
 \item{point_col, point_alpha}{colour and alpha transparency for points on the
 QQ plot.}
 
-\item{line_col}{colour used to draw the 1:1 reference line.}
+\item{line_col}{colour used to draw the reference line.}
 }
 \description{
 Quantile-quantile plot of model residuals
 }
+\note{
+The wording used in \code{\link[mgcv:qq.gam]{mgcv::qq.gam()}} uses \emph{direct} in reference to the
+simulated residuals method (\code{method = "simulated"}). To avoid confusion,
+\code{method = "direct"} is deprecated in favour of \code{method = "uniform"}.
+}
 \examples{
 load_mgcv()
 ## simulate binomial data...
-set.seed(0)
-n.samp <- 200
-dat <- gamSim(1, n = n.samp, dist = "binary", scale = .33)
+dat <- data_sim("eg1", n = 200, dist = "binary", scale = .33, seed = 0)
 p <- binomial()$linkinv(dat$f)               # binomial p
-n <- sample(c(1, 3), n.samp, replace = TRUE) # binomial n
+n <- sample(c(1, 3), 200, replace = TRUE) # binomial n
 dat <- transform(dat, y = rbinom(n, n, p), n = n)
 m <- gam( y / n ~ s(x0) + s(x1) + s(x2) + s(x3),
          family = binomial, data = dat, weights = n,

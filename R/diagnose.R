@@ -10,6 +10,7 @@
     UseMethod("qq_plot")
 }
 
+##' @rdname qq_plot
 ##' @export
 `qq_plot.default` <- function(model, ...) {
     stop("Unable to produce a Q-Q plot for <",
@@ -17,11 +18,12 @@
          call. = FALSE)           # don't show the call, simpler error
 }
 
-##' @param method character; method used to generate theoretical quantiles.
+##' @param method character; method used to generate theoretical quantiles. Note
+##'   that `method = "direct"` is deprecated in favour of `method = "uniform"`.
 ##' @param type character; type of residuals to use. Only `"deviance"`,
 ##'   `"response"`, and `"pearson"` residuals are allowed.
 ##' @param n_uniform numeric; number of times to randomize uniform quantiles
-##'   in the direct computation method (`method = "direct"`).
+##'   in the direct computation method (`method = "uniform"`).
 ##' @param n_simulate numeric; number of data sets to simulate from the estimated
 ##'   model when using the simulation method (`method = "simulate"`).
 ##' @param level numeric; the coverage level for reference intervals. Must be
@@ -34,7 +36,11 @@
 ##'   interval when `method = "simulate"`.
 ##' @param point_col,point_alpha colour and alpha transparency for points on the
 ##'   QQ plot.
-##' @param line_col colour used to draw the 1:1 reference line.
+##' @param line_col colour used to draw the reference line.
+##'
+##' @note The wording used in [mgcv::qq.gam()] uses *direct* in reference to the
+##'   simulated residuals method (`method = "simulated"`). To avoid confusion,
+##'   `method = "direct"` is deprecated in favour of `method = "uniform"`.
 ##'
 ##' @inheritParams draw.evaluated_smooth
 ##'
@@ -42,17 +48,15 @@
 ##'
 ##' @importFrom ggplot2 ggplot geom_point geom_abline geom_ribbon labs aes_string
 ##' @importFrom tools toTitleCase
-##' @importFrom stats residuals
+##' @importFrom stats residuals IQR median
 ##' @export
 ##'
 ##' @examples
 ##' load_mgcv()
 ##' ## simulate binomial data...
-##' set.seed(0)
-##' n.samp <- 200
-##' dat <- gamSim(1, n = n.samp, dist = "binary", scale = .33)
+##' dat <- data_sim("eg1", n = 200, dist = "binary", scale = .33, seed = 0)
 ##' p <- binomial()$linkinv(dat$f)               # binomial p
-##' n <- sample(c(1, 3), n.samp, replace = TRUE) # binomial n
+##' n <- sample(c(1, 3), 200, replace = TRUE) # binomial n
 ##' dat <- transform(dat, y = rbinom(n, n, p), n = n)
 ##' m <- gam( y / n ~ s(x0) + s(x1) + s(x2) + s(x3),
 ##'          family = binomial, data = dat, weights = n,
@@ -69,8 +73,8 @@
 ##' ## ... or use the usual normality assumption
 ##' qq_plot(m, method = "normal")
 `qq_plot.gam` <- function(model,
-                          method = c("direct", "simulate", "normal"),
-                          type = c("deviance","response","pearson"),
+                          method = c("uniform", "simulate", "normal", "direct"),
+                          type = c("deviance", "response", "pearson"),
                           n_uniform = 10, n_simulate = 50,
                           level = 0.9,
                           ylab = NULL, xlab = NULL,
@@ -81,8 +85,12 @@
                           point_alpha = 1,
                           line_col = "red", ...) {
     method <- match.arg(method)         # what method for the QQ plot?
+    if (identical(method, "direct")) {
+        message("`method = \"direct\"` is deprecated, use `\"uniform\"`")
+        method <- "uniform"
+    }
     ## check if we can do the method
-    if (identical(method, "direct") &&
+    if (identical(method, "uniform") &&
         is.null(fix.family.qf(family(model))[["qf"]])) {
         method <- "simulate"
     }
@@ -97,14 +105,15 @@
     }
 
     type <- match.arg(type)       # what type of residuals
-    r <- residuals(model, type = type)  # model residuals
+    ##r <- residuals(model, type = type)  # model residuals
 
     ## generate theoretical quantiles
-    rq <- switch(method,
-                 direct = qq_uniform(model, n = n_uniform, type = type),
+    df <- switch(method,
+                 uniform  = qq_uniform(model, n = n_uniform, type = type),
                  simulate = qq_simulate(model, n = n_simulate, type = type,
                                         level = level),
-                 normal = qq_normal(model))
+                 normal   = qq_normal(model, type = type, level = level))
+    df <- as_tibble(df)
 
     ## add labels if not supplied
     if (is.null(ylab)) {
@@ -122,38 +131,42 @@
     if (is.null(subtitle)) {
         subtitle <- paste("Method:", method)
     }
-
-    ## put into a data frame
-    df <- if (is.data.frame(rq)) {
-        data.frame(theoretical = rq[["theoretical"]],
-                   residuals   = sort(r),
-                   lower       = rq[["lower"]],
-                   upper       = rq[["upper"]])
-    } else {
-        data.frame(theoretical = sort(rq), residuals = sort(r))
-    }
-
+    
     ## base plot
     plt <- ggplot(df, aes_string(x = "theoretical", y = "residuals"))
-
+    
     ## add reference line
-    plt <- plt + geom_abline(slope = 1, intercept = 0, col = line_col)
-
+    qq_intercept <- 0
+    qq_slope <- 1
+    if (method == "normal") {
+        qq_intercept <- median(df[["residuals"]])
+        qq_slope <- IQR(df[["residuals"]]) / 1.349
+        ## R's qq.line() does this, which seems the same as above
+        ## probs <- c(0.25, 0.75)
+        ## qq_y <- quantile(df[["residuals"]], probs = probs,
+        ##                  names = FALSE, qtype = 7)
+        ## qq_x <- qnorm(probs)
+        ## qq_slope <- diff(qq_y) / diff(qq_x)
+        ## qq_intercept <- qq_y[1L] - qq_slope * qq_x[1L]
+    }
+    plt <- plt + geom_abline(slope = qq_slope, intercept = qq_intercept,
+                             col = line_col)
+    
     ## add reference interval
-    if (identical(method, "simulate")) {
+    if (isTRUE(method %in% c("simulate", "normal"))) {
         plt <- plt + geom_ribbon(aes_string(ymin = "lower", ymax = "upper",
                                             x = "theoretical"),
                                  inherit.aes = FALSE,
                                  alpha = ci_alpha, fill = ci_col)
     }
-
+    
     ## add point layer
     plt <- plt + geom_point(colour = point_col, alpha = point_alpha)
-
+    
     ## add labels
     plt <- plt + labs(title = title, subtitle = subtitle, caption = caption,
                       y = ylab, x = xlab)
-
+    
     ## return
     plt
 }
@@ -167,6 +180,7 @@
     qq_plot.gam(model, ...)
 }
 
+##' @rdname qq_plot
 ##' @importFrom stats df.residual
 `qq_plot.lm` <- function(model, ...) {
     r <- residuals(model)
@@ -184,7 +198,7 @@
 ##' @importFrom mgcv fix.family.rd
 ##' @importFrom stats weights
 `qq_simulate` <- function(model, n = 50, type = c("deviance","response","pearson"),
-                          level = 0.9) {
+                          level = 0.9, detrend = FALSE) {
     type <- match.arg(type)
     family <- family(model)
     family <- fix.family.rd(family)
@@ -221,7 +235,19 @@
     n_obs <- NROW(fit)
     out <- quantile(sims, probs = (seq_len(n_obs) - 0.5) / n_obs)
     int <- apply(sims, 1L, quantile, probs = c(alpha, 1 - alpha))
-    out <- data.frame(theoretical = out, lower = int[1L, ], upper = int[2L, ])
+    r <- sort(residuals(model, type = type))
+
+    ## detrend for worm plots?
+    if (isTRUE(detrend)) {
+        r <- r - out
+        int[1L, ] <- int[1L, ] - out
+        int[2L, ] <- int[2L, ] - out
+    }
+    
+    out <- tibble(theoretical = out,
+                  residuals = r,
+                  lower = int[1L, ],
+                  upper = int[2L, ])
     out
 }
 
@@ -237,20 +263,44 @@
     sort(r)
 }
 
-##' @importFrom stats ppoints qnorm
-`qq_normal` <- function(model, type = c("deviance","response","pearson")) {
+##' @importFrom stats ppoints pnorm dnorm IQR median
+`qq_normal` <- function(model, type = c("deviance", "response", "pearson"),
+                        level = 0.9, detrend = FALSE) {
+    se_zscore <- function(z) {
+        n <- length(z)
+        pnorm_z <- pnorm(z)
+        sqrt(pnorm_z * (1 - pnorm_z) / n) / dnorm(z)
+    }
     type <- match.arg(type)
     r <- residuals(model, type = type)
     nr <- length(r)
     ord <- order(order(r))
+    sd <- IQR(r) / 1.349
+    theoretical <- qnorm(ppoints(nr)) #[ord] :no need to reorder now return is df
+    med <- median(r) + theoretical * sd
+    se <- sd * se_zscore(theoretical)
+    crit <- coverage_normal(level)
+    crit_se <- crit * se
 
-    out <- qnorm(ppoints(nr))[ord]
+    ## detrend for worm plots?
+    r <- sort(r)
+    if (isTRUE(detrend)) {
+        r <- r - med
+        med <- med * 0
+    }
+
+    ## out <- qnorm(ppoints(nr))[ord]
+    out <- tibble(theoretical = theoretical,
+                  residuals = r,
+                  lower = med - crit_se,
+                  upper = med + crit_se)
     out
 }
 
 ##' @importFrom mgcv fix.family.qf
 ##' @importFrom stats residuals fitted family weights na.action
-`qq_uniform` <- function(model, n = 10, type = c("deviance","response","pearson")) {
+`qq_uniform` <- function(model, n = 10, type = c("deviance","response","pearson"),
+                         level = 0.9, detrend = FALSE) {
     type <- match.arg(type)
     family <- family(model)                 # extract family
     family <- fix.family.qf(family)         # add quantile fun to family
@@ -271,21 +321,29 @@
     nr <- length(r)                     # number of residuals
     unif <- (seq_len(nr) - 0.5) / nr
 
-    out <- matrix(0, ncol = n, nrow = nr)
+    sims <- matrix(0, ncol = n, nrow = nr)
     for (i in seq_len(n)) {
         unif <- sample(unif, nr)
-        out[, i] <- qq_uniform_quantiles(unif, q_fun,
-                                         fit = fit,
-                                         weights = weights,
-                                         sigma2 = sigma2,
-                                         dev_resid_fun = dev_resid_fun,
-                                         var_fun = var_fun,
-                                         type = type,
-                                         na_action = na_action)
+        sims[, i] <- qq_uniform_quantiles(unif, q_fun,
+                                          fit = fit,
+                                          weights = weights,
+                                          sigma2 = sigma2,
+                                          dev_resid_fun = dev_resid_fun,
+                                          var_fun = var_fun,
+                                          type = type,
+                                          na_action = na_action)
     }
 
-    out <- rowMeans(out)
-    out <- sort(out)
+    out <- rowMeans(sims)    
+    r <- sort(r)
+
+    ## detrend for worm plots?
+    if (isTRUE(detrend)) {
+        r <- r - out
+    }
+    
+    out <- tibble(theoretical = out,
+                  residuals = r)
     out
 }
 
@@ -534,7 +592,8 @@
 ##' @title Model diagnostic plots
 ##'
 ##' @param model a fitted model. Currently only class `"gam"`.
-##' @param method character; method used to generate theoretical quantiles.
+##' @param method character; method used to generate theoretical quantiles. Note
+##'   that `method = "direct"` is deprecated in favour of `method = "uniform"`.
 ##' @param n_uniform numeric; number of times to randomize uniform quantiles
 ##'   in the direct computation method (`method = "direct"`) for QQ plots.
 ##' @param n_simulate numeric; number of data sets to simulate from the estimated
@@ -544,8 +603,10 @@
 ##'   `"response"`, and `"pearson"` residuals are allowed.
 ##' @param n_bins character or numeric; either the number of bins or a string
 ##'   indicating how to calculate the number of bins.
-##' @param ncol numeric; number of columns to draw plots in. See
-##'   [cowplot::plot_grid()].
+##' @param ncol,nrow numeric; the numbers of rows and columns over which to
+##'   spread the plots.
+##' @param guides character; one of `"keep"` (the default), `"collect"`, or
+##'   `"auto"`. Passed to [patchwork::plot_layout()]
 ##' @param level numeric; the coverage level for QQ plot reference intervals.
 ##'   Must be strictly `0 < level < 1`. Only used with `method = "simulate"`.
 ##' @param ci_alpha,ci_col numeric; the level of alpha transparency for the
@@ -557,10 +618,13 @@
 ##'   points of all plots.
 ##' @param line_col colour specification for the 1:1 line in the QQ plot and the
 ##'   reference line in the residuals vs linear predictor plot.
-##' @param ... arguments passed to [cowplot::plot_grid()], except for `align`
-##'   and `axis`, which are set internally.
+##' @param ... arguments passed to [patchwork::wrap_plots()].
 ##'
-##' @importFrom cowplot plot_grid
+##' @importFrom patchwork wrap_plots
+##'
+##' @note The wording used in [mgcv::qq.gam()] uses *direct* in reference to the
+##'   simulated residuals method (`method = "simulated"`). To avoid confusion,
+##'   `method = "direct"` is deprecated in favour of `method = "uniform"`.
 ##'
 ##' @seealso The plots are produced by functions [gratia::qq_plot()],
 ##'   [gratia::residuals_linpred_plot()], [gratia::residuals_hist_plot()],
@@ -583,17 +647,23 @@
 ##' @rdname appraise
 ##' @export
 `appraise.gam` <- function(model,
-                       method = c("direct", "simulate", "normal"),
+                       method = c("uniform", "simulate", "normal", "direct"),
                        n_uniform = 10, n_simulate = 50,
                        type = c("deviance", "pearson", "response"),
                        n_bins = c("sturges", "scott", "fd"),
-                       ncol = 2, level = 0.9,
+                       ncol = NULL, nrow = NULL,
+                       guides = "keep",
+                       level = 0.9,
                        ci_col = "black", ci_alpha = 0.2,
                        point_col = "black", point_alpha = 1,
                        line_col = "red",
                        ...) {
     ## process args
     method <- match.arg(method)
+    if (identical(method, "direct")) {
+        message("`method = \"direct\"` is deprecated, use `\"uniform\"`")
+        method <- "uniform"
+    }
     type <- match.arg(type)
     if (is.character(n_bins)) {
         n_bins <- match.arg(n_bins)
@@ -615,9 +685,15 @@
                                 subtitle = NULL)
     plt4 <- observed_fitted_plot(model, subtitle = NULL, point_col = point_col,
                                  point_alpha = point_alpha)
-
-    plot_grid(plt1, plt2, plt3, plt4, ncol = ncol, align = "hv",
-              axis = "lrtb", ...)
+    ## return
+    n_plots <- 4
+    if (is.null(ncol) && is.null(nrow)) {
+        ncol <- ceiling(sqrt(n_plots))
+        nrow <- ceiling(n_plots / ncol)
+    }
+    wrap_plots(plt1, plt2, plt3, plt4,
+               byrow = TRUE, ncol = ncol, nrow = nrow, guides = guides,
+               ...)
 }
 
 ##' @rdname appraise
@@ -637,4 +713,166 @@
         model[["y"]] <- model.response(model.frame(model))
     }
     appraise.gam(model, ...)
+}
+
+##' Worm plot of model residuals
+##'
+##' @inheritParams qq_plot
+##'
+##' @export
+`worm_plot` <- function(model, ...) {
+    UseMethod("worm_plot")
+}
+
+##' @export
+`worm_plot.default` <- function(model, ...) {
+    stop("Unable to produce a worm plot for <",
+         class(model)[[1L]], ">",
+         call. = FALSE)           # don't show the call, simpler error
+}
+
+##' @inheritParams qq_plot.gam
+##' @rdname worm_plot
+##'
+##' @note The wording used in [mgcv::qq.gam()] uses *direct* in reference to the
+##'   simulated residuals method (`method = "simulated"`). To avoid confusion,
+##'   `method = "direct"` is deprecated in favour of `method = "uniform"`.
+##' 
+##' @export
+##'
+##' @importFrom dplyr mutate
+##' @importFrom ggplot2 ggplot geom_point geom_hline geom_ribbon labs aes_string
+##' @importFrom tools toTitleCase
+##'
+##' @examples
+##' load_mgcv()
+##' ## simulate binomial data...
+##' dat <- data_sim("eg1", n = 200, dist = "binary", scale = .33, seed = 0)
+##' p <- binomial()$linkinv(dat$f)               # binomial p
+##' n <- sample(c(1, 3), 200, replace = TRUE) # binomial n
+##' dat <- transform(dat, y = rbinom(n, n, p), n = n)
+##' m <- gam( y / n ~ s(x0) + s(x1) + s(x2) + s(x3),
+##'          family = binomial, data = dat, weights = n,
+##'          method = "REML")
+##'
+##' ## Worm plot; default using direct randomization of uniform quantiles
+##' ## Note no reference bands are drawn with this method.
+##' worm_plot(m)
+##'
+##' ## Alternatively use simulate new data from the model, which
+##' ## allows construction of reference intervals for the Q-Q plot
+##' worm_plot(m, method = "simulate", point_col = "steelblue",
+##'           point_alpha = 0.4)
+##'
+##' ## ... or use the usual normality assumption
+##' worm_plot(m, method = "normal")
+`worm_plot.gam` <- function(model,
+                          method = c("uniform", "simulate", "normal", "direct"),
+                          type = c("deviance", "response", "pearson"),
+                          n_uniform = 10, n_simulate = 50,
+                          level = 0.9,
+                          ylab = NULL, xlab = NULL,
+                          title = NULL, subtitle = NULL, caption = NULL,
+                          ci_col = "black",
+                          ci_alpha = 0.2,
+                          point_col = "black",
+                          point_alpha = 1,
+                          line_col = "red", ...) {
+    method <- match.arg(method)         # what method for the QQ plot?
+    if (identical(method, "direct")) {
+        message("`method = \"direct\"` is deprecated, use `\"uniform\"`")
+        method <- "uniform"
+    }
+    ## check if we can do the method
+    if (identical(method, "uniform") &&
+        is.null(fix.family.qf(family(model))[["qf"]])) {
+        method <- "simulate"
+    }
+    if (identical(method, "simulate") &&
+        is.null(fix.family.rd(family(model))[["rd"]])) {
+        method <- "normal"
+    }
+    
+    if (level <= 0 || level >= 1) {
+        stop("Level must be 0 < level < 1. Supplied level <", level, ">",
+             call. = FALSE)
+    }
+
+    type <- match.arg(type)       # what type of residuals
+
+    ## generate theoretical quantiles
+    df <- switch(method,
+                 uniform  = qq_uniform(model, n = n_uniform, type = type,
+                                       level = level, detrend = TRUE),
+                 simulate = qq_simulate(model, n = n_simulate, type = type,
+                                        level = level, detrend = TRUE),
+                 normal   = qq_normal(model, type = type, level = level,
+                                      detrend = TRUE))
+    df <- as_tibble(df)
+
+    ## add labels if not supplied
+    if (is.null(ylab)) {
+        ylab <- paste(toTitleCase(type), "residuals (Deviation)")
+    }
+
+    if (is.null(xlab)) {
+        xlab <- "Theoretical quantiles"
+    }
+
+    if (is.null(title)) {
+        title <- "Worm plot of residuals"
+    }
+
+    if (is.null(subtitle)) {
+        subtitle <- paste("Method:", method)
+    }
+
+    ## base plot
+    plt <- ggplot(df, aes_string(x = "theoretical", y = "residuals"))
+
+    ## Now need a reference horizonta line
+    plt <- plt + geom_hline(yintercept = 0, col = line_col)
+
+    ## add reference interval
+    if (isTRUE(method %in% c("simulate", "normal"))) {
+        plt <- plt + geom_ribbon(aes_string(ymin = "lower", ymax = "upper",
+                                            x = "theoretical"),
+                                 inherit.aes = FALSE,
+                                 alpha = ci_alpha, fill = ci_col)
+    }
+
+    ## add point layer
+    plt <- plt + geom_point(colour = point_col, alpha = point_alpha)
+
+    ## add labels
+    plt <- plt + labs(title = title, subtitle = subtitle, caption = caption,
+                      y = ylab, x = xlab)
+
+    ## return
+    plt
+}
+
+
+##' @export
+##' @rdname worm_plot
+`worm_plot.glm` <- function(model, ...) {
+    if (is.null(model[["sig2"]])) {
+        model[["sig2"]] <- summary(model)$dispersion
+    }
+    worm_plot.gam(model, ...)
+}
+
+##' @rdname worm_plot
+##' @importFrom stats df.residual
+`worm_plot.lm` <- function(model, ...) {
+    r <- residuals(model)
+    r.df <- df.residual(model)
+    model[["sig2"]] <- sum((r- mean(r))^2) / r.df
+    if (is.null(weights(model))) {
+        model$prior.weights <- rep(1, nrow(model.frame(model)))
+    }
+    if (is.null(model[["linear.predictors"]])) {
+        model[["linear.predictors"]] <- model[["fitted.values"]]
+    }
+    worm_plot.gam(model, ...)
 }

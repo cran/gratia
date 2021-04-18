@@ -15,20 +15,18 @@
 \alias{inv_link.gamm}
 \alias{inv_link.list}
 \alias{inv_link.glm}
+\alias{extract_link}
+\alias{extract_link.family}
+\alias{extract_link.general.family}
 \title{Extract link and inverse link functions from models}
 \usage{
 link(object, ...)
 
-\method{link}{family}(
-  object,
-  parameter = c("location", "scale", "shape"),
-  which_eta = NULL,
-  ...
-)
+\method{link}{family}(object, parameter = NULL, which_eta = NULL, ...)
 
-\method{link}{gam}(object, parameter = c("location", "scale", "shape"), ...)
+\method{link}{gam}(object, parameter = NULL, which_eta = NULL, ...)
 
-\method{link}{bam}(object, parameter = c("location", "scale", "shape"), ...)
+\method{link}{bam}(object, parameter = NULL, which_eta = NULL, ...)
 
 \method{link}{gamm}(object, ...)
 
@@ -38,22 +36,23 @@ link(object, ...)
 
 inv_link(object, ...)
 
-\method{inv_link}{family}(
-  object,
-  parameter = c("location", "scale", "shape"),
-  which_eta = NULL,
-  ...
-)
+\method{inv_link}{family}(object, parameter = NULL, which_eta = NULL, ...)
 
-\method{inv_link}{gam}(object, parameter = c("location", "scale", "shape"), ...)
+\method{inv_link}{gam}(object, parameter = NULL, which_eta = NULL, ...)
 
-\method{inv_link}{bam}(object, parameter = c("location", "scale", "shape"), ...)
+\method{inv_link}{bam}(object, parameter = NULL, which_eta = NULL, ...)
 
 \method{inv_link}{gamm}(object, ...)
 
 \method{inv_link}{list}(object, ...)
 
 \method{inv_link}{glm}(object, ...)
+
+extract_link(family, ...)
+
+\method{extract_link}{family}(family, inverse = FALSE, ...)
+
+\method{extract_link}{general.family}(family, parameter, inverse = FALSE, which_eta = NULL, ...)
 }
 \arguments{
 \item{object}{a family object or a fitted model from which to extract the
@@ -65,13 +64,20 @@ supported.}
 
 \item{parameter}{character; which parameter of the distribution. Usually
 \code{"location"} but \code{"scale"} and \code{"shape"} may be provided for location
-scale models. Other options include \code{"mu"} and \code{"sigma"} as synonyms for
-\code{"location"} and \code{"scale"} respectively, \code{"pi"} for the zero-inflation
-term in \code{\link[mgcv:ziplss]{mgcv::ziplss()}}, \code{"power"} for the  \code{\link[mgcv:twlss]{mgcv::twlss()}} power
-parameter, and \code{"xi"}, the shape parameter for  \code{\link[mgcv:gevlss]{mgcv::gevlss()}}.}
+scale models. Other options include \code{"mu"} as a synonym for \code{"location"},
+\code{"sigma"} for the scale parameter in \code{\link[mgcv:gaulss]{mgcv::gaulss()}}, \code{"pi"} for the
+zero-inflation term in \code{\link[mgcv:ziplss]{mgcv::ziplss()}}, \code{"power"} for the
+\code{\link[mgcv:twlss]{mgcv::twlss()}} power parameter, \code{"xi"}, the shape parameter for
+\code{\link[mgcv:gevlss]{mgcv::gevlss()}}, \code{"epsilon"} or \code{"skewness"} for the skewness and
+\code{"delta"} or \code{"kurtosis"} for the kurtosis parameter for
+\code{\link[mgcv:shash]{mgcv::shash()}}, or \code{"theta"} for the scale parameter of \code{\link[mgcv:gammals]{mgcv::gammals()}}.}
 
 \item{which_eta}{numeric; the linear predictor to extract for families
 \code{\link[mgcv:mvn]{mgcv::mvn()}} and \code{\link[mgcv:multinom]{mgcv::multinom()}}.}
+
+\item{family}{a family object, the result of a call to \code{\link[=family]{family()}}.}
+
+\item{inverse}{logical; return the inverse of the link function?}
 }
 \description{
 Returns the link or its inverse from an estimated model, and provides a
@@ -95,6 +101,9 @@ mod <- gam(list(y ~ s(x0) + s(x1) + s(x2) + s(x3), ~ 1), data = dat,
 
 link(mod, parameter = "scale")
 inv_link(mod, parameter = "scale")
+
+## Works with `family` objects too
+link(shash(), parameter = "skewness")
 }
 \author{
 Gavin L. Simpson

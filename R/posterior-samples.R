@@ -55,12 +55,19 @@
 ##' Draw fitted values from the posterior distribution
 ##'
 ##' Expectations (fitted values) of the response drawn from the posterior
-##'   distribution of fitted model, created via `simulate()` (e.g.
-##'   [simulate.gam()]) and returned in a tidy, long, format.
+##' distribution of fitted model using a Gaussian approximation to the
+##' posterior.
+##'
+##' @param method character; the method used to generate samples from the
+##'   posterior distribution of the model. `"gaussian"`, the default, uses a
+##'   Gaussian approximation to the posterior. `"mh"` uses a simple Metropolis
+##'   Hastings sampler, while `"inla"` uses a variant of Integrated Nested
+##'   Laplace Approximation due to Wood (2019). Currently, the only available
+##'   option is `"gaussian"`.
 ##'
 ##' @return A tibble (data frame) with 3 columns containing the posterior
 ##'   predicted values in long format. The columns are
-##' * `row` (integet) the row of `newdata` that each posterior draw relates to,
+##' * `row` (integer) the row of `newdata` that each posterior draw relates to,
 ##' * `draw` (integer) an index, in range `1:n`, indicating which draw each row
 ##'     relates to,
 ##' * `response` (numeric) the predicted response for the indicated row of
@@ -69,8 +76,12 @@
 ##' @author Gavin L. Simpson
 ##'
 ##' @inheritParams posterior_samples
+##'
+##' @references
+##'
+##' Wood, S.N., (2020). Simplified integrated nested Laplace approximation.
+##'   *Biometrika* **107**, 223--230. \doi{10.1093/biomet/asz044}
 ##' 
-##' @rdname predicted_samples
 ##' @export
 `fitted_samples` <- function(model, ...) {
     UseMethod("fitted_samples")
@@ -83,7 +94,8 @@
 }
 
 ##' @export
-##' @rdname predicted_samples
+##'
+##' @rdname fitted_samples
 ##'
 ##' @importFrom stats vcov coef predict
 ##' @importFrom mvnfast rmvn
@@ -101,6 +113,7 @@
 ##' \dontshow{options(op)}
 `fitted_samples.gam` <- function(model, n = 1, newdata, seed,
                                  scale = c("response","linear_predictor"),
+                                 method = c("gaussian", "mh", "inla"),
                                  freq = FALSE, unconditional = FALSE,
                                  ncores = 1L, ...) {
     if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
@@ -121,6 +134,11 @@
 
     scale <- match.arg(scale)
 
+    method <- match.arg(method)
+    if (! method %in% c("gaussian")) {
+        warning("Only Gaussian approximation is currently available.")
+    }
+
     V <- get_vcov(model, frequentist = freq, unconditional = unconditional)
     Rbeta <- rmvn(n = n, mu = coef(model), sigma = V, ncores = ncores)
     ## don't need to pass freq, unconditional here as that is done for V
@@ -128,7 +146,7 @@
     sims <- Xp %*% t(Rbeta)
 
     if (isTRUE(identical(scale, "response"))) {
-        ilink <- family(model)[["linkinv"]]
+        ilink <- inv_link(model, parameter = "location") # family(model)[["linkinv"]]
         sims <- ilink(sims)
     }
 
@@ -144,15 +162,17 @@
     sims
 }
 
-##' Draw predicted values from the posterior distribution
+##' Draw new response values from the conditional distribution of the response
 ##'
-##' Predicted values of the response drawn from the posterior distribution of
-##'   fitted model, created via `simulate()` (e.g. [simulate.gam()])
-##'   and returned in a tidy, long, format.
+##' Predicted values of the response (new response data) are drawn from the
+##' fitted model, created via `simulate()` (e.g. [simulate.gam()]) and returned
+##' in a tidy, long, format. These predicted values do not include the
+##' uncertainty in the estimated model; they are simply draws from the
+##' conditional distribution of the response.
 ##'
 ##' @return A tibble (data frame) with 3 columns containing the posterior
 ##'   predicted values in long format. The columns are
-##' * `row` (integet) the row of `newdata` that each posterior draw relates to,
+##' * `row` (integer) the row of `newdata` that each posterior draw relates to,
 ##' * `draw` (integer) an index, in range `1:n`, indicating which draw each row
 ##'     relates to,
 ##' * `response` (numeric) the predicted response for the indicated row of

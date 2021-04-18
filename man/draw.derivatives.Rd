@@ -9,8 +9,9 @@
   select = NULL,
   scales = c("free", "fixed"),
   alpha = 0.2,
-  align = "hv",
-  axis = "lrtb",
+  ncol = NULL,
+  nrow = NULL,
+  guides = "keep",
   ...
 )
 }
@@ -34,14 +35,16 @@ terms.}
 \item{alpha}{numeric; alpha transparency for confidence or simultaneous
 interval.}
 
-\item{align}{characer; see argument \code{align} in \code{cowplot::plot_grid()}.
-Defaults to \code{"hv"} so that plots are nicely aligned.}
+\item{ncol}{numeric; the numbers of rows and columns over which to
+spread the plots}
 
-\item{axis}{characer; see argument \code{axis} in \code{cowplot::plot_grid()}.
-Defaults to \code{"lrtb"} so that plots are nicely aligned.}
+\item{nrow}{numeric; the numbers of rows and columns over which to
+spread the plots}
 
-\item{...}{arguments passed to \code{cowplot::plot_grid()}. Any arguments to
-\code{plot_grid()} may be supplied, except for: \code{plotlist} and \code{align}.}
+\item{guides}{character; one of \code{"keep"} (the default), \code{"collect"}, or
+\code{"auto"}. Passed to \code{\link[patchwork:plot_layout]{patchwork::plot_layout()}}}
+
+\item{...}{additional arguments passed to \code{\link[patchwork:wrap_plots]{patchwork::wrap_plots()}}.}
 }
 \description{
 Plot derivatives of smooths
@@ -49,11 +52,12 @@ Plot derivatives of smooths
 \examples{
 
 load_mgcv()
-\dontshow{set.seed(42)}
-dat <- gamSim(1, n = 400, dist = "normal", scale = 2, verbose = FALSE)
+dat <- data_sim("eg1", n = 800, dist = "normal", scale = 2, seed = 42)
 mod <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 
 ## first derivative of all smooths
-df <- derivatives(mod)
+df <- derivatives(mod, type = "central")
 draw(df)
+## fixed axis scales
+draw(df, scales = "fixed")
 }

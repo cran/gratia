@@ -1,3 +1,84 @@
+# gratia 0.6.0
+
+## Major changes
+
+* The {cowplot} package has been replaced by the {patchwork} package for
+  producing multi-panel figures in `draw()` and `appraise()`. This shouldn't
+  affect any code that used {gratia} only, but if you passed additional
+  arguments to `cowplot::plot_grid()` or used the `align` or `axis` arguments of
+  `draw()` and `appraise()`, you'll need to adapt code accordingly.
+  
+  Typically, you can simply delete the `align` or `axis` arguments and
+  {patchwork} will just work and align plots nicely. Any arguments passed via
+  `...` to `cowplot::plot_grid()` will just be ignored by
+  `patchwork::wrap_plots()` unless those passed arguments match any of the
+  arguments of `patchwork::wrap_plots()`.
+
+## New features
+
+* The {patchwork} package is now used for multi-panel figures. As such, {gratia}
+  no longer Imports from the {cowplot} package.
+
+* Worm plot diagnostic plots are available via new function `worm_plot()`. Worm
+  plots are detrended Q-Q plots, where deviation from the Q-Q reference line are
+  emphasized as deviations around the line occupy the full height of the plot.
+  
+  `worm_plot()` methods are available for models of classes `"gam"`, `"glm"`,
+  and `"lm"`. (#62)
+
+* Smooths can now be compared across models using `compare_smooths()`, and
+  comparisons visualised with the associated `draw()` method. (#85 @dill)
+  
+  This feature is a bit experimental; the returned object uses nested lists and
+  may change in the future if users find this confusing.
+
+* The reference line in `qq_plot()` with `method = "normal"` was previously
+  drawn as a line with intercept 0 and slope 1, to match the other methods. This
+  was inconsistent with `stats::qqplot()` which drew the line through the 1st
+  and 3rd quartiles. `qq_plot()` with `method = "normal"` now uses this robust
+  reference line. Reference lines for the other methods remain drawn with slope
+  1 and intercept 0.
+  
+* `qq_plot()` with `method = "normal"` now draws a point-wise reference band
+  using the standard error of the order statistic.
+
+* The `draw()` method for `penalty()` now plots the penalty matrix heatmaps in a
+  more-logical orientation, to match how the matrices might be written down or
+  printed to the R console.
+
+* `link()`, and `inv_link()` now work for models fitted with the `gumbls()` and
+  `shash()` families. (#84)
+
+* `extract_link()` is a lower level utility function related to `link()` and
+  `inv_link()`, and is now exported.
+
+## User visible changes
+
+* The default method name for generating reference quantiles in `qq_plot()` was
+  changed from `"direct"` to `"uniform"`, to avoid confusion with the
+  `mgcv::qq.gam()` help page description of the methods. Accordingly using
+  `method = "direct"` is deprecated and a message to this effect is displayed if
+  used.
+
+* The way smooths/terms are selected in `derivatives()` has been switched to use
+  the same mechanism as `draw.gam()`'s `select` argument. To get a partial match
+  to `term`, you now need to also specify `partial_match = TRUE` in the call to
+  `derivatives()`.
+
+## Bug fixes
+
+* `transform_fun()` had a copy paste bug in the definition of the then generic.
+  (#96 @Aariq)
+
+* `derivatives()` with user-supplied `newdata` would fail for factor by smooths
+  with `interval = "simultaneous"` and would introduce rows with derivative == 0
+  with `interval = "confidence"` because it didn't subset the rows of `newdata`
+  for the specific level of the by factor when computing derivatives.
+  (#102 @sambweber)
+
+* `evaluate_smooth()` can now handle random effect smooths defined using an
+  ordered factor. (#99 @StefanoMezzini)
+
 # gratia 0.5.1
 
 ## New features

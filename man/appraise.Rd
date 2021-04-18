@@ -10,12 +10,14 @@ appraise(model, ...)
 
 \method{appraise}{gam}(
   model,
-  method = c("direct", "simulate", "normal"),
+  method = c("uniform", "simulate", "normal", "direct"),
   n_uniform = 10,
   n_simulate = 50,
   type = c("deviance", "pearson", "response"),
   n_bins = c("sturges", "scott", "fd"),
-  ncol = 2,
+  ncol = NULL,
+  nrow = NULL,
+  guides = "keep",
   level = 0.9,
   ci_col = "black",
   ci_alpha = 0.2,
@@ -30,10 +32,10 @@ appraise(model, ...)
 \arguments{
 \item{model}{a fitted model. Currently only class \code{"gam"}.}
 
-\item{...}{arguments passed to \code{\link[cowplot:plot_grid]{cowplot::plot_grid()}}, except for \code{align}
-and \code{axis}, which are set internally.}
+\item{...}{arguments passed to \code{\link[patchwork:wrap_plots]{patchwork::wrap_plots()}}.}
 
-\item{method}{character; method used to generate theoretical quantiles.}
+\item{method}{character; method used to generate theoretical quantiles. Note
+that \code{method = "direct"} is deprecated in favour of \code{method = "uniform"}.}
 
 \item{n_uniform}{numeric; number of times to randomize uniform quantiles
 in the direct computation method (\code{method = "direct"}) for QQ plots.}
@@ -48,8 +50,11 @@ plots.}
 \item{n_bins}{character or numeric; either the number of bins or a string
 indicating how to calculate the number of bins.}
 
-\item{ncol}{numeric; number of columns to draw plots in. See
-\code{\link[cowplot:plot_grid]{cowplot::plot_grid()}}.}
+\item{ncol, nrow}{numeric; the numbers of rows and columns over which to
+spread the plots.}
+
+\item{guides}{character; one of \code{"keep"} (the default), \code{"collect"}, or
+\code{"auto"}. Passed to \code{\link[patchwork:plot_layout]{patchwork::plot_layout()}}}
 
 \item{level}{numeric; the coverage level for QQ plot reference intervals.
 Must be strictly \verb{0 < level < 1}. Only used with \code{method = "simulate"}.}
@@ -68,6 +73,11 @@ reference line in the residuals vs linear predictor plot.}
 }
 \description{
 Model diagnostic plots
+}
+\note{
+The wording used in \code{\link[mgcv:qq.gam]{mgcv::qq.gam()}} uses \emph{direct} in reference to the
+simulated residuals method (\code{method = "simulated"}). To avoid confusion,
+\code{method = "direct"} is deprecated in favour of \code{method = "uniform"}.
 }
 \examples{
 library(mgcv)

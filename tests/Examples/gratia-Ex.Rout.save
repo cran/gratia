@@ -1,6 +1,6 @@
 
-R version 4.0.3 (2020-10-10) -- "Bunny-Wunnies Freak Out"
-Copyright (C) 2020 The R Foundation for Statistical Computing
+R version 4.0.4 (2021-02-15) -- "Lost Library Book"
+Copyright (C) 2021 The R Foundation for Statistical Computing
 Platform: x86_64-redhat-linux-gnu (64-bit)
 
 R is free software and comes with ABSOLUTELY NO WARRANTY.
@@ -78,7 +78,7 @@ Type 'q()' to quit R.
  8  8.51   0.661  0.781  0.947  0.859      7.94   0.434     1.67    -3.20 
  9 10.6    0.629  0.0111 0.339  0.446      7.94   0.512    -1.95     2.63 
 10  3.72   0.0618 0.940  0.0317 0.677      7.94  -0.695     3.20    -3.35 
-# ... with 390 more rows, and 1 more variable: `.s(x3)` <dbl>
+# ... with 390 more rows, and 1 more variable: .s(x3) <dbl>
 > ## Don't show: 
 > options(op)
 > ## End(Don't show)
@@ -210,7 +210,7 @@ detaching ‘package:mgcv’
 > 
 > library(mgcv)
 Loading required package: nlme
-This is mgcv 1.8-33. For overview type 'help("mgcv-package")'.
+This is mgcv 1.8-34. For overview type 'help("mgcv-package")'.
 > ## Don't show: 
 > set.seed(2)
 > ## End(Don't show)
@@ -247,6 +247,56 @@ detaching ‘package:mgcv’, ‘package:nlme’
 > 
 > bf <- basis(s(x0), data = df)
 > bf <- basis(s(x2, by = fac, bs = 'bs'), data = df, constraints = TRUE)
+> ## Don't show: 
+> options(op)
+> ## End(Don't show)
+> 
+> 
+> 
+> cleanEx()
+
+detaching ‘package:mgcv’
+
+> nameEx("compare_smooths")
+> ### * compare_smooths
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: compare_smooths
+> ### Title: Compare smooths across models
+> ### Aliases: compare_smooths
+> 
+> ### ** Examples
+> 
+> ## Don't show: 
+> op <- options(cli.unicode = FALSE, digits = 5)
+> ## End(Don't show)
+> load_mgcv()
+> dat <- data_sim("eg1", seed = 2)
+> 
+> ## models to compare smooths across - artificially create differences
+> m1 <- gam(y ~ s(x0, k = 5) + s(x1, k = 5) + s(x2, k = 5) + s(x3, k = 5),
++           data = dat, method = "REML")
+> m2 <- gam(y ~ s(x0, bs = 'ts') + s(x1, bs = 'ts') + s(x2, bs = 'ts') +
++           s(x3, bs = 'ts'), data = dat, method = "REML")
+> 
+> ## build comparisons
+> comp <- compare_smooths(m1, m2)
+> comp
+# A tibble: 8 x 5
+  model smooth type          by    data                  
+  <chr> <chr>  <chr>         <chr> <list>                
+1 m1    s(x0)  TPRS          NA    <tibble[,3] [100 x 3]>
+2 m2    s(x0)  TPRS (shrink) NA    <tibble[,3] [100 x 3]>
+3 m1    s(x1)  TPRS          NA    <tibble[,3] [100 x 3]>
+4 m2    s(x1)  TPRS (shrink) NA    <tibble[,3] [100 x 3]>
+5 m1    s(x2)  TPRS          NA    <tibble[,3] [100 x 3]>
+6 m2    s(x2)  TPRS (shrink) NA    <tibble[,3] [100 x 3]>
+7 m1    s(x3)  TPRS          NA    <tibble[,3] [100 x 3]>
+8 m2    s(x3)  TPRS (shrink) NA    <tibble[,3] [100 x 3]>
+> ## notice that the result is a nested tibble
+> 
+> draw(comp)
 > ## Don't show: 
 > options(op)
 > ## End(Don't show)
@@ -457,6 +507,39 @@ detaching ‘package:mgcv’
  9 s(x0)  x0    0.0403         7.32  3.15  1.96 1.14   13.5
 10 s(x0)  x0    0.0453         7.29  3.10  1.96 1.21   13.4
 # ... with 790 more rows
+> 
+> ## derivatives for a selected smooth
+> derivatives(mod, type = "central", term = "s(x1)")
+# A tibble: 200 x 8
+   smooth var       data derivative    se  crit lower upper
+   <chr>  <chr>    <dbl>      <dbl> <dbl> <dbl> <dbl> <dbl>
+ 1 s(x1)  x1    0.000405     -0.907  3.12  1.96 -7.02  5.20
+ 2 s(x1)  x1    0.00541      -0.907  3.12  1.96 -7.02  5.20
+ 3 s(x1)  x1    0.0104       -0.906  3.11  1.96 -7.01  5.20
+ 4 s(x1)  x1    0.0154       -0.903  3.11  1.96 -6.99  5.19
+ 5 s(x1)  x1    0.0204       -0.898  3.10  1.96 -6.97  5.17
+ 6 s(x1)  x1    0.0254       -0.891  3.08  1.96 -6.93  5.15
+ 7 s(x1)  x1    0.0304       -0.880  3.06  1.96 -6.88  5.12
+ 8 s(x1)  x1    0.0354       -0.867  3.04  1.96 -6.82  5.08
+ 9 s(x1)  x1    0.0404       -0.850  3.00  1.96 -6.74  5.04
+10 s(x1)  x1    0.0454       -0.829  2.96  1.96 -6.64  4.98
+# ... with 190 more rows
+> ## or via a partial match
+> derivatives(mod, type = "central", term = "x1", partial_match = TRUE)
+# A tibble: 200 x 8
+   smooth var       data derivative    se  crit lower upper
+   <chr>  <chr>    <dbl>      <dbl> <dbl> <dbl> <dbl> <dbl>
+ 1 s(x1)  x1    0.000405     -0.907  3.12  1.96 -7.02  5.20
+ 2 s(x1)  x1    0.00541      -0.907  3.12  1.96 -7.02  5.20
+ 3 s(x1)  x1    0.0104       -0.906  3.11  1.96 -7.01  5.20
+ 4 s(x1)  x1    0.0154       -0.903  3.11  1.96 -6.99  5.19
+ 5 s(x1)  x1    0.0204       -0.898  3.10  1.96 -6.97  5.17
+ 6 s(x1)  x1    0.0254       -0.891  3.08  1.96 -6.93  5.15
+ 7 s(x1)  x1    0.0304       -0.880  3.06  1.96 -6.88  5.12
+ 8 s(x1)  x1    0.0354       -0.867  3.04  1.96 -6.82  5.08
+ 9 s(x1)  x1    0.0404       -0.850  3.00  1.96 -6.74  5.04
+10 s(x1)  x1    0.0454       -0.829  2.96  1.96 -6.64  4.98
+# ... with 190 more rows
 > ## Don't show: 
 > options(op)
 > ## End(Don't show)
@@ -525,15 +608,14 @@ detaching ‘package:mgcv’
 > 
 > 
 > load_mgcv()
-> ## Don't show: 
-> set.seed(42)
-> ## End(Don't show)
-> dat <- gamSim(1, n = 400, dist = "normal", scale = 2, verbose = FALSE)
+> dat <- data_sim("eg1", n = 800, dist = "normal", scale = 2, seed = 42)
 > mod <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 > 
 > ## first derivative of all smooths
-> df <- derivatives(mod)
+> df <- derivatives(mod, type = "central")
 > draw(df)
+> ## fixed axis scales
+> draw(df, scales = "fixed")
 > 
 > 
 > 
@@ -747,6 +829,41 @@ detaching ‘package:mgcv’
 
 detaching ‘package:mgcv’
 
+> nameEx("edf")
+> ### * edf
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: edf
+> ### Title: Effective degrees of freedom for smooth terms
+> ### Aliases: edf edf.gam
+> 
+> ### ** Examples
+> 
+> load_mgcv()
+> df <- data_sim("eg1", n = 400, seed = 42)
+> m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df, method = "REML")
+> edf(m)
+# A tibble: 4 x 2
+  smooth   edf
+  <chr>  <dbl>
+1 s(x0)   3.42
+2 s(x1)   3.22
+3 s(x2)   7.90
+4 s(x3)   1.88
+> edf(m, smooth = c("s(x0)", "s(x2)"))
+# A tibble: 2 x 2
+  smooth   edf
+  <chr>  <dbl>
+1 s(x0)   3.42
+2 s(x2)   7.90
+> 
+> 
+> 
+> cleanEx()
+
+detaching ‘package:mgcv’
+
 > nameEx("evaluate_smooth")
 > ### * evaluate_smooth
 > 
@@ -861,6 +978,51 @@ Factor `by' variable example
 
 detaching ‘package:mgcv’
 
+> nameEx("fitted_samples")
+> ### * fitted_samples
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: fitted_samples
+> ### Title: Draw fitted values from the posterior distribution
+> ### Aliases: fitted_samples fitted_samples.gam
+> 
+> ### ** Examples
+> 
+> load_mgcv()
+> ## Don't show: 
+> set.seed(2)
+> op <- options(cli.unicode = FALSE)
+> ## End(Don't show)
+> dat <- gamSim(1, n = 1000, dist = "normal", scale = 2)
+Gu & Wahba 4 term additive model
+> m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
+> 
+> fitted_samples(m1, n = 5, seed = 42)
+# A tibble: 5,000 x 3
+     row  draw fitted
+   <int> <int>  <dbl>
+ 1     1     1   6.24
+ 2     2     1   5.12
+ 3     3     1   7.06
+ 4     4     1   7.56
+ 5     5     1   9.20
+ 6     6     1   7.94
+ 7     7     1   6.13
+ 8     8     1   7.59
+ 9     9     1  13.9 
+10    10     1  12.7 
+# ... with 4,990 more rows
+> ## Don't show: 
+> options(op)
+> ## End(Don't show)
+> 
+> 
+> 
+> cleanEx()
+
+detaching ‘package:mgcv’
+
 > nameEx("fix_offset")
 > ### * fix_offset
 > 
@@ -926,7 +1088,8 @@ detaching ‘package:mgcv’
 > ### Title: Extract link and inverse link functions from models
 > ### Aliases: link link.family link.gam link.bam link.gamm link.glm
 > ###   link.list inv_link inv_link.family inv_link.gam inv_link.bam
-> ###   inv_link.gamm inv_link.list inv_link.glm
+> ###   inv_link.gamm inv_link.list inv_link.glm extract_link
+> ###   extract_link.family extract_link.general.family
 > 
 > ### ** Examples
 > 
@@ -956,11 +1119,17 @@ pmax(exp(eta), .Machine$double.eps)
 > link(mod, parameter = "scale")
 function (mu) 
 log(1/mu - 0.01)
-<environment: 0x56321bc18a08>
+<environment: 0x555c5dd14e00>
 > inv_link(mod, parameter = "scale")
 function (eta) 
 1/(exp(eta) + 0.01)
-<environment: 0x56321bc18a08>
+<environment: 0x555c5dd14e00>
+> 
+> ## Works with `family` objects too
+> link(shash(), parameter = "skewness")
+function (mu) 
+mu
+<environment: namespace:stats>
 > 
 > 
 > 
@@ -1059,7 +1228,7 @@ detaching ‘package:mgcv’
 > ### Name: penalty
 > ### Title: Extract and tidy penalty matrices
 > ### Aliases: penalty penalty.gam penalty.mgcv.smooth penalty.tensor.smooth
-> ###   penalty.t2.smooth
+> ###   penalty.t2.smooth penalty.re.smooth.spec
 > 
 > ### ** Examples
 > 
@@ -1074,16 +1243,16 @@ detaching ‘package:mgcv’
 # A tibble: 405 x 6
    smooth type  penalty row   col   value
    <chr>  <chr> <chr>   <chr> <chr> <dbl>
- 1 s(x0)  TPRS  s(x0)   f1    f1     9.81
- 2 s(x0)  TPRS  s(x0)   f1    f2    -1.45
- 3 s(x0)  TPRS  s(x0)   f1    f3    -5   
- 4 s(x0)  TPRS  s(x0)   f1    f4    -1.34
- 5 s(x0)  TPRS  s(x0)   f1    f5    -6.24
- 6 s(x0)  TPRS  s(x0)   f1    f6     3.90
- 7 s(x0)  TPRS  s(x0)   f1    f7    -7.74
- 8 s(x0)  TPRS  s(x0)   f1    f8    -1.79
- 9 s(x0)  TPRS  s(x0)   f1    f9     0   
-10 s(x0)  TPRS  s(x0)   f2    f1    -1.45
+ 1 s(x0)  TPRS  s(x0)   F1    F1     9.81
+ 2 s(x0)  TPRS  s(x0)   F1    F2    -1.45
+ 3 s(x0)  TPRS  s(x0)   F1    F3    -5   
+ 4 s(x0)  TPRS  s(x0)   F1    F4    -1.34
+ 5 s(x0)  TPRS  s(x0)   F1    F5    -6.24
+ 6 s(x0)  TPRS  s(x0)   F1    F6     3.90
+ 7 s(x0)  TPRS  s(x0)   F1    F7    -7.74
+ 8 s(x0)  TPRS  s(x0)   F1    F8    -1.79
+ 9 s(x0)  TPRS  s(x0)   F1    F9     0   
+10 s(x0)  TPRS  s(x0)   F2    F1    -1.45
 # ... with 395 more rows
 > 
 > # for a specific smooth
@@ -1091,16 +1260,16 @@ detaching ‘package:mgcv’
 # A tibble: 81 x 6
    smooth     type  penalty    row   col   value
    <chr>      <chr> <chr>      <chr> <chr> <dbl>
- 1 s(x2):fac1 TPRS  s(x2):fac1 f1    f1     9.94
- 2 s(x2):fac1 TPRS  s(x2):fac1 f1    f2     1.40
- 3 s(x2):fac1 TPRS  s(x2):fac1 f1    f3     4.78
- 4 s(x2):fac1 TPRS  s(x2):fac1 f1    f4     1.13
- 5 s(x2):fac1 TPRS  s(x2):fac1 f1    f5     5.84
- 6 s(x2):fac1 TPRS  s(x2):fac1 f1    f6    -4.06
- 7 s(x2):fac1 TPRS  s(x2):fac1 f1    f7     8.60
- 8 s(x2):fac1 TPRS  s(x2):fac1 f1    f8     1.44
- 9 s(x2):fac1 TPRS  s(x2):fac1 f1    f9     0   
-10 s(x2):fac1 TPRS  s(x2):fac1 f2    f1     1.40
+ 1 s(x2):fac1 TPRS  s(x2):fac1 F1    F1     9.94
+ 2 s(x2):fac1 TPRS  s(x2):fac1 F1    F2     1.40
+ 3 s(x2):fac1 TPRS  s(x2):fac1 F1    F3     4.78
+ 4 s(x2):fac1 TPRS  s(x2):fac1 F1    F4     1.13
+ 5 s(x2):fac1 TPRS  s(x2):fac1 F1    F5     5.84
+ 6 s(x2):fac1 TPRS  s(x2):fac1 F1    F6    -4.06
+ 7 s(x2):fac1 TPRS  s(x2):fac1 F1    F7     8.60
+ 8 s(x2):fac1 TPRS  s(x2):fac1 F1    F8     1.44
+ 9 s(x2):fac1 TPRS  s(x2):fac1 F1    F9     0   
+10 s(x2):fac1 TPRS  s(x2):fac1 F2    F1     1.40
 # ... with 71 more rows
 > ## Don't show: 
 > options(op)
@@ -1117,40 +1286,13 @@ detaching ‘package:mgcv’
 > 
 > flush(stderr()); flush(stdout())
 > 
-> ### Name: fitted_samples
-> ### Title: Draw fitted values from the posterior distribution
-> ### Aliases: fitted_samples fitted_samples.gam predicted_samples
-> ###   predicted_samples.gam
+> ### Name: predicted_samples
+> ### Title: Draw new response values from the conditional distribution of
+> ###   the response
+> ### Aliases: predicted_samples predicted_samples.gam
 > 
 > ### ** Examples
 > 
-> load_mgcv()
-> ## Don't show: 
-> set.seed(2)
-> op <- options(cli.unicode = FALSE)
-> ## End(Don't show)
-> dat <- gamSim(1, n = 1000, dist = "normal", scale = 2)
-Gu & Wahba 4 term additive model
-> m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
-> 
-> fitted_samples(m1, n = 5, seed = 42)
-# A tibble: 5,000 x 3
-     row  draw fitted
-   <int> <int>  <dbl>
- 1     1     1   6.24
- 2     2     1   5.12
- 3     3     1   7.06
- 4     4     1   7.56
- 5     5     1   9.20
- 6     6     1   7.94
- 7     7     1   6.13
- 8     8     1   7.59
- 9     9     1  13.9 
-10    10     1  12.7 
-# ... with 4,990 more rows
-> ## Don't show: 
-> options(op)
-> ## End(Don't show)
 > load_mgcv()
 > ## Don't show: 
 > set.seed(2)
@@ -1248,18 +1390,15 @@ detaching ‘package:mgcv’
 > 
 > ### Name: qq_plot
 > ### Title: Quantile-quantile plot of model residuals
-> ### Aliases: qq_plot qq_plot.gam qq_plot.glm
+> ### Aliases: qq_plot qq_plot.default qq_plot.gam qq_plot.glm qq_plot.lm
 > 
 > ### ** Examples
 > 
 > load_mgcv()
 > ## simulate binomial data...
-> set.seed(0)
-> n.samp <- 200
-> dat <- gamSim(1, n = n.samp, dist = "binary", scale = .33)
-Gu & Wahba 4 term additive model
+> dat <- data_sim("eg1", n = 200, dist = "binary", scale = .33, seed = 0)
 > p <- binomial()$linkinv(dat$f)               # binomial p
-> n <- sample(c(1, 3), n.samp, replace = TRUE) # binomial n
+> n <- sample(c(1, 3), 200, replace = TRUE) # binomial n
 > dat <- transform(dat, y = rbinom(n, n, p), n = n)
 > m <- gam( y / n ~ s(x0) + s(x1) + s(x2) + s(x3),
 +          family = binomial, data = dat, weights = n,
@@ -1479,12 +1618,51 @@ detaching ‘package:mgcv’
 > 
 > 
 > 
+> cleanEx()
+> nameEx("worm_plot")
+> ### * worm_plot
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: worm_plot
+> ### Title: Worm plot of model residuals
+> ### Aliases: worm_plot worm_plot.gam worm_plot.glm worm_plot.lm
+> 
+> ### ** Examples
+> 
+> load_mgcv()
+> ## simulate binomial data...
+> dat <- data_sim("eg1", n = 200, dist = "binary", scale = .33, seed = 0)
+> p <- binomial()$linkinv(dat$f)               # binomial p
+> n <- sample(c(1, 3), 200, replace = TRUE) # binomial n
+> dat <- transform(dat, y = rbinom(n, n, p), n = n)
+> m <- gam( y / n ~ s(x0) + s(x1) + s(x2) + s(x3),
++          family = binomial, data = dat, weights = n,
++          method = "REML")
+> 
+> ## Worm plot; default using direct randomization of uniform quantiles
+> ## Note no reference bands are drawn with this method.
+> worm_plot(m)
+> 
+> ## Alternatively use simulate new data from the model, which
+> ## allows construction of reference intervals for the Q-Q plot
+> worm_plot(m, method = "simulate", point_col = "steelblue",
++           point_alpha = 0.4)
+> 
+> ## ... or use the usual normality assumption
+> worm_plot(m, method = "normal")
+> 
+> 
+> 
 > ### * <FOOTER>
 > ###
 > cleanEx()
+
+detaching ‘package:mgcv’
+
 > options(digits = 7L)
 > base::cat("Time elapsed: ", proc.time() - base::get("ptime", pos = 'CheckExEnv'),"\n")
-Time elapsed:  11.46 0.127 11.561 0.001 0.002 
+Time elapsed:  11.868 0.136 12.054 0 0 
 > grDevices::dev.off()
 null device 
           1 
