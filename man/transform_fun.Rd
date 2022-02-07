@@ -3,14 +3,26 @@
 \name{transform_fun}
 \alias{transform_fun}
 \alias{transform_fun.evaluated_smooth}
+\alias{transform_fun.smooth_estimates}
+\alias{transform_fun.mgcv_smooth}
 \alias{transform_fun.evaluated_parametric_term}
+\alias{transform_fun.parametric_effects}
+\alias{transform_fun.tbl_df}
 \title{Transform estimated values and confidence intervals by applying a function}
 \usage{
 transform_fun(object, fun = NULL, ...)
 
 \method{transform_fun}{evaluated_smooth}(object, fun = NULL, ...)
 
+\method{transform_fun}{smooth_estimates}(object, fun = NULL, ...)
+
+\method{transform_fun}{mgcv_smooth}(object, fun = NULL, ...)
+
 \method{transform_fun}{evaluated_parametric_term}(object, fun = NULL, ...)
+
+\method{transform_fun}{parametric_effects}(object, fun = NULL, ...)
+
+\method{transform_fun}{tbl_df}(object, fun = NULL, column = NULL, ...)
 }
 \arguments{
 \item{object}{an object to apply the transform function to.}
@@ -18,6 +30,9 @@ transform_fun(object, fun = NULL, ...)
 \item{fun}{the function to apply.}
 
 \item{...}{additional arguments passed to methods.}
+
+\item{column}{character; for the \code{"tbl_df"} method, which column to
+transform.}
 }
 \value{
 Returns \code{object} but with the estimate and upper and lower values

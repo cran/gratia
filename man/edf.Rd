@@ -3,11 +3,19 @@
 \name{edf}
 \alias{edf}
 \alias{edf.gam}
-\title{Effective degrees of freedom for smooth terms}
+\alias{model_edf}
+\title{Effective degrees of freedom for smooths and GAMs}
 \usage{
 edf(object, ...)
 
-\method{edf}{gam}(object, smooth = NULL, alternative = FALSE, ...)
+\method{edf}{gam}(
+  object,
+  smooth = NULL,
+  type = c("default", "unconditional", "alternative"),
+  ...
+)
+
+model_edf(object, ..., type = c("default", "unconditional", "alternative"))
 }
 \arguments{
 \item{object}{a fitted model from which to extract smooth-specific EDFs.}
@@ -17,15 +25,22 @@ edf(object, ...)
 \item{smooth}{character; a vector of smooth terms whose EDFs will be
 extracted. If \code{NULL}, the default, EDFs for all smooths will be returned.}
 
-\item{alternative}{logical; return the alternative form for model EDFs of
-Wood (2017; pp. 252).}
+\item{type}{character: which type of EDF to return. \code{"default"} returns the
+standard EDF; \code{"unconditional"} selects the EDF corrected for smoothness
+parameter selection, if available; \code{"alternative"} returns the alternative
+formulation for EDF from Wood (2017, pp. 252)}
 }
 \description{
-Extracts the effective degrees of freedom (EDF) for model smooth terms
+Extracts the effective degrees of freedom (EDF) for model smooth terms or
+overall EDF for fitted GAMs
 }
 \details{
-Wood (2017; pp. 252) describes an alternative EDF describes an
-alternative EDF form for the entire model
+Multiple formulations for the effective degrees of freedom are
+available. The additional uncertainty due to selection of smoothness
+parameters can be taken into account when computing the EDF of smooths.
+This form of the EDF is available with \code{type = "unconditional"}.
+
+Wood (2017; pp. 252) describes an alternative EDF for the  model
 \deqn{\mathrm{EDF} = 2\mathrm{tr}(\mathbf{F}) -
   \mathrm{tr}(\mathbf{FF}),}{EDF = 2 * tr(F) - tr(F),} where
 \eqn{\mathrm{tr}} is the matrix trace and \eqn{\mathbf{F}}{F} is a matrix
@@ -37,8 +52,24 @@ relevent elements of \eqn{\mathrm{diag}(2\mathbf{F} - \mathbf{FF})}.
 }
 \examples{
 load_mgcv()
+\dontshow{op <- options(cli.unicode = FALSE, digits = 6)}
 df <- data_sim("eg1", n = 400, seed = 42)
 m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df, method = "REML")
+
+# extract the EDFs for all smooths
 edf(m)
+
+# or selected smooths
 edf(m, smooth = c("s(x0)", "s(x2)"))
+
+# accounting for smoothness parameter uncertainty
+edf(m, type = "unconditional")
+
+# over EDF of the model, including the intercept
+model_edf(m)
+
+# can get model EDF for multiple models
+m2 <- gam(y ~ s(x0) + s(x1) + s(x3), data = df, method = "REML")
+model_edf(m, m2)
+\dontshow{options(op)}
 }

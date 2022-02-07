@@ -4,14 +4,11 @@
 library("testthat")
 library("gratia")
 library("mgcv")
-## library("ggplot2")
-
-context("qq_plot-methods")
 
 ## Need a local wrapper to allow conditional use of vdiffr
-`expect_doppelganger` <- function(title, fig, path = NULL, ...) {
+`expect_doppelganger` <- function(title, fig, ...) {
   testthat::skip_if_not_installed("vdiffr")
-  vdiffr::expect_doppelganger(title, fig, path = path, ...)
+  vdiffr::expect_doppelganger(title, fig, ...)
 }
 
 ## simulate binomial data...
@@ -25,20 +22,26 @@ m <- gam(y / n ~ s(x0) + s(x1) + s(x2) + s(x3),
          family = binomial, data = dat, weights = n,
          method = "REML")
 
-types <- dQuote(c("deviance", "response", "pearson"))
-methods <- dQuote(c("uniform", "simulate", "normal"))
+types <- c("deviance", "response", "pearson")
+methods <- c("uniform", "simulate", "normal")
 
 test_that("qq_plot() uniform method works", {
+    skip_if(packageVersion("mgcv") < "1.8.36")
+    set.seed(42)
     plt <- qq_plot(m)      # randomisation of uniform quantiles
     expect_doppelganger("qq_plot uniform randomisation", plt)
 })
 
 test_that("qq_plot() uniform method works with response residuals", {
+    skip_if(packageVersion("mgcv") < "1.8.36")
+    set.seed(42)
     plt <- qq_plot(m, type = "response")
     expect_doppelganger("qq_plot uniform randomisation response residuals", plt)
 })
 
 test_that("qq_plot() uniform method works with pearson residuals", {
+    skip_if(packageVersion("mgcv") < "1.8.36")
+    set.seed(42)
     plt <- qq_plot(m, type = "pearson")
     expect_doppelganger("qq_plot uniform randomisation pearson residuals", plt)
 })
@@ -59,29 +62,34 @@ test_that("qq_plot() normal method works", {
 })
 
 test_that("qq_plot() simulate method works", {
+    set.seed(42)
     plt <- qq_plot(m, method = "simulate") # simulate data to get quantiles
     expect_doppelganger("qq_plot data simulation", plt)
 })
 
 test_that("qq_plot() simulate method works", {
+    set.seed(42)
     plt <- qq_plot(m, method = "simulate", type = "response")
     expect_doppelganger("qq_plot data simulation response residuals", plt)
 })
 
 test_that("qq_plot() simulate method works", {
+    set.seed(42)
     plt <- qq_plot(m, method = "simulate", type = "pearson")
     expect_doppelganger("qq_plot data simulation pearson residuals", plt)
 })
 
 test_that("qq_plot() fails if unsupported residuals requested", {
     expect_error(qq_plot(m, type = "scaled.pearson"),
-                 paste("'arg' should be one of", paste(types, collapse = ', ')),
+                 paste("'arg' should be one of",
+                   paste(dQuote(types), collapse = ', ')),
                  fixed = TRUE)
 })
 
 test_that("qq_plot() fails if unsupported method requested", {
     expect_error(qq_plot(m, method = "foo"),
-                 paste("'arg' should be one of", paste(methods, collapse = ', ')),
+                 paste("'arg' should be one of",
+                       paste(dQuote(methods), collapse = ', ')),
                  fixed = TRUE)
 })
 

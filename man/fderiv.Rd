@@ -22,19 +22,27 @@ fderiv(model, ...)
 \method{fderiv}{gamm}(model, ...)
 }
 \arguments{
-\item{model}{A fitted GAM. Currently only models fitted by \code{\link[mgcv:gam]{mgcv::gam()}} and \code{\link[mgcv:gamm]{mgcv::gamm()}} are supported.}
+\item{model}{A fitted GAM. Currently only models fitted by \code{\link[mgcv:gam]{mgcv::gam()}} and
+\code{\link[mgcv:gamm]{mgcv::gamm()}} are supported.}
 
 \item{...}{Arguments that are passed to other methods.}
 
-\item{newdata}{a data frame containing the values of the model covariates at which to evaluate the first derivatives of the smooths.}
+\item{newdata}{a data frame containing the values of the model covariates at
+which to evaluate the first derivatives of the smooths.}
 
-\item{term}{character; vector of one or more terms for which derivatives are required. If missing, derivatives for all smooth terms will be returned.}
+\item{term}{character; vector of one or more terms for which derivatives are
+required. If missing, derivatives for all smooth terms will be returned.}
 
-\item{n}{integer; if \code{newdata} is missing the original data can be reconstructed from \code{model} and then \code{n} controls the number of values over the range of each covariate with which to populate \code{newdata}.}
+\item{n}{integer; if \code{newdata} is missing the original data can be
+reconstructed from \code{model} and then \code{n} controls the number of values over
+the range of each covariate with which to populate \code{newdata}.}
 
-\item{eps}{numeric; the value of the finite difference used to approximate the first derivative.}
+\item{eps}{numeric; the value of the finite difference used to approximate
+the first derivative.}
 
-\item{unconditional}{logical; if \code{TRUE}, the smoothing parameter uncertainty corrected covariance matrix is used, \emph{if available}, otherwise the uncorrected Bayesian posterior covariance matrix is used.}
+\item{unconditional}{logical; if \code{TRUE}, the smoothing parameter uncertainty
+corrected covariance matrix is used, \emph{if available}, otherwise the
+uncorrected Bayesian posterior covariance matrix is used.}
 
 \item{offset}{numeric; value of offset to use in generating predictions.}
 }
@@ -42,31 +50,47 @@ fderiv(model, ...)
 An object of class \code{"fderiv"} is returned.
 }
 \description{
-The first derivative of the smooth functions of a GAM model calculated using finite differences.
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}}
+
+This function was deprecated because it was limited to first order forward
+finite differences for derivatives only, but couldn't be improved to offer
+the needed functionality without breaking backwards compatability with papers
+and blog posts that already used \code{fderiv()}. A replacement, \code{\link[=derivatives]{derivatives()}},
+is now available and recommended for new analyses.
 }
 \examples{
 load_mgcv()
-\dontshow{set.seed(2)}
-dat <- gamSim(1, n = 400, dist = "normal", scale = 2)
+\dontshow{
+op <- options(lifecycle_verbosity = "quiet")
+}
+dat <- data_sim("eg1", seed = 2)
 mod <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 
 ## first derivatives of all smooths...
 fd <- fderiv(mod)
+## now use -->
+fd <- derivatives(mod)
 
 ## ...and a selected smooth
 fd2 <- fderiv(mod, term = "x1")
+## now use -->
+fd2 <- derivatives(mod, term = "s(x1)")
 
 ## Models with factors
-set.seed(2)
-dat <- gamSim(4, n = 400, dist = "normal", scale = 2)
+dat <- data_sim("eg4", n = 400, dist = "normal", scale = 2, seed = 2)
 mod <- gam(y ~ s(x0) + s(x1) + fac, data = dat, method = "REML")
 
 ## first derivatives of all smooths...
 fd <- fderiv(mod)
+## now use -->
+fd <- derivatives(mod)
 
 ## ...and a selected smooth
 fd2 <- fderiv(mod, term = "x1")
+## now use -->
+fd2 <- derivatives(mod, term = "s(x1)")
 }
 \author{
 Gavin L. Simpson
 }
+\keyword{internal}

@@ -6,21 +6,7 @@ library("gratia")
 library("mgcv")
 library("gamm4")
 
-context("Testing Family Utility Functions")
-
 val <- 1
-
-## check link and inv_link for models
-set.seed(4234)
-dat <- gamSim(1, n = 400, dist = "normal", scale = 2, verbose = FALSE)
-m_glm <- glm(y ~ x0, data = dat)
-m_gam <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
-m_gaulss <- gam(list(y ~ s(x0) + s(x1) + s(x2) + s(x3), ~ 1), data = dat,
-                family = gaulss)
-m_gamm <- gamm(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat)
-m_bam <- bam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "fREML")
-m_gamm4 <- gamm4(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat)
-
 l <- list(mer = 1:3, gam = 1:3)
 
 test_that("link() works with a glm() model", {
@@ -196,6 +182,13 @@ test_that("link() works for tw() family objects", {
 
 test_that("link() works for scat() family objects", {
     f <- link(scat())
+    expect_type(f, "closure")
+    expect_identical(f(val), scat()$linkfun(val))
+    expect_identical(f, scat()$linkfun)
+})
+
+test_that("link() works for scat() family objects", {
+    f <- link(m_scat)
     expect_type(f, "closure")
     expect_identical(f(val), scat()$linkfun(val))
     expect_identical(f, scat()$linkfun)
@@ -551,7 +544,7 @@ test_that("extract_link() works on ziP() family objects", {
 })
 
 test_that("extract_link() works on ocat() family objects", {
-    theta = 1.1
+    theta <- 1.1
     ## link
     f <- extract_link(ocat(theta = theta))
     expect_type(f, "closure")
@@ -598,7 +591,7 @@ test_that("extract_link() works on gaulss() family objects", {
     expect_type(f, "closure")
     expect_identical(f(val), fam$linfo[[1L]]$linkinv(val))
     expect_identical(f, fam$linfo[[1L]]$linkinv)
-    
+
     ## scale parameter
     ## link
     f <- extract_link(fam, parameter = "scale")
@@ -641,7 +634,7 @@ test_that("extract_link() works on gammals() family objects", {
     expect_type(f, "closure")
     expect_identical(f(val), fam$linfo[[1L]]$linkinv(val))
     expect_identical(f, fam$linfo[[1L]]$linkinv)
-    
+
     ## scale parameter
     ## link
     f <- extract_link(fam, parameter = "scale")
@@ -684,7 +677,7 @@ test_that("extract_link() works on gumbls() family objects", {
     expect_type(f, "closure")
     expect_identical(f(val), fam$linfo[[1L]]$linkinv(val))
     expect_identical(f, fam$linfo[[1L]]$linkinv)
-    
+
     ## scale parameter
     ## link
     f <- extract_link(fam, parameter = "scale")
@@ -719,7 +712,7 @@ test_that("extract_link() works on twlss() family objects", {
     expect_type(f, "closure")
     expect_identical(f(val), fam$linfo[[1L]]$linkinv(val))
     expect_identical(f, fam$linfo[[1L]]$linkinv)
-    
+
     ## scale parameter
     ## link
     f <- extract_link(fam, parameter = "scale")
@@ -1005,6 +998,80 @@ test_that("extract_link() works on shash() family objects", {
     expect_identical(f, fam$linfo[[4L]]$linkinv)
 })
 
+## tests some specific extract functions
+test_that("twlss_link() can extract a link function", {
+    fam <- twlss()
+    expect_silent(f <- twlss_link(fam, parameter = "mu"))
+    expect_type(f, "closure")
+    expect_identical(f(val), fam$linfo[[1L]]$linkfun(val))
+    expect_identical(f, fam$linfo[[1L]]$linkfun)
+})
+
+## tests some specific extract functions
+test_that("gevlss_link() can extract a link function", {
+    fam <- gevlss()
+    expect_silent(f <- gevlss_link(fam, parameter = "mu"))
+    expect_type(f, "closure")
+    expect_identical(f(val), fam$linfo[[1L]]$linkfun(val))
+    expect_identical(f, fam$linfo[[1L]]$linkfun)
+})
+
+## tests some specific extract functions
+test_that("gumbls_link() can extract a link function", {
+    fam <- gumbls()
+    expect_silent(f <- gumbls_link(fam, parameter = "mu"))
+    expect_type(f, "closure")
+    expect_identical(f(val), fam$linfo[[1L]]$linkfun(val))
+    expect_identical(f, fam$linfo[[1L]]$linkfun)
+})
+
+## tests some specific extract functions
+test_that("gammals_link() can extract a link function", {
+    fam <- gammals()
+    expect_silent(f <- gammals_link(fam, parameter = "mu"))
+    expect_type(f, "closure")
+    expect_identical(f(val), fam$linfo[[1L]]$linkfun(val))
+    expect_identical(f, fam$linfo[[1L]]$linkfun)
+})
+
+## tests some specific extract functions
+test_that("ziplss_link() can extract a link function", {
+    fam <- ziplss()
+    expect_silent(f <- ziplss_link(fam, parameter = "mu"))
+    expect_type(f, "closure")
+    expect_identical(f(val), fam$linfo[[1L]]$linkfun(val))
+    expect_identical(f, fam$linfo[[1L]]$linkfun)
+})
+
+## tests some specific extract functions
+test_that("mvn_link() can extract a link function", {
+    fam <- mvn()
+    expect_silent(f <- mvn_link(fam, parameter = "location",
+                                 which_eta = 1))
+    expect_type(f, "closure")
+    expect_identical(f(val), fam$linfo[[1L]]$linkfun(val))
+    expect_identical(f, fam$linfo[[1L]]$linkfun)
+})
+
+## tests some specific extract functions
+test_that("multinom_link() can extract a link function", {
+    fam <- multinom()
+    expect_silent(f <- multinom_link(fam, parameter = "location",
+                                     which_eta = 1))
+    expect_type(f, "closure")
+    expect_identical(f(val), fam$linfo[[1L]]$linkfun(val))
+    expect_identical(f, fam$linfo[[1L]]$linkfun)
+})
+
+## tests some specific extract functions
+test_that("shash_link() can extract a link function", {
+    fam <- shash()
+    expect_silent(f <- shash_link(fam, parameter = "mu"))
+    expect_type(f, "closure")
+    expect_identical(f(val), fam$linfo[[1L]]$linkfun(val))
+    expect_identical(f, fam$linfo[[1L]]$linkfun)
+})
+
 ## test internal link functions fail gracefully
 test_that("gaussian_link() fails gracefully", {
     expect_error(gaussian_link(1), "'family' is not a family object")
@@ -1141,7 +1208,7 @@ test_that("multinom_link() fails gracefully", {
 test_that("family.gamm4 works for a gamm4 object", {
     fam <- family(m_gamm4)
     expect_s3_class(fam, class = "family")
-    expect_equal(fam, gaussian())
+    expect_equal(fam, gaussian(), ignore_function_env = TRUE)
 })
 
 test_that("family.gamm4 throws an error when passed a non-gamm4 object", {
@@ -1154,5 +1221,54 @@ test_that("family.gamm4 throws an error when passed a non-gamm4 object", {
 test_that("family.gamm works for a gamm object", {
     fam <- family(m_gamm)
     expect_s3_class(fam, class = "family")
-    expect_equal(fam, gaussian())
+    expect_equal(fam, gaussian(), ignore_function_env = TRUE)
+})
+
+## test family name
+test_that("family_name() works with a gam() model", {
+    f <- family_name(m_gam)
+    expect_type(f, "character")
+    expect_identical(f, "gaussian")
+})
+
+test_that("family_name() works with a glm() model", {
+    f <- family_name(m_glm)
+    expect_type(f, "character")
+    expect_identical(f, "gaussian")
+})
+
+test_that("family_name() works with a gamm() model", {
+    f <- family_name(m_gamm)
+    expect_type(f, "character")
+    expect_identical(f, "gaussian")
+})
+
+test_that("family_name() works with a gamm4() model", {
+    f <- family_name(m_gamm4)
+    expect_type(f, "character")
+    expect_identical(f, "gaussian")
+})
+
+test_that("family_name() works with a bam() model", {
+    f <- family_name(m_bam)
+    expect_type(f, "character")
+    expect_identical(f, "gaussian")
+})
+
+test_that("family_name.list() fails with a list that isn't a gamm4", {
+    expect_error(family_name(l),
+                 regexp = "`object` does not appear to a `gamm4` model object",
+                 fixed = TRUE)
+})
+
+test_that("family_name() works with a gam() gaulss model", {
+    f <- family_name(m_gaulss)
+    expect_type(f, "character")
+    expect_identical(f, "gaulss")
+})
+
+test_that("family_name() works with a family() object", {
+    f <- family_name(gaussian())
+    expect_type(f, "character")
+    expect_identical(f, "gaussian")
 })

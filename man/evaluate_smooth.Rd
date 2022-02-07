@@ -5,8 +5,6 @@
 \alias{evaluate_smooth.gam}
 \alias{evaluate_smooth.gamm}
 \alias{evaluate_smooth.list}
-\alias{evaluate_parametric_term}
-\alias{evaluate_parametric_term.gam}
 \title{Evaluate a smooth}
 \usage{
 evaluate_smooth(object, ...)
@@ -25,10 +23,6 @@ evaluate_smooth(object, ...)
 \method{evaluate_smooth}{gamm}(object, ...)
 
 \method{evaluate_smooth}{list}(object, ...)
-
-evaluate_parametric_term(object, ...)
-
-\method{evaluate_parametric_term}{gam}(object, term, unconditional = FALSE, ...)
 }
 \arguments{
 \item{object}{an object of class \code{"gam"} or \code{"gamm"}.}
@@ -56,8 +50,6 @@ a location is too far from data to be plotted when plotting 2-D smooths.
 The data are scaled into the unit square before deciding what to exclude,
 and \code{dist} is a distance within the unit square. See
 \code{\link[mgcv:exclude.too.far]{mgcv::exclude.too.far()}} for further details.}
-
-\item{term}{character; which parametric term whose effects are evaulated}
 }
 \value{
 A data frame, which is of class \code{"evaluated_1d_smooth"} or
@@ -65,9 +57,28 @@ A data frame, which is of class \code{"evaluated_1d_smooth"} or
 and \code{"data.frame"}.
 }
 \description{
-Evaluate a smooth at a grid of evenly spaced value over the range of the
-covariate associated with the smooth. Alternatively, a set of points at
-which the smooth should be evaluated can be supplied.
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Evaluate a smooth at a grid of evenly
+spaced value over the range of the covariate associated with the smooth.
+Alternatively, a set of points at which the smooth should be evaluated can be
+supplied.
+}
+\details{
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} \code{evaluate_smooth()} is deprecated in
+favour of \code{\link[=smooth_estimates]{smooth_estimates()}}, which provides a cleaner way to evaluate a
+smooth over a range of covariate values. \code{\link[=smooth_estimates]{smooth_estimates()}} can handle a
+much wider range of models than \code{evaluate_smooth()} is capable of and
+\code{\link[=smooth_estimates]{smooth_estimates()}} is much easier to extend to handle new smooth types.
+
+Most code that uses \code{evaluate_smooth()} should work simply by changing the
+function call to \code{\link[=smooth_estimates]{smooth_estimates()}}. However, there are some differences:
+\itemize{
+\item the \code{newdata} argument becomes \code{data}
+}
+
+Consider \code{evaluate_smooth()} to be \emph{soft}-deprecated; its use is discouraged
+and it may be removed at a later date if it becomes difficult to maintain
+the current functionality, but there are no intentions of removing it from
+gratia unless that situation arises.
 }
 \examples{
 load_mgcv()
