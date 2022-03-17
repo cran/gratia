@@ -1,3 +1,83 @@
+# gratia 0.7.2
+
+## New features
+
+* `draw.gam()` and `draw.smooth_estimates()` can now handle splines on the
+  sphere (`s(lat, long, bs = "sos")`) with special plotting methods using
+  `ggplot2::coord_map()` to handle the projection to spherical coordinates. An
+  orthographic projection is used by default, with an essentially arbitrary
+  (and northern hemisphere-centric) default for the orientation of the view.
+
+* `fitted_values()` insures that `data` (and hence the returned object) is a
+  tibble rather than a common or garden data frame.
+
+## Bug fixes
+
+* `draw.posterior_smooths()` was redundantly plotting duplicate data in the rug
+  plot. Now only the unique set of covariate values are used for drawing the
+  rug.
+
+* `data_sim()` was not passing the `scale` argument in the bivariate example
+  setting (`"eg2"`).
+
+* `draw()` methods for `gamm()` and `gamm4::gamm4()` fits were not passing 
+  arguments on to `draw.gam()`.
+
+* `draw.smooth_estimates()` would produce a subtitle with data for a continuous
+  by smooth as if it were a factor by smooth. Now the subtitle only contains the
+  name of the continuous by variable.
+
+# gratia 0.7.1
+
+Due to an issue with the size of the package source tarball, which wasn't
+discovered until after submission to CRAN, 0.7.1 was never released.
+
+## New features
+
+* `draw.gam()` and `draw.smooth_estimates()`: {gratia} can now handle smooths
+  of 3 or 4 covariates when plotting. For smooths of 3 covariates, the third
+  covariate is handled with `ggplot2::facet_wrap()` and a set (default `n` = 16)
+  of small multiples is drawn, each a 2d surface evaluated at the specified
+  value of the third covariate. For smooths of 4 covariates,
+  `ggplot2::facet_grid()` is used to draw the small multiples, with the default
+  producing 4 rows by 4 columns of plots at the specific values of the third
+  and fourth covariates. The number of small multiples produced is controlled
+  by new arguments `n_3d` (default = `n_3d = 16`) and `n_4d` (default
+  `n_4d = 4`, yielding `n_4d * n_4d` = 16 facets) respectively.
+
+  This only affects plotting; `smooth_estimates()` has been able to handle
+  smooths of any number of covariates for a while.
+
+  When handling higher-dimensional smooths, actually drawing the plots on the
+  default device can be slow, especially with the default value of `n = 100`
+  (which for 3D or 4D smooths would result in 160,000 data points being
+  plotted). As such it is recommended that you reduce `n` to a smaller value:
+  `n = 50` is a reasonable compromise of resolution and speed.
+
+* `model_concurvity()` returns concurvity measures from `mgcv::concurvity()`
+  for estimated GAMs in a tidy format. The synonym `concrvity()` is also
+  provided. A `draw()` method is provided which produces a bar plot or a heatmap
+  of the concurvity values depending on whether the overall concurvity of each
+  smooth or the pairwise concurvity of each smooth in the model is requested.
+
+* `draw.gam()` gains argument `resid_col = "steelblue3"` that allows the colour
+  of the partial residuals (if plotted) to be changed.
+
+## Bug fixes
+
+* `model_edf()` was not using the `type` argument. As a result it only ever
+   returned the default EDF type.
+
+* `add_constant()` methods weren't applying the constant to all the required
+  variables.
+
+* `draw.gam()`, `draw.parametric_effects()` now actually work for a model with
+  only parametric effects. #142 Reported by @Nelson-Gon
+
+* `parametric_effects()` would fail for a model with only parametric terms
+  because `predict.gam()` returns empty arrays when passed 
+  `exclude = character(0)`.
+
 # gratia 0.7.0
 
 ## Major changes
@@ -41,11 +121,11 @@ can handle more types of models and smooths, especially so in the case of
 ## New features
 
 * `fitted_values()` provides a tidy wrapper around `predict.gam()` for
-  generating fitted values from the model. New covariate values can be provide
+  generating fitted values from the model. New covariate values can be provided
   via argument `data`. A credible interval on the fitted values is returned, and
   values can be on the link (linear predictor) or response scale.
 
-  Note that this function returns expected values of the response. Hence
+  Note that this function returns expected values of the response. Hence,
   "fitted values" is used instead of "predictions" in the case of new covariate
   values to differentiate these values from the case of generating new response
   values from a fitted model.
@@ -56,7 +136,7 @@ can handle more types of models and smooths, especially so in the case of
 
 * New helper functions `typical_values()`, `factor_combos()` and
   `data_combos()` for quickly creating data sets for producing predictions from
-  fitted models where some of the covariates are fixed at come typical or
+  fitted models where some covariatess are fixed at come typical or
   representative values.
 
     `typical_values()` is a new helper function to return typical values for the
@@ -68,7 +148,7 @@ can handle more types of models and smooths, especially so in the case of
     
     `factor_combos()` extracts and returns the combinations of levels of factors
     found in data used to fit a model. Unlike `typical_values()`,
-    `factor_combos()` returns all of the combinations of factor levels observed
+    `factor_combos()` returns all the combinations of factor levels observed
     in the data, not just the modal level. Optionally, all combinations of
     factor levels can be returned, not just those in the observed data.
     

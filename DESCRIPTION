@@ -1,6 +1,6 @@
 Package: gratia
-Version: 0.7.0
-Date: 2022-02-07
+Version: 0.7.2
+Date: 2022-03-17
 Title: Graceful 'ggplot'-Based Graphics and Other Functions for GAMs
         Fitted Using 'mgcv'
 Authors@R: c(person(given = "Gavin L.", family = "Simpson",
@@ -27,8 +27,8 @@ Encoding: UTF-8
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 NeedsCompilation: no
-Packaged: 2022-02-07 14:59:45 UTC; au690221
+Packaged: 2022-03-17 20:35:21 UTC; au690221
 Author: Gavin L. Simpson [aut, cre] (<https://orcid.org/0000-0002-9084-8413>),
   Henrik Singmann [ctb] (<https://orcid.org/0000-0002-4842-3657>)
 Repository: CRAN
-Date/Publication: 2022-02-07 15:20:02 UTC
+Date/Publication: 2022-03-17 21:10:02 UTC

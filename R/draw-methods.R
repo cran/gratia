@@ -229,6 +229,7 @@
 #' ## plot, this time selecting only the factor-by smooth
 #' draw(sm2, select = "s(x2)", partial_match = TRUE, alpha = 0.7)
 #'
+#' \donttest{
 #' ## A 2D smooth example
 #' dat3 <- data_sim("eg2", n = 400, dist = "normal", scale = 1, seed = 1)
 #' ## fit a 2D smooth
@@ -237,6 +238,7 @@
 #' sm3 <- smooth_samples(m3, n = 10)
 #' ## plot just 6 of the draws, with contour line overlays
 #' draw(sm3, n_samples = 6, contour = TRUE, seed = 42)
+#' }
 `draw.smooth_samples` <- function(object,
                                   select = NULL,
                                   n_samples = NULL, seed = NULL,
@@ -375,6 +377,8 @@
     plt #return
 }
 
+#' @importFrom rlang .data
+#' @importFrom dplyr distinct
 `draw_1d_posterior_smooths` <- function(object, xlab = NULL, ylab = NULL,
                                         title = NULL, subtitle = NULL,
                                         caption = NULL, rug = TRUE, alpha = 1,
@@ -410,7 +414,8 @@
 
     ## add rug?
     if (!is.null(rug)) {
-        plt <- plt + geom_rug(mapping = aes_string(x = '.x1'),
+        plt <- plt + geom_rug(data = distinct(object, .data$.x1),
+                              mapping = aes_string(x = '.x1'),
                               inherit.aes = FALSE, sides = 'b', alpha = 0.5)
     }
 

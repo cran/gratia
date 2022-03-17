@@ -14,11 +14,14 @@
   ci_alpha = 0.2,
   ci_col = "black",
   smooth_col = "black",
+  resid_col = "steelblue3",
   partial_match = FALSE,
   discrete_colour = NULL,
   continuous_colour = NULL,
   continuous_fill = NULL,
   ylim = NULL,
+  projection = "orthographic",
+  orientation = NULL,
   ...
 )
 }
@@ -48,7 +51,9 @@ interval.}
 \item{ci_col}{colour specification for the confidence/credible intervals
 band. Affects the fill of the interval.}
 
-\item{smooth_col}{colour specification for the the smooth line.}
+\item{smooth_col}{colour specification for the smooth line.}
+
+\item{resid_col}{colour specification for the partial residuals.}
 
 \item{partial_match}{logical; should smooths be selected by partial matches
 with \code{select}? If \code{TRUE}, \code{select} can only be a single string to match
@@ -64,6 +69,17 @@ for the types of data.}
 for the types of data.}
 
 \item{ylim}{numeric; vector of y axis limits to use all \emph{all} panels drawn.}
+
+\item{projection}{character; projection to use, see \code{\link[mapproj:mapproject]{mapproj::mapproject()}}
+for a list.}
+
+\item{orientation}{an optional vector \code{c(latitude, longitude, rotation)}
+which describes where the "North Pole" should be when computing the
+projection. The third value is a clockwise rotation (in degrees), which
+defaults to the midrange of the longitude coordinates in the data. The
+default values for \code{orientation} therefore are
+`c(20, 0, mean(range(longitude))))`` if this is not specified by the user.
+See \code{\link[mapproj:mapproject]{mapproj::mapproject()}} for more information.}
 
 \item{...}{additional arguments passed to \code{\link[patchwork:wrap_plots]{patchwork::wrap_plots()}}.}
 }
@@ -86,4 +102,7 @@ draw(sm)
 
 # customising some plot elements
 draw(sm, ci_col = "steelblue", smooth_col = "forestgreen", ci_alpha = 0.3)
+
+# Add a constant to the plotted smooth
+draw(sm, constant = coef(m)[1])
 }

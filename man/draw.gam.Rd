@@ -14,6 +14,8 @@
   scales = c("free", "fixed"),
   ci_level = 0.95,
   n = 100,
+  n_3d = 16,
+  n_4d = 4,
   unconditional = FALSE,
   overall_uncertainty = TRUE,
   constant = NULL,
@@ -24,6 +26,7 @@
   ci_alpha = 0.2,
   ci_col = "black",
   smooth_col = "black",
+  resid_col = "steelblue3",
   contour_col = "black",
   n_contour = NULL,
   partial_match = FALSE,
@@ -34,6 +37,8 @@
   ncol = NULL,
   nrow = NULL,
   guides = "keep",
+  projection = "orthographic",
+  orientation = NULL,
   ...
 )
 }
@@ -72,6 +77,14 @@ terms.}
 \item{n}{numeric; the number of points over the range of the covariate at
 which to evaluate the smooth.}
 
+\item{n_3d}{numeric; the number of new observations to generate for the third
+dimension of a 3D smooth.}
+
+\item{n_4d}{numeric; the number of new observations to generate for the
+dimensions higher than 2 (!) of a \emph{k}D smooth (\emph{k} >= 4). For example, if
+the smooth is a 4D smooth, each of dimensions 3 and 4 will get \code{n_4d}
+new observations.}
+
 \item{unconditional}{logical; should confidence intervals include the
 uncertainty due to smoothness selection? If \code{TRUE}, the corrected Bayesian
 covariance matrix will be used.}
@@ -106,7 +119,9 @@ interval.}
 \item{ci_col}{colour specification for the confidence/credible intervals
 band. Affects the fill of the interval.}
 
-\item{smooth_col}{colour specification for the the smooth line.}
+\item{smooth_col}{colour specification for the smooth line.}
+
+\item{resid_col}{colour specification for the partial residuals.}
 
 \item{contour_col}{colour specification for contour lines.}
 
@@ -128,6 +143,17 @@ spread the plots}
 
 \item{guides}{character; one of \code{"keep"} (the default), \code{"collect"}, or
 \code{"auto"}. Passed to \code{\link[patchwork:plot_layout]{patchwork::plot_layout()}}}
+
+\item{projection}{character; projection to use, see \code{\link[mapproj:mapproject]{mapproj::mapproject()}}
+for a list.}
+
+\item{orientation}{an optional vector \code{c(latitude, longitude, rotation)}
+which describes where the "North Pole" should be when computing the
+projection. The third value is a clockwise rotation (in degrees), which
+defaults to the midrange of the longitude coordinates in the data. The
+default values for \code{orientation} therefore are
+`c(20, 0, mean(range(longitude))))`` if this is not specified by the user.
+See \code{\link[mapproj:mapproject]{mapproj::mapproject()}} for more information.}
 
 \item{...}{additional arguments passed to \code{\link[patchwork:wrap_plots]{patchwork::wrap_plots()}}.}
 }

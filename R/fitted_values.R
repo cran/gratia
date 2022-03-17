@@ -46,7 +46,7 @@
 #' @rdname fitted_values
 #' @importFrom rlang set_names .data
 #' @importFrom dplyr bind_cols mutate across
-#' @importFrom tibble as_tibble
+#' @importFrom tibble as_tibble is_tibble
 `fitted_values.gam` <- function(object,
                                 data = NULL,
                                 scale = c("response",
@@ -58,10 +58,12 @@
         stop("General likelihood GAMs not yet supported.")
     }
     scale <- match.arg(scale)
-    # 
+
     if (is.null(data)) {
         data <- delete_response(object, model_frame = FALSE) %>%
                 as_tibble()
+    } else if (!is_tibble(data)) {
+        data <- as_tibble(data)
     }
     fit <- predict(object, newdata = data, ..., type = "link",
                    se.fit = TRUE) %>%

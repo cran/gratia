@@ -1035,6 +1035,7 @@ vars_from_label <- function(label) {
 #' @return Returns `object` but with the estimate and upper and lower values
 #'   of the confidence interval transformed via the function.
 #'
+#' @export
 #' @author Gavin L. Simpson
 `transform_fun` <- function(object, fun = NULL , ...) {
     UseMethod("transform_fun")
@@ -1078,13 +1079,14 @@ vars_from_label <- function(label) {
 
 #' @rdname transform_fun
 #' @export
+#' @importFrom dplyr mutate across
+#' @importFrom tidyselect all_of
 `transform_fun.mgcv_smooth` <- function(object, fun = NULL, ...) {
     if (!is.null(fun)) {
         fun <- match.fun(fun)
         object <- mutate(object,
-                         est = fun(.data$est),
-                         lower_ci = fun(.data$lower_ci),
-                         upper_ci = fun(.data$upper_ci))
+                         across(all_of(c("est", "lower_ci", "upper_ci")),
+                                .fns = fun))
     }
 
     object
@@ -1092,17 +1094,15 @@ vars_from_label <- function(label) {
 
 #' @rdname transform_fun
 #' @export
+#' @importFrom dplyr mutate across
+#' @importFrom tidyselect all_of
 `transform_fun.evaluated_parametric_term` <- function(object, fun = NULL, ...) {
     ## If fun supplied, use it to transform est and the upper and lower interval
     if (!is.null(fun)) {
         fun <- match.fun(fun)
-        object[["est"]] <- fun(object[["est"]])
-        if (!is.null(object[["upper"]])) {
-            object[["upper"]] <- fun(object[["upper"]])
-        }
-        if (!is.null(object[["lower"]])) {
-            object[["lower"]] <- fun(object[["lower"]])
-        }
+        object <- mutate(object,
+                         across(all_of(c("est", "lower", "upper")),
+                                .fns = fun))
     }
 
     object
@@ -1110,17 +1110,15 @@ vars_from_label <- function(label) {
 
 #' @rdname transform_fun
 #' @export
+#' @importFrom dplyr mutate across
+#' @importFrom tidyselect all_of
 `transform_fun.parametric_effects` <- function(object, fun = NULL, ...) {
     ## If fun supplied, use it to transform est and the upper and lower interval
     if (!is.null(fun)) {
         fun <- match.fun(fun)
-        object[["partial"]] <- fun(object[["partial"]])
-        if (!is.null(object[["upper"]])) {
-            object[["upper"]] <- fun(object[["upper"]])
-        }
-        if (!is.null(object[["lower"]])) {
-            object[["lower"]] <- fun(object[["lower"]])
-        }
+        object <- mutate(object,
+                         across(any_of(c("partial")),
+                                .fns = fun))
     }
 
     object
@@ -1128,6 +1126,7 @@ vars_from_label <- function(label) {
 
 #' @rdname transform_fun
 #' @export
+#' @importFrom dplyr mutate across
 `transform_fun.tbl_df` <- function(object, fun = NULL, column = NULL, ...) {
     if (is.null(column)) {
         stop("'column' to modify must be supplied.")
@@ -1135,13 +1134,8 @@ vars_from_label <- function(label) {
     ## If fun supplied, use it to transform est and the upper and lower interval
     if (!is.null(fun)) {
         fun <- match.fun(fun)
-        object[[column]] <- fun(object[[column]])
-        if (!is.null(object[["upper"]])) {
-            object[["upper"]] <- fun(object[["upper"]])
-        }
-        if (!is.null(object[["lower"]])) {
-            object[["lower"]] <- fun(object[["lower"]])
-        }
+        object <- mutate(object,
+                         across(all_of(column), .fns = fun))
     }
 
     object
