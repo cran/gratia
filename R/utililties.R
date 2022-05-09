@@ -420,7 +420,7 @@
 #' @examples
 #' load_mgcv()
 #' \dontshow{set.seed(2)}
-#' df <- gamSim(1, n = 400, dist = "normal")
+#' df <- data_sim("eg1", n = 400, dist = "normal", seed = 2)
 #' m <- gam(y ~ s(x0) + s(x1) + offset(x2), data = df, method = "REML")
 #' names(model.frame(m))
 #' names(fix_offset(m, model.frame(m), offset_val = 1L))
@@ -458,7 +458,8 @@
 
 #' Is a model term an offset?
 #'
-#' Given a character vector of model terms, checks to see which, if any, is the model offset.
+#' Given a character vector of model terms, checks to see which, if any, is the
+#'   model offset.
 #'
 #' @param terms character vector of model terms.
 #'
@@ -470,7 +471,7 @@
 #'
 #' @examples
 #' load_mgcv()
-#' df <- gamSim(1, n = 400, dist = "normal")
+#' df <- data_sim("eg1", n = 400, dist = "normal")
 #' m <- gam(y ~ s(x0) + s(x1) + offset(x0), data = df, method = "REML")
 #' nm <- names(model.frame(m))
 #' nm
@@ -1244,4 +1245,23 @@ vars_from_label <- function(label) {
     }
     ## combine the elements. If `sm_by` is `NULL` it isn't included
     c(sm_terms, sm_by)
+}
+
+# does a tensor smooth involve a random effect marginal
+`involves_ranef_smooth` <- function(smooth) {
+    ## make sure we're using an actual smooth
+    check_is_mgcv_smooth(smooth)
+
+    out <- FALSE # return FALSE unless...
+
+    # check if this is a tensor product smooth
+    if (inherits(smooth, what = c("tensor.smooth", "t2.smooth"))) {
+        # check if any of the marginals inherit from the "random.effect" class
+        ranefs <- vapply(smooth[["margin"]], FUN = inherits,
+                         FUN.VALUE = logical(1L), what = "random.effect")
+        # return TRUE if any marginal is a random effect
+        out <- any(ranefs)
+    }
+
+    out
 }

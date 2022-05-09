@@ -6,7 +6,7 @@ knitr::opts_chunk$set(
 
 ## ----setup--------------------------------------------------------------------
 library("gratia")
-load_mgcv() # load mgcv quietly
+library("mgcv")
 
 ## ----data-sim-----------------------------------------------------------------
 df <- data_sim("eg1", seed = 42)

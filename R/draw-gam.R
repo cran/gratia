@@ -76,15 +76,15 @@
 #'   spread the plots
 #' @param guides character; one of `"keep"` (the default), `"collect"`, or
 #'   `"auto"`. Passed to [patchwork::plot_layout()]
-#' @param projection character; projection to use, see [mapproj::mapproject()]
-#'   for a list.
+#' @param projection character; projection to use, see [ggplot2::coord_map()]
+#'   for details.
 #' @param orientation an optional vector `c(latitude, longitude, rotation)`
 #'   which describes where the "North Pole" should be when computing the
 #'   projection. The third value is a clockwise rotation (in degrees), which
 #'   defaults to the midrange of the longitude coordinates in the data. The
 #'   default values for `orientation` therefore are
 #'   `c(20, 0, mean(range(longitude))))`` if this is not specified by the user.
-#'   See [mapproj::mapproject()] for more information.
+#'   See links in [ggplot2::coord_map()] for more information.
 #' @param ... additional arguments passed to [patchwork::wrap_plots()].
 #'
 #' @note Internally, plots of each smooth are created using [ggplot2::ggplot()]
@@ -130,12 +130,10 @@
 #'      continuous_fill = scale_fill_distiller(palette = "Spectral",
 #'                                             type = "div"))
 #'
+#' # See https://gavinsimpson.github.io/gratia/articles/custom-plotting.html
+#' # for more examples and for details on how to modify the theme of all the
+#' # plots produced by draw()
 #' # to modify all panels, for example to change the theme, use the & operator
-#' draw(m2, n_contour = 5, n = 50) &
-#'   theme_minimal()
-#'
-#' # customising some plot elements
-#' draw(m1, ci_col = "steelblue", smooth_col = "forestgreen", ci_alpha = 0.3)
 `draw.gam` <- function(object,
                        data = NULL,
                        select = NULL,

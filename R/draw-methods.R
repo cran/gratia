@@ -21,7 +21,7 @@
 #'   interval.
 #' @inheritParams draw.gam
 #'
-#' @importFrom ggplot2 ggplot geom_ribbon aes_string geom_line labs
+#' @importFrom ggplot2 ggplot geom_ribbon aes geom_line labs
 #' @importFrom patchwork wrap_plots
 #' @export
 #'
@@ -56,8 +56,11 @@
         take <- object[["smooth"]] == sm[i]
         df <- object[take, ]
         xvar <- unique(df[['var']])
-        plotlist[[i]] <- ggplot(df, aes_string(x = "data", y = "derivative")) +
-            geom_ribbon(aes_string(ymin = "lower", ymax = "upper", y = NULL),
+        plotlist[[i]] <- ggplot(df, aes(x = .data$data,
+                                        y = .data$derivative)) +
+            geom_ribbon(aes(ymin = .data$lower,
+                            ymax = .data$upper,
+                            y = NULL),
                         alpha = alpha) +
             geom_line() +
             labs(title = sm[i], x = xvar, y = "Derivative")
@@ -108,14 +111,13 @@
 #'
 #' @author Gavin L. Simpson
 #'
-#' @importFrom ggplot2 ggplot aes_ labs geom_line guides facet_wrap label_both
+#' @importFrom ggplot2 ggplot aes labs geom_line guides facet_wrap label_both
 #' 
 #' @export
 #'
 #' @examples
 #' load_mgcv()
-#' \dontshow{set.seed(42)}
-#' df <- gamSim(4, n = 400, verbose = FALSE)
+#' df <- data_sim("eg4", n = 400, seed = 42)
 #'
 #' bf <- basis(s(x0), data = df)
 #' draw(bf)
@@ -139,8 +141,9 @@
     }
 
     ## basis plot
-    plt <- ggplot(object, aes_(x = as.name(smooth_var), y = ~ value,
-                               colour = ~ bf)) +
+    plt <- ggplot(object, aes(x = .data[[smooth_var]],
+                              y = .data[["value"]],
+                              colour = .data[["bf"]])) +
         geom_line()
 
     ## default labels if none supplied
@@ -386,7 +389,9 @@
     data_names <- attr(object, "data_names")
     smooth_var <- data_names[[unique(object[["term"]])]]
 
-    plt <- ggplot(object, aes_(x = ~ .x1, y = ~ value, group = ~ draw)) +
+    plt <- ggplot(object, aes(x = .data[[".x1"]],
+                              y = .data[["value"]],
+                              group = .data[["draw"]])) +
         geom_line(alpha = alpha, colour = colour)
 
     ## default axis labels if none supplied
@@ -394,7 +399,7 @@
         xlab <- smooth_var
     }
     if (is.null(ylab)) {
-        ylab <- "Effect"
+        ylab <- "Partial effect"
     }
     if (is.null(title)) {
         title <- unique(object[["term"]])
@@ -415,15 +420,15 @@
     ## add rug?
     if (!is.null(rug)) {
         plt <- plt + geom_rug(data = distinct(object, .data$.x1),
-                              mapping = aes_string(x = '.x1'),
-                              inherit.aes = FALSE, sides = 'b', alpha = 0.5)
+                              mapping = aes(x = .data[[".x1"]]),
+                              inherit.aes = FALSE, sides = "b", alpha = 0.5)
     }
 
     plt
 }
 
 
-#' @importFrom ggplot2 ggplot guides aes_ geom_raster geom_contour labs
+#' @importFrom ggplot2 ggplot guides aes geom_raster geom_contour labs
 #'   scale_fill_distiller guide_colourbar
 #' @importFrom grid unit
 `draw_2d_posterior_smooths` <- function(object,
@@ -457,13 +462,13 @@
 
     ## this is how it should be done but smooth_samples doesn't put
     ##   the data into the object under their own names..., just .x1, .x2, etc
-    ## plt <- ggplot(object, aes_(x = as.name(xvars[1L]),
-    ##                           y = as.name(xvars[2L]))) +
-    plt <- ggplot(object, aes_string(x = ".x1", y = ".x2")) +
-        geom_raster(aes_(fill = ~ value))
+    plt <- ggplot(object, aes(x = .data[[".x1"]],
+                              y = .data[[".x2"]])) +
+        geom_raster(aes(fill = .data[["value"]]))
 
     if (contour) {
-        plt <- plt + geom_contour(aes_(z = ~ value), bins = n_contour,
+        plt <- plt + geom_contour(aes(z = .data[["value"]]),
+                                      bins = n_contour,
                                   colour = contour_col)
     }
 
@@ -482,7 +487,7 @@
 
     # add guide
     plt <- plt +
-        guides(fill = guide_colourbar(title = "Effect", 
+        guides(fill = guide_colourbar(title = "Partial effect",
                                       direction = "vertical",
                                       barheight = grid::unit(0.25, "npc")))
 
@@ -521,7 +526,7 @@
 #'   `"auto"`. Passed to [patchwork::plot_layout()]
 #' @inheritParams draw.gam
 #'
-#' @importFrom ggplot2 ggplot geom_ribbon aes_string geom_line labs lims
+#' @importFrom ggplot2 ggplot geom_ribbon aes geom_line labs lims
 #' @importFrom patchwork wrap_plots
 #' @importFrom purrr map
 #' @export
@@ -590,7 +595,6 @@
         }
     }
 
-    ## plot_grid(plotlist = plotlist, align = align, axis = axis, ...)
     n_plots <- length(plotlist)
     if (is.null(ncol) && is.null(nrow)) {
         ncol <- ceiling(sqrt(n_plots))
@@ -648,7 +652,7 @@
     plt #return
 }
 
-#' @importFrom ggplot2 ggplot aes_string geom_ribbon geom_line labs geom_hline
+#' @importFrom ggplot2 ggplot aes geom_ribbon geom_line labs geom_hline
 #'   geom_rug
 `draw_1d_difference` <- function(object, xvars,
                                  rug = FALSE,
@@ -671,13 +675,16 @@
     plt_title <- paste(plt_title1, plt_title2, sep = " - ")
     y_label <- "Difference"
 
-    plt <- ggplot(object, aes_(x = as.name(xvars[1L]), y = ~ diff))
+    plt <- ggplot(object, aes(x = .data[[xvars[1L]]],
+                              y = .data$diff))
 
     if (isTRUE(ref_line)) {
         plt <- plt + geom_hline(yintercept = 0, colour = line_col)
     }
     plt <- plt +
-        geom_ribbon(aes_string(ymin = "lower", ymax = "upper", y = NULL),
+        geom_ribbon(aes(ymin = .data$lower,
+                        ymax = .data$upper,
+                        y = NULL),
                     alpha = ci_alpha, fill = ci_col, colour = NA) +
         geom_line(colour = smooth_col) +
         labs(title = plt_title, x = xvars, y = y_label)
@@ -688,7 +695,7 @@
     plt
 }
 
-#' @importFrom ggplot2 ggplot guides aes_ geom_raster geom_contour labs
+#' @importFrom ggplot2 ggplot guides aes geom_raster geom_contour labs
 #'   scale_fill_distiller guide_colourbar
 #' @importFrom grid unit
 `draw_2d_difference` <- function(object, xvars,
@@ -716,12 +723,13 @@
         title <- paste(plt_title1, plt_title2, sep = " - ")
     }
 
-    plt <- ggplot(object, aes_(x = as.name(xvars[1L]),
-                               y = as.name(xvars[2L]))) +
-        geom_raster(aes_(fill = ~ diff))
+    plt <- ggplot(object, aes(x = .data[[xvars[1L]]],
+                              y = .data[[xvars[2L]]])) +
+        geom_raster(aes(fill = .data$diff))
 
     if (contour) {
-        plt <- plt + geom_contour(aes_(z = ~ diff), bins = n_contour,
+        plt <- plt + geom_contour(aes(z = .data$diff),
+                                  bins = n_contour,
                                   colour = contour_col)
     }
 
@@ -871,7 +879,9 @@
 
     ## base plot
     plt <- ggplot(object,
-                  aes_string(x = "col", y = "row", fill = "value")) +
+                  aes(x = .data$col,
+                      y = .data$row,
+                      fill = .data$value)) +
         geom_raster()
 
     ## add the scale

@@ -1,3 +1,25 @@
+# gratia 0.7.3
+
+## User visible changes
+
+* Plots of smooths now use "Partial effect" for the y-axis label in place of
+  "Effect", to better indicate what is displayed.
+
+## New features
+
+* `confint.fderiv()` and `confint.gam()` now return their results as a tibble
+  instead of a common-or-garden data frame. The latter mostly already did this.
+
+* Examples for `confint.fderiv()` and `confint.gam()` were reworked, in part to
+  remove some inconsistent output in the examples when run on M1 macs.
+
+## Bug fixes
+
+* `compare_smooths()` failed when passed non-standard model "names" like
+  `compare_smooths(m_gam, m_gamm$gam)` or `compare_smooths(l[[1]], l[[2]])`
+  even if the evaluated objects were valid GAM(M) models. Reported by Andrew
+  Irwin #150
+
 # gratia 0.7.2
 
 ## New features

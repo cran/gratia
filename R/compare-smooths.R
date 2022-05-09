@@ -3,13 +3,13 @@
 #' @param model Primary model for comparison.
 #' @param ... Additional models to compare smooths against those of `model`.
 #' @param smooths character; vector of smooths to compare. If not specified
-#'   comparisons will be performed for smooths common to all models supplied. 
+#'   comparisons will be performed for smooths common to all models supplied.
 #'
 #' @inheritParams smooth_estimates
 #'
 #' @export
-#' 
-#' @importFrom rlang enexpr ensyms expr_text
+#'
+#' @importFrom rlang dots_list
 #' @importFrom dplyr group_by %>%
 #'
 #' @examples
@@ -36,9 +36,8 @@
                               unconditional = FALSE,
                               overall_uncertainty = TRUE) {
     ## grab ...
-    model_names <- c(expr_text(enexpr(model)),
-                     unname(vapply(ensyms(...), expr_text, character(1))))
-    dots <- list(...)
+    dots <- rlang::dots_list(..., .named = TRUE)
+    model_names <- c(deparse(substitute(model)), names(dots))
     if (length(dots) < 1L) {
         stop("Need at least two models to compare smooths",
              call. = FALSE)
@@ -49,7 +48,7 @@
     if (is.null(smooths)) {
         smooths <- Reduce(union, lapply(models, smooths))
     } else {
-        ## user supplied smooth vector, check that those smooths exist in the models
+        # user supplied smooth vector, check that those smooths exist in models
     }
 
     ## loop over the smooths, applying smooth_estimates to each model
@@ -130,22 +129,23 @@
                      upper_ci = .data[["est"]] - (crit * .data[["se"]]))
 
     ## basic plot
-    plt <- ggplot(object, aes_string(x = sm_vars[1L],
-                                     y = "est",
-                                     group = "model"))
+    plt <- ggplot(object, aes(x = .data[[sm_vars[1L]]],
+                              y = .data[["est"]],
+                              group = .data[["model"]]))
 
     ## add uncertainty bands
-    plt <- plt + geom_ribbon(aes_string(ymin = "lower_ci", ymax = "upper_ci",
-                                        fill = "model"),
+    plt <- plt + geom_ribbon(aes(ymin = .data[["lower_ci"]],
+                                 ymax = .data[["upper_ci"]],
+                                 fill = .data[["model"]]),
                              alpha = 0.2)
 
     ## add smooth lines
-    plt <- plt + geom_line(aes_string(colour = "model"))
+    plt <- plt + geom_line(aes(colour = .data[["model"]]))
 
     ## Add labels
     plt <- plt + labs(colour = "Model", fill = "Model",
                       title = unique(object[["smooth"]]),
                       y = "Estimate")
-    
+
     plt
 }
