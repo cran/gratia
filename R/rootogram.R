@@ -26,7 +26,7 @@
 #' @export
 #' @examples
 #' load_mgcv()
-#' \dontshow{op <- options(cli.unicode = FALSE, digits = 6)}
+#' \dontshow{op <- options(cli.unicode = FALSE, pillar.sigfig = 6)}
 #' df <- data_sim("eg1", n = 1000, dist = "poisson", scale = 0.1, seed = 6)
 #'
 #' # A poisson example
@@ -276,7 +276,7 @@
                   fill = bar_fill, col = bar_colour) +
         geom_line(aes(x = .data$bin,
                       y = .data$fitted),
-                  colour = fitted_colour, size = 1) +
+                  colour = fitted_colour, linewidth = 1) +
         geom_point(aes(x = .data$bin,
                        y = .data$fitted),
                    colour = fitted_colour, size = 2.5)

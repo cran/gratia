@@ -4,6 +4,7 @@
 \alias{eval_smooth}
 \alias{eval_smooth.mgcv.smooth}
 \alias{eval_smooth.fs.interaction}
+\alias{eval_smooth.sz.interaction}
 \alias{eval_smooth.random.effect}
 \alias{eval_smooth.mrf.smooth}
 \alias{eval_smooth.t2.smooth}
@@ -26,6 +27,16 @@ eval_smooth(smooth, ...)
 )
 
 \method{eval_smooth}{fs.interaction}(
+  smooth,
+  model,
+  n = 100,
+  data = NULL,
+  unconditional = FALSE,
+  overall_uncertainty = TRUE,
+  ...
+)
+
+\method{eval_smooth}{sz.interaction}(
   smooth,
   model,
   n = 100,
@@ -92,16 +103,7 @@ models are suported.}
 \item{n}{numeric; the number of points over the range of the covariate at
 which to evaluate the smooth.}
 
-\item{n_3d}{numeric; the number of points over the range of last
-covariate in a 3D or 4D smooth. The default is \code{NULL} which achieves the
-standard behaviour of using \code{n} points over the range of all covariate,
-resulting in \code{n^d} evaluation pointsm, where \code{d} is the dimension of the
-smooth. For \code{d > 2} this can result in very many evaluation points and slow
-performance. For smooths of \code{d > 4}, the value of \code{n_4d} will be used for
-all dimensions \verb{> 4}, unless this is \code{NULL}, in which case the default
-behaviour (using \code{n} for all dimensions) will be observed.}
-
-\item{n_4d}{numeric; the number of points over the range of last
+\item{n_3d, n_4d}{numeric; the number of points over the range of last
 covariate in a 3D or 4D smooth. The default is \code{NULL} which achieves the
 standard behaviour of using \code{n} points over the range of all covariate,
 resulting in \code{n^d} evaluation pointsm, where \code{d} is the dimension of the

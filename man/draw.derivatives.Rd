@@ -2,6 +2,7 @@
 % Please edit documentation in R/draw-methods.R
 \name{draw.derivatives}
 \alias{draw.derivatives}
+\alias{draw.partial_derivatives}
 \title{Plot derivatives of smooths}
 \usage{
 \method{draw}{derivatives}(
@@ -12,6 +13,19 @@
   ncol = NULL,
   nrow = NULL,
   guides = "keep",
+  angle = NULL,
+  ...
+)
+
+\method{draw}{partial_derivatives}(
+  object,
+  select = NULL,
+  scales = c("free", "fixed"),
+  alpha = 0.2,
+  ncol = NULL,
+  nrow = NULL,
+  guides = "keep",
+  angle = NULL,
   ...
 )
 }
@@ -27,22 +41,24 @@ as shown for example in the output from \code{summary(object)}. Logical
 stored.}
 
 \item{scales}{character; should all univariate smooths be plotted with the
-same y-axis scale? The default, \code{scales = "fixed"}, ensures this is done.
-If \code{scales = "free"} each univariate smooth has its own y-axis scale.
+same y-axis scale? If \code{scales = "free"}, the default, each univariate
+smooth has its own y-axis scale. If \code{scales = "fixed"}, a common y axis
+scale is used for all univariate smooths.
+
 Currently does not affect the y-axis scale of plots of the parametric
 terms.}
 
 \item{alpha}{numeric; alpha transparency for confidence or simultaneous
 interval.}
 
-\item{ncol}{numeric; the numbers of rows and columns over which to
-spread the plots}
-
-\item{nrow}{numeric; the numbers of rows and columns over which to
+\item{ncol, nrow}{numeric; the numbers of rows and columns over which to
 spread the plots}
 
 \item{guides}{character; one of \code{"keep"} (the default), \code{"collect"}, or
 \code{"auto"}. Passed to \code{\link[patchwork:plot_layout]{patchwork::plot_layout()}}}
+
+\item{angle}{numeric; the angle at which the x axis tick labels are to be
+drawn passed to the \code{angle} argument of \code{\link[ggplot2:guide_axis]{ggplot2::guide_axis()}}.}
 
 \item{...}{additional arguments passed to \code{\link[patchwork:wrap_plots]{patchwork::wrap_plots()}}.}
 }

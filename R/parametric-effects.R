@@ -37,6 +37,10 @@
     tt <- object$pterms       # get model terms object
     tt <- delete.response(tt) # remove response so easier to work with
     vars <- parametric_terms(object) # vector of names of model terms
+    if (length(vars) == 0L) {
+        warning("The model doesn't contain any parametric terms")
+        return(NULL)
+    }
     mgcv_names <- names(vars) # this is how mgcv refers to the terms
 
     # user supplied term? if provided check the stated terms are actually model
@@ -141,6 +145,7 @@ draw.parametric_effects <- function(object,
                                     fun = NULL,
                                     rug = TRUE,
                                     position = "identity",
+                                    angle = NULL,
                                     ...,
                                     ncol = NULL, nrow = NULL,
                                     guides = "keep") {
@@ -160,18 +165,19 @@ draw.parametric_effects <- function(object,
     }
 
     plts <- object %>%
-      group_by(.data$term) %>%
-      group_map(.keep = TRUE,
-                .f = ~ draw_parametric_effect(.x,
-                                              ci_level = ci_level,
-                                              ci_col = ci_col,
-                                              ci_alpha = ci_alpha,
-                                              line_col = line_col,
-                                              constant = constant,
-                                              fun = fun,
-                                              rug = rug,
-                                              position = position,
-                                              ylim = ylim))
+        group_by(.data$term) %>%
+        group_map(.keep = TRUE,
+            .f = ~ draw_parametric_effect(.x,
+                ci_level = ci_level,
+                ci_col = ci_col,
+                ci_alpha = ci_alpha,
+                line_col = line_col,
+                constant = constant,
+                fun = fun,
+                rug = rug,
+                position = position,
+                ylim = ylim,
+                angle = angle))
 
     # return
     n_plots <- length(plts)
@@ -215,6 +221,7 @@ draw.parametric_effects <- function(object,
                                      rug = TRUE,
                                      position = "identity",
                                      ylim = NULL,
+                                     angle = NULL,
                                      ...) {
     # plot
     is_fac <- unique(object[["type"]]) == "factor"
@@ -228,27 +235,29 @@ draw.parametric_effects <- function(object,
     if (!all(c("upper", "lower") %in% names(object))) {
         crit <- coverage_normal(ci_level)
         object <- mutate(object,
-                         lower = .data$partial - (crit * .data$se),
-                         upper = .data$partial + (crit * .data$se))
+            lower = .data$partial - (crit * .data$se),
+            upper = .data$partial + (crit * .data$se))
     }
 
     ## If fun supplied, use it to transform est and the upper and lower interval
-    object <- transform_fun(object, fun = fun, column = "partial")
+    object <- transform_fun(object, fun = fun,
+        column = c("partial", "lower", "upper"))
 
     # base plot
-    plt <- ggplot(object, aes(x = .data[[x_val]],
-                              y = .data$partial))
+    plt <- ggplot(object,
+        aes(x = .data[[x_val]], y = .data$partial)) +
+        guides(x = guide_axis(angle = angle))
 
     if (is_fac) {
         plt <- plt + geom_pointrange(aes(ymin = .data$lower,
-                                         ymax = .data$upper))
+            ymax = .data$upper))
     } else {
         if (isTRUE(rug)) {
             plt <- plt + geom_rug(sides = "b", position = position, alpha = 0.5)
         }
         plt <- plt + geom_ribbon(aes(ymin = .data$lower,
-                                     ymax = .data$upper),
-                                 alpha = ci_alpha, fill = ci_col, colour = NA) +
+            ymax = .data$upper),
+        alpha = ci_alpha, fill = ci_col, colour = NA) +
             geom_line(colour = line_col)
     }
 
@@ -262,10 +271,13 @@ draw.parametric_effects <- function(object,
     if (is.null(title)) {
         title <- term_label
     }
+    if (is.null(caption)) {
+        caption <- paste("Parametric terms")
+    }
 
     ## add labelling to plot
     plt <- plt + labs(x = xlab, y = ylab, title = title, subtitle = subtitle,
-                      caption = caption)
+        caption = caption)
 
     ## fixing the y axis limits?
     if (!is.null(ylim)) {

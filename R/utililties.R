@@ -115,6 +115,13 @@
 #'
 #' @param smooth an R object, typically a list
 #'
+#' @details Check if a smooth inherits from class `"mgcv.smooth"`.
+#'   `stop_if_not_mgcv_smooth()` is a wrapper around `is_mgcv_smooth()`, useful
+#'   when programming for checking if the supplied object is one of mgcv's
+#'   smooths, and throwing a consistent error if not.
+#'   `check_is_mgcv_smooth()` is similar to `stop_if_not_mgcv_smooth()` but
+#'   returns the result of `is_mgcv_smooth()` invisibly.
+#'
 #' @export
 #' @rdname is_mgcv_smooth
 `is_mgcv_smooth` <- function(smooth) {
@@ -123,24 +130,43 @@
 
 #' @export
 #' @rdname is_mgcv_smooth
-`is_mrf_smooth` <- function(smooth) {
-  inherits(smooth, what= "mrf.smooth")
+stop_if_not_mgcv_smooth <- function(smooth) {
+    out <- is_mgcv_smooth(smooth)
+    if (!out) {
+        stop("'smooth' is not an 'mgcv.smooth'.")
+    }
 }
 
+#' @export
+#' @rdname is_mgcv_smooth
 `check_is_mgcv_smooth` <- function(smooth) {
     out <- is_mgcv_smooth(smooth)
     if (identical(out, FALSE)) {
-        stop("Object passed to 'smooth' is not a 'mgcv.smooth'.")
+        stop("'smooth' is not an 'mgcv.smooth'")
     }
     invisible(out)
+}
+
+#' @export
+#' @rdname is_mgcv_smooth
+`is_mrf_smooth` <- function(smooth) {
+  inherits(smooth, what = "mrf.smooth")
 }
 
 `is.gamm` <- function(object) {
     inherits(object, "gamm")
 }
 
+`is.gamm4` <- function(object) {
+    is.list(object) & (!is.null(object[["gam"]]))
+}
+
 `is.gam` <- function(object) {
     inherits(object, "gam")
+}
+
+`is.bam` <- function(object) {
+    inherits(object, "bam")
 }
 
 #' @title Extract an mgcv smooth by name
@@ -153,7 +179,7 @@
 #'
 #' @export
 `get_smooth` <- function(object, term) {
-    if (is.gamm(object)) {
+    if (is.gamm(object) || is.gamm4(object)) {
         object <- object[["gam"]]
     }
     smooth <- object[["smooth"]][which_smooth(object, term)]
@@ -426,7 +452,13 @@
 #' names(fix_offset(m, model.frame(m), offset_val = 1L))
 `fix_offset` <- function(model, newdata, offset_val = NULL) {
     m.terms <- names(newdata)
-    p.terms <- attr(terms(model[["pred.formula"]]), "term.labels")
+    p.terms <- if (inherits(model, "scam") &&
+        is.null(model[["pred.formula"]])) {
+        attr(model[["terms"]], "term.labels")
+    } else {
+        attr(terms(model[["pred.formula"]]), "term.labels")
+    }
+
 
     ## remove repsonse from m.terms if it is in there
     tt <- terms(model)
@@ -444,7 +476,8 @@
         ## for the cleaned terms not in model terms, match with the offset
         off_var <- grep(p.terms[!ind], m.terms[off])
         if (any(off_var)) {
-            names(newdata)[which(names(newdata) %in% m.terms)][off] <- p.terms[!ind][off_var]
+            take <- which(names(newdata) %in% m.terms)
+            names(newdata)[take][off] <- p.terms[!ind][off_var]
         }
 
         ## change offset?
@@ -504,7 +537,7 @@
     if (is.list(tt)) {
         ## If a list, we have multiple linear predictors. For terms in the
         ## nth linear predictor (for n > 1) the covariate gets appended '.{n-1}'
-        ## so store the mgcv names as the names of the labels returned  
+        ## so store the mgcv names as the names of the labels returned
         labs <- unlist(lapply(tt, function(x) labels(delete.response(x))))
         names(labs) <- unlist(lapply(seq_along(labs),
                                      function(i, labs) {
@@ -550,84 +583,6 @@
     stopifnot(is.factor(f))
     levs <- levels(f)
     factor(rep(levs[1L], length.out = n), levels = levs)
-}
-
-#' @title Create a sequence of evenly-spaced values
-#'
-#' @description For a continuous vector `x`, `seq_min_max()` creates a
-#'   sequence of `n` evenly-spaced values over the range `min(x)` -- 
-##"   `max(x)`. For a factor `x`, the function returns `levels(x)`.
-#'
-#' @param x numeric; vector over which evenly-spaced values are returned
-#' @param n numeric; the number of evenly-spaced values to return
-#'
-#' @return A numeric vector of length `n`.
-#'
-#' @export
-#'
-#' @examples
-#' \dontshow{set.seed(1)}
-#' x <- rnorm(10)
-#' n <- 10L
-#' seq_min_max(x, n = n)
-`seq_min_max` <- function(x, n) {
-    if (is.factor(x)) {
-        ## must coerce to factor otherwise Predict.matrix will coerce
-        ## and that will end up with levels in the wrong order
-        factor(levels(x), levels = levels(x))
-    } else {
-        seq(from = min(x, na.rm = TRUE), to = max(x, na.rm = TRUE),
-            length.out = n)
-    }
-}
-
-#' @title Create a sequence of evenly-spaced values adjusted to accommodate a
-#'   small adjustment
-#'
-#' @description Creates a sequence of `n` evenly-spaced values over the range
-#'   `min(x)` -- `max(x)`, where the minimum and maximum are adjusted such that
-#'   they are always contained within the range of `x` when `x` may be shifted
-#'   forwards or backwards by an amount related to `eps`. This is particularly
-#'   useful in computing derivatives via finite differences where without this
-#'   adjustment we may be predicting for values outside the range of the data
-#'   and hence the conmstraints of the penalty.
-#'
-#' @param x numeric; vector over which evenly-spaced values are returned
-#' @param n numeric; the number of evenly-spaced values to return
-#' @param eps numeric; the finite difference
-#' @param order integer; the order of derivative. Either `1` or `2` for first or
-#'   second order derivatives
-#' @param type character; the type of finite difference used. One of
-#'   `"forward"`, `"backward"`, or `"central"`
-#'
-#' @return A numeric vector of length `n`.
-`seq_min_max_eps` <- function(x, n, order,
-                              type = c("forward", "backward", "central"), eps) {
-    minx <- min(x, na.rm = TRUE)
-    maxx <- max(x, na.rm = TRUE)
-    heps <- eps / 2
-    deps <- eps * 2
-    type <- match.arg(type)
-    if (isTRUE(all.equal(order, 1L))) {
-        minx <- switch(type,
-                       forward  = minx,
-                       backward = minx + eps,
-                       central  = minx + heps)
-        maxx <- switch(type,
-                       forward  = maxx - eps,
-                       backward = maxx,
-                       central  = maxx - heps)
-    } else {
-        minx <- switch(type,
-                       forward  = minx,
-                       backward = minx + deps,
-                       central  = minx + eps)
-        maxx <- switch(type,
-                       forward  = maxx - deps,
-                       backward = maxx,
-                       central  = maxx - eps)
-    }
-    seq(from = minx, to = maxx, length.out = n)
 }
 
 #' Vectorized version of `data.class`
@@ -682,9 +637,15 @@
 #' @param i logical; a vector indexing columns of `df` that should not be
 #'   included in the shift.
 #' @param FUN function; a function to applut the shift. Typically `+` or `-`.
-`shift_values` <- function(df, h, i, FUN = '+') {
+#' @param focal character; the focal variable when computing partial
+#'   derivatives. This allows shifting only the focal variable by `eps`.
+`shift_values` <- function(df, h, i, FUN = `+`, focal = NULL) {
     FUN <- match.fun(FUN)
     result <- df
+    if (!is.null(focal)) {
+        take <- names(df) %in% focal
+        i <- i | !take
+    }
     if (any(i)) {
         result[, !i] <- FUN(result[, !i], h)
     } else {
@@ -695,7 +656,7 @@
 
 #' @importFrom stats qnorm
 `coverage_normal` <- function(level) {
-    if (level <= 0 || level >= 1 ) {
+    if (level <= 0 || level >= 1) {
          stop("Invalid 'level': must be 0 < level < 1", call. = FALSE)
      }
      qnorm((1 - level) / 2, lower.tail = FALSE)
@@ -772,16 +733,16 @@
                 # must have failed to match at least one of `smooth`
                 if (all(!take)) {
                     stop("Failed to match any smooths in model",
-                         ifelse(is.null(model_name), "",
-                                paste0(" ", model_name)),
+                        ifelse(is.null(model_name), "",
+                            paste0(" ", model_name)),
                         ".\nTry with 'partial_match = TRUE'?",
-                         call. = FALSE)
+                        call. = FALSE)
                 } else {
                     stop("Some smooths in 'select' were not found in model ",
-                         ifelse(is.null(model_name), "", model_name),
-                         ":\n\t",
-                         paste(select[!select %in% smooths], collapse = ", "),
-                         call. = FALSE)
+                        ifelse(is.null(model_name), "", model_name),
+                        ":\n\t",
+                        paste(select[!select %in% smooths], collapse = ", "),
+                        call. = FALSE)
                 }
             }
             take
@@ -800,27 +761,6 @@
     select
 }
 
-#' Indices of the parametric terms for a particular smooth
-#'
-#' Returns a vector of indices of the parametric terms that represent the
-#' supplied smooth. Useful for extracting model coefficients and columns
-#' of their covariance matrix.
-#' 
-#' @param smooth an object that inherits from class `mgcv.smooth`
-#'
-#' @return A numeric vector of indices.
-#'
-#' @author Gavin L. Simpson
-#' @export
-`smooth_coefs` <- function(smooth) {
-    if(!is_mgcv_smooth(smooth)) {
-        stop("Not an mgcv smooth object")
-    }
-    start <- smooth[["first.para"]]
-    end <- smooth[["last.para"]]
-    seq(from = start, to = end, by = 1L)
-}
-
 #' Load mgcv quietly
 #'
 #' Simple function that loads the *mgcv* package whilst suppressing the startup
@@ -828,7 +768,7 @@
 #'
 #' @return Returns a logical vectors invisibly, indicating whether the package
 #'   was loaded or not.
-#' 
+#'
 #' @export
 `load_mgcv` <- function() {
     res <- suppressWarnings(requireNamespace("mgcv", quietly = TRUE))
@@ -1066,13 +1006,9 @@ vars_from_label <- function(label) {
     ## If fun supplied, use it to transform est and the upper and lower interval
     if (!is.null(fun)) {
         fun <- match.fun(fun)
-        object[["est"]] <- fun(object[["est"]])
-        if (!is.null(object[["upper"]])) {
-            object[["upper"]] <- fun(object[["upper"]])
-        }
-        if (!is.null(object[["lower"]])) {
-            object[["lower"]] <- fun(object[["lower"]])
-        }
+        object <- mutate(object,
+                         across(any_of(c("est", "lower_ci", "upper_ci")),
+                                .fns = fun))
     }
 
     object
@@ -1118,7 +1054,7 @@ vars_from_label <- function(label) {
     if (!is.null(fun)) {
         fun <- match.fun(fun)
         object <- mutate(object,
-                         across(any_of(c("partial")),
+                         across(any_of(c("partial", "lower_ci", "upper_ci")),
                                 .fns = fun))
     }
 
@@ -1264,4 +1200,148 @@ vars_from_label <- function(label) {
     }
 
     out
+}
+
+# is a smooth isotropic?
+`is_isotropic_smooth` <- function(smooth) {
+    check_is_mgcv_smooth(smooth)
+
+    out <- FALSE
+    cls <- c("tprs.smooth", "duchon.spline", "gp.smooth",
+             "sos.smooth") # others?
+    if (inherits(smooth, what = cls)) {
+        out <- TRUE
+    }
+    out
+}
+
+#' List the variables involved in a model fitted with a formula
+#' 
+#' @param model a fitted model object with a `$pred.formula`, `$terms`
+#'   component or a `"terms"` attribute
+#' @param ... Arguments passed to other methods. Currently ignored.
+#'
+#' @export
+#'
+#' @examples
+#' load_mgcv()
+#' 
+#' # simulate some Gaussian data
+#' df <- data_sim("eg1", n = 50, seed = 2)
+#' 
+#' # fit a GAM with 1 smooth and 1 linear term
+#' m1 <- gam(y ~ s(x2, k = 7) + x1, data = df, method = "REML")
+#' model_vars(m1)
+#' 
+#' # fit a lm with two linear terms
+#' m2 <- lm(y ~ x2 + x1, data = df)
+#' model_vars(m2)
+`model_vars` <- function(model, ...) {
+    UseMethod("model_vars")
+}
+
+#' @export
+#' @rdname model_vars
+`model_vars.gam` <- function(model, ...){
+    # want a vector of variables involved in the model formula.
+    # Don't want this `attr(terms(model), "term.labels")` ! as this returns
+    # model terms not variable names. Use all.vars() on `pred.formula` for
+    # a GAM(M) model
+    all.vars(model$pred.formula)
+}
+
+#' @export
+#' @rdname model_vars
+`model_vars.default` <- function(model, ...){
+    # want a vector of variables involved in the model formula
+    tt <- terms(model)
+    if (is.null(tt)) {
+        stop("`terms()` not available for `model`.")
+    }
+    tt <- delete.response(tt) 
+    all.vars(attr(tt, "variables"))
+}
+
+#' @export
+#' @rdname model_vars
+`model_vars.bam` <- function(model, ...){
+    # want a vector of variables involved in the model formula.
+    # Don't want this `attr(terms(model), "term.labels")` ! as this returns
+    # model terms not variable names. Use all.vars() on `pred.formula` for
+    # a GAM(M) model
+    all.vars(model$pred.formula)
+}
+
+#' @export
+#' @rdname model_vars
+`model_vars.gamm` <- function(model, ...){
+    # want a vector of variables involved in the model formula.
+    # Don't want this `attr(terms(model), "term.labels")` ! as this returns
+    # model terms not variable names. Use all.vars() on `pred.formula` for
+    # a GAM(M) model
+    model_vars(model[["gam"]]$pred.formula)
+}
+
+#' @export
+#' @rdname model_vars
+`model_vars.gamm4` <- function(model, ...){
+    # this is here for when Simon actually classes gamm4 objects
+    # want a vector of variables involved in the model formula.
+    # Don't want this `attr(terms(model), "term.labels")` ! as this returns
+    # model terms not variable names. Use all.vars() on `pred.formula` for
+    # a GAM(M) model
+    model_vars(model[["gam"]]$pred.formula)
+}
+
+#' @export
+#' @rdname model_vars
+`model_vars.list` <- function(model, ...){
+    # want a vector of variables involved in the model formula.
+    # Don't want this `attr(terms(model), "term.labels")` ! as this returns
+    # model terms not variable names. Use all.vars() on `pred.formula` for
+    # a GAM(M) model
+    if (!is_gamm4(model)) {
+        stop("Don't know how to handle generic list objects.")
+    }
+    model_vars(model[["gam"]]$pred.formula)
+}
+
+`newdata_deprecated` <- function() {
+    message("Use of the `newdata` argument is deprecated.\n",
+        "Instead, use the data argument `data`.\n")
+}
+
+# Indices of which coefs are in which linear predictors
+# returns a list of length equal to the number of linear predictors
+`lss_eta_index` <- function(object) {
+    lpi <- attr(formula(object), "lpi")
+    if (is.null(lpi)) {
+        lpi <- list(seq_along(coef(object)))
+    }
+    # get rid of the shared information as I don't think this is needed
+    attr(lpi, "overlap") <- NULL
+    # return
+    lpi
+}
+
+#' @importFrom purrr map
+`get_xlim_from_plots` <- function(plts) {
+    map(plts, get_xlim_from_plot)
+}
+
+#' @importFrom ggplot2 layer_scales
+`get_xlim_from_plot` <- function(p) {
+    f <- layer_scales(p)[["x"]][["get_limits"]]
+    f()
+}
+
+#' @importFrom purrr map
+`get_ylim_from_plots` <- function(plts) {
+    map(plts, get_ylim_from_plot)
+}
+
+#' @importFrom ggplot2 layer_scales
+`get_ylim_from_plot` <- function(p) {
+    f <- layer_scales(p)[["y"]][["get_limits"]]
+    f()
 }

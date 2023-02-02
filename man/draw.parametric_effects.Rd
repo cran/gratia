@@ -15,6 +15,7 @@
   fun = NULL,
   rug = TRUE,
   position = "identity",
+  angle = NULL,
   ...,
   ncol = NULL,
   nrow = NULL,
@@ -25,8 +26,10 @@
 \item{object}{a fitted GAM, the result of a call to \code{\link[mgcv:gam]{mgcv::gam()}}.}
 
 \item{scales}{character; should all univariate smooths be plotted with the
-same y-axis scale? The default, \code{scales = "fixed"}, ensures this is done.
-If \code{scales = "free"} each univariate smooth has its own y-axis scale.
+same y-axis scale? If \code{scales = "free"}, the default, each univariate
+smooth has its own y-axis scale. If \code{scales = "fixed"}, a common y axis
+scale is used for all univariate smooths.
+
 Currently does not affect the y-axis scale of plots of the parametric
 terms.}
 
@@ -50,17 +53,18 @@ and confidence interval before plotting. Can be a function or the name of a
 function. Function \code{fun} will be applied after adding any \code{constant}, if
 provided.}
 
-\item{rug}{logical; draw a rug plot at the botom of each plot?}
+\item{rug}{logical; draw a rug plot at the botom of each plot for 1-D
+smooths or plot locations of data for higher dimensions.}
 
 \item{position}{Position adjustment, either as a string, or the result of a
 call to a position adjustment function.}
 
+\item{angle}{numeric; the angle at which the x axis tick labels are to be
+drawn passed to the \code{angle} argument of \code{\link[ggplot2:guide_axis]{ggplot2::guide_axis()}}.}
+
 \item{...}{additional arguments passed to \code{\link[patchwork:wrap_plots]{patchwork::wrap_plots()}}.}
 
-\item{ncol}{numeric; the numbers of rows and columns over which to
-spread the plots}
-
-\item{nrow}{numeric; the numbers of rows and columns over which to
+\item{ncol, nrow}{numeric; the numbers of rows and columns over which to
 spread the plots}
 
 \item{guides}{character; one of \code{"keep"} (the default), \code{"collect"}, or

@@ -10,8 +10,8 @@
   object,
   parm,
   level = 0.95,
-  newdata = NULL,
-  n = 200,
+  data = newdata,
+  n = 100,
   type = c("confidence", "simultaneous"),
   nsim = 10000,
   shift = FALSE,
@@ -19,7 +19,8 @@
   unconditional = FALSE,
   ncores = 1,
   partial_match = FALSE,
-  ...
+  ...,
+  newdata = NULL
 )
 
 \method{confint}{gamm}(object, ...)
@@ -36,9 +37,8 @@ is not currently implemented.}
 \item{level}{numeric, \verb{0 < level < 1}; the confidence level of the point-wise
 or simultaneous interval. The default is \code{0.95} for a 95\% interval.}
 
-\item{newdata}{data frame; containing new values of the covariates used in
-the model fit. The selected smooth(s) wil be evaluated at the supplied
-values.}
+\item{data}{data frame; new values of the covariates used in the model fit.
+The selected smooth(s) wil be evaluated at the supplied values.}
 
 \item{n}{numeric; the number of points to evaluate smooths at.}
 
@@ -69,16 +69,25 @@ to work on Windows with current \code{R}).}
 an exact match? Can only be used if \code{length(parm)} is \code{1}.}
 
 \item{...}{additional arguments for methods}
+
+\item{newdata}{DEPRECATED! data frame; containing new values of the
+covariates used in the model fit. The selected smooth(s) wil be evaluated
+at the supplied values.}
 }
 \value{
-a data frame with components:
+a tibble with components:
 \enumerate{
-\item \code{term}; factor indicating to which term each row relates,
-\item \code{x}; the vector of values at which the smooth was evaluated,
-\item \code{lower}; lower limit of the confidence or simultaneous interval,
-\item \code{est}; estimated value of the smooth
-\item \code{upper}; upper limit of the confidence or simultaneous interval,
+\item \code{smooth}; character indicating to which term each row relates,
+\item \code{type}; the type of smooth,
+\item \code{by} the name of the by variable if a by smooth, \code{NA} otherwise,
+\item one or more vectors of values at which the smooth was evaluated, named as
+per the variables in the smooth,
+\item zero or more variables containing values of the by variable,
+\item \code{est}; estimated value of the smooth,
+\item \code{se}; standard error of the estimated value of the smooth,
 \item \code{crit}; critical value for the \code{100 * level}\% confidence interval.
+\item \code{lower}; lower limit of the confidence or simultaneous interval,
+\item \code{upper}; upper limit of the confidence or simultaneous interval,
 }
 }
 \description{
@@ -104,14 +113,14 @@ new_data <- sapply(dat[c("x0", "x1", "x2", "x3")], middle)
 new_data <- data.frame(new_data)
 
 ## point-wise interval for smooth of x2
-ci <- confint(mod, parm = "s(x2)", type = "confidence", newdata = new_data)
+ci <- confint(mod, parm = "s(x2)", type = "confidence", data = new_data)
 ci
 
 ## simultaneous interval for smooth of x2
 \dontshow{
 set.seed(42)
 }
-si <- confint(mod, parm = "s(x2)", newdata = new_data,
+si <- confint(mod, parm = "s(x2)", data = new_data,
               type = "simultaneous", nsim = 3000, ncores = 2)
 si
 \dontshow{

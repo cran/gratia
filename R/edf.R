@@ -31,7 +31,7 @@
 #'
 #' @examples
 #' load_mgcv()
-#' \dontshow{op <- options(cli.unicode = FALSE, digits = 6)}
+#' \dontshow{op <- options(cli.unicode = FALSE, pillar.sigfig = 5)}
 #' df <- data_sim("eg1", n = 400, seed = 42)
 #' m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df, method = "REML")
 #'
@@ -73,17 +73,17 @@
     ## extract the EDF:
     ## - object$edf is the standard EDF for a GAM in mgcv, reported in
     ##     summary(model) output
-    ## - object$edf1 is the alternative EDF metioned in Wood's GAM book,
+    ## - object$edf1 is the alternative EDF mentioned in Wood's GAM book,
     ##     2ed pp 252: 2*trace(F) - trace(F%*%F)
     ##     This doesn't seem to be used at all in `summary.gam()` so not
     ##     sure why Simon extracts it
-    ## - object$edf2 is an EDF that acocunts for smoothness parameter
+    ## - object$edf2 is an EDF that accounts for smoothness parameter
     ##     uncertainty; only available for REML and ML fits
     edf_vec <- extract_edf(object, type, sum = FALSE)
     edf_out <- numeric(length = n_sm)
     sm_labs <- smooths(object)[sm_ids]
     for (i in seq_along(edf_out)) {
-        paras <- smooth_coefs(object[["smooth"]][[sm_ids[i]]])
+        paras <- smooth_coef_indices(object[["smooth"]][[sm_ids[i]]])
         edf_out[i] <- sum(edf_vec[paras])
     }
     edf_out <- tibble(smooth = sm_labs, edf = edf_out)

@@ -11,13 +11,14 @@ smooth_samples(model, ...)
   model,
   term = NULL,
   n = 1,
-  newdata = NULL,
+  data = newdata,
   seed = NULL,
   freq = FALSE,
   unconditional = FALSE,
   ncores = 1L,
   n_vals = 200,
-  ...
+  ...,
+  newdata = NULL
 )
 }
 \arguments{
@@ -32,9 +33,9 @@ wil be sampled from. If supplied, a character vector of requested terms.}
 
 \item{n}{numeric; the number of posterior samples to return.}
 
-\item{newdata}{data frame; new observations at which the posterior draws
+\item{data}{data frame; new observations at which the posterior draws
 from the model should be evaluated. If not supplied, the data used to fit
-the model will be used for \code{newdata}, if available in \code{model}.}
+the model will be used for \code{data}, if available in \code{model}.}
 
 \item{seed}{numeric; a random seed for the simulations.}
 
@@ -52,7 +53,9 @@ Parallelization will take place only if OpenMP is supported (but appears
 to work on Windows with current \code{R}).}
 
 \item{n_vals}{numeric; how many locations to evaluate the smooth at if
-\code{newdata} not supplied}
+\code{data} not supplied}
+
+\item{newdata}{Deprecated: use \code{data} instead.}
 }
 \value{
 A tibble with additional classes \code{"smooth_samples"} and
@@ -69,20 +72,14 @@ example.
 \item \code{by_variable}; character vector. If the smooth involves a \code{by} term, the
 by variable will be named here, \code{NA_character_} otherwise.
 \item \code{row}; integer. A vector of values \code{seq_len(n_vals)}, repeated if
-\code{n > 1L}. Indexes the row in \code{newdata} for that particular draw.
+\code{n > 1L}. Indexes the row in \code{data} for that particular draw.
 \item \code{draw}; integer. A vector of integer values indexing the particular
 posterior draw that each row belongs to.
 \item \code{value}; numeric. The value of smooth function for this posterior draw
 and covariate combination.
-\item \code{.xN}; numeric. A series of one or more columns containing data required
-for the smooth. \code{.x1} will always be present and contains the values of
-the covariate in the smooth. For example if \code{smooth} is \code{s(z)} then
-\code{.x1} will contain the values of covariate \code{z} at which the smooth was
-evaluated. Further covariates for multi-dimensional thin plate splines
-(e.g. \code{s(x, z)}) or tensor product smooths (e.g. \code{te(x,z,a)}) will
-result in variables \code{.x1} and \code{.x2}, and \code{.x1}, \code{.x2}, and \code{.x3}
-respectively, with the number (\code{1}, \code{2}, etc) representing the order
-in which the covariates were specified in the smooth.
+\item \code{xxx}; numeric. A series of one or more columns containing data required
+for the smooth, named as per the variables involved in the respective
+smooth.
 \item Additional columns will be present in the case of factor by smooths,
 which will contain the level for the factor named in \code{by_variable} for
 that particular posterior draw.

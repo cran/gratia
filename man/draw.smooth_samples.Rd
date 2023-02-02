@@ -22,6 +22,7 @@
   scales = c("free", "fixed"),
   rug = TRUE,
   partial_match = FALSE,
+  angle = NULL,
   ncol = NULL,
   nrow = NULL,
   guides = "keep",
@@ -73,21 +74,24 @@ interval.}
 \code{n_contour - 1} contour lines being drawn. See \code{\link[ggplot2:geom_contour]{ggplot2::geom_contour()}}.}
 
 \item{scales}{character; should all univariate smooths be plotted with the
-same y-axis scale? The default, \code{scales = "fixed"}, ensures this is done.
-If \code{scales = "free"} each univariate smooth has its own y-axis scale.
+same y-axis scale? If \code{scales = "free"}, the default, each univariate
+smooth has its own y-axis scale. If \code{scales = "fixed"}, a common y axis
+scale is used for all univariate smooths.
+
 Currently does not affect the y-axis scale of plots of the parametric
 terms.}
 
-\item{rug}{logical; draw a rug plot at the botom of each plot?}
+\item{rug}{logical; draw a rug plot at the botom of each plot for 1-D
+smooths or plot locations of data for higher dimensions.}
 
 \item{partial_match}{logical; should smooths be selected by partial matches
 with \code{select}? If \code{TRUE}, \code{select} can only be a single string to match
 against.}
 
-\item{ncol}{numeric; the numbers of rows and columns over which to
-spread the plots}
+\item{angle}{numeric; the angle at which the x axis tick labels are to be
+drawn passed to the \code{angle} argument of \code{\link[ggplot2:guide_axis]{ggplot2::guide_axis()}}.}
 
-\item{nrow}{numeric; the numbers of rows and columns over which to
+\item{ncol, nrow}{numeric; the numbers of rows and columns over which to
 spread the plots}
 
 \item{guides}{character; one of \code{"keep"} (the default), \code{"collect"}, or

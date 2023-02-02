@@ -46,7 +46,7 @@
 #' }
 #' df <- data_sim("eg1", seed = 1)
 #' df <- df[, c("y","x0","x1","x2","x3")]
-#' m <-  gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df, method = 'REML')
+#' m <-  gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df, method = "REML")
 #'
 #' ##
 #' add_fitted(df, m)
@@ -79,7 +79,7 @@
         }
         data <- bind_cols(data, pred_vals)
     } else {
-        data <- add_column(data, !!value := drop(pred_vals),
+        data <- add_column(data, !!value := as.numeric(pred_vals),
                            .after = ncol(data))
     }
 

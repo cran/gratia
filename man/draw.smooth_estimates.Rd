@@ -17,8 +17,10 @@
   resid_col = "steelblue3",
   partial_match = FALSE,
   discrete_colour = NULL,
+  discrete_fill = NULL,
   continuous_colour = NULL,
   continuous_fill = NULL,
+  angle = NULL,
   ylim = NULL,
   projection = "orthographic",
   orientation = NULL,
@@ -59,14 +61,10 @@ band. Affects the fill of the interval.}
 with \code{select}? If \code{TRUE}, \code{select} can only be a single string to match
 against.}
 
-\item{discrete_colour}{suitable scales
-for the types of data.}
+\item{discrete_colour, discrete_fill, continuous_colour, continuous_fill}{suitable scales for the types of data.}
 
-\item{continuous_colour}{suitable scales
-for the types of data.}
-
-\item{continuous_fill}{suitable scales
-for the types of data.}
+\item{angle}{numeric; the angle at which the x axis tick labels are to be
+drawn passed to the \code{angle} argument of \code{\link[ggplot2:guide_axis]{ggplot2::guide_axis()}}.}
 
 \item{ylim}{numeric; vector of y axis limits to use all \emph{all} panels drawn.}
 

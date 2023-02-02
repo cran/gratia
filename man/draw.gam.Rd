@@ -31,14 +31,19 @@
   n_contour = NULL,
   partial_match = FALSE,
   discrete_colour = NULL,
+  discrete_fill = NULL,
   continuous_colour = NULL,
   continuous_fill = NULL,
   position = "identity",
+  angle = NULL,
   ncol = NULL,
   nrow = NULL,
   guides = "keep",
+  widths = NULL,
+  heights = NULL,
   projection = "orthographic",
   orientation = NULL,
+  wrap = TRUE,
   ...
 )
 }
@@ -67,8 +72,10 @@ Default of \code{NULL} will plot all parametric terms that can be drawn.}
 Ignored for anything but a simple univariate smooth.}
 
 \item{scales}{character; should all univariate smooths be plotted with the
-same y-axis scale? The default, \code{scales = "fixed"}, ensures this is done.
-If \code{scales = "free"} each univariate smooth has its own y-axis scale.
+same y-axis scale? If \code{scales = "free"}, the default, each univariate
+smooth has its own y-axis scale. If \code{scales = "fixed"}, a common y axis
+scale is used for all univariate smooths.
+
 Currently does not affect the y-axis scale of plots of the parametric
 terms.}
 
@@ -108,7 +115,8 @@ The data are scaled into the unit square before deciding what to exclude,
 and \code{dist} is a distance within the unit square. See
 \code{\link[mgcv:exclude.too.far]{mgcv::exclude.too.far()}} for further details.}
 
-\item{rug}{logical; draw a rug plot at the botom of each plot?}
+\item{rug}{logical; draw a rug plot at the botom of each plot for 1-D
+smooths or plot locations of data for higher dimensions.}
 
 \item{contour}{logical; should contours be draw on the plot using
 \code{\link[ggplot2:geom_contour]{ggplot2::geom_contour()}}.}
@@ -132,17 +140,25 @@ band. Affects the fill of the interval.}
 with \code{select}? If \code{TRUE}, \code{select} can only be a single string to match
 against.}
 
-\item{discrete_colour, continuous_colour, continuous_fill}{suitable scales
-for the types of data.}
+\item{discrete_colour, discrete_fill, continuous_colour, continuous_fill}{suitable scales for the types of data.}
 
 \item{position}{Position adjustment, either as a string, or the result of a
 call to a position adjustment function.}
+
+\item{angle}{numeric; the angle at which the x axis tick labels are to be
+drawn passed to the \code{angle} argument of \code{\link[ggplot2:guide_axis]{ggplot2::guide_axis()}}.}
 
 \item{ncol, nrow}{numeric; the numbers of rows and columns over which to
 spread the plots}
 
 \item{guides}{character; one of \code{"keep"} (the default), \code{"collect"}, or
 \code{"auto"}. Passed to \code{\link[patchwork:plot_layout]{patchwork::plot_layout()}}}
+
+\item{widths, heights}{The relative widths and heights of each column and
+row in the grid. Will get repeated to match the dimensions of the grid. If
+there is more than 1 plot and \code{widths = NULL}, the value of \code{widths} will
+be set internally to \code{widths = 1} to accomodate plots of smooths that
+use a fixed aspect ratio.}
 
 \item{projection}{character; projection to use, see \code{\link[ggplot2:coord_map]{ggplot2::coord_map()}}
 for details.}
@@ -154,6 +170,8 @@ defaults to the midrange of the longitude coordinates in the data. The
 default values for \code{orientation} therefore are
 `c(20, 0, mean(range(longitude))))`` if this is not specified by the user.
 See links in \code{\link[ggplot2:coord_map]{ggplot2::coord_map()}} for more information.}
+
+\item{wrap}{logical; wrap plots as a patchwork?}
 
 \item{...}{additional arguments passed to \code{\link[patchwork:wrap_plots]{patchwork::wrap_plots()}}.}
 }

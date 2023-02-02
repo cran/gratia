@@ -1,3 +1,207 @@
+# gratia 0.8.1
+
+## User visible changes
+
+* `smooth_samples()` now returns objects with variables involved in smooths
+  that have their correct name. Previously variables were named `.x1`, `.x2`,
+  etc. Fixing #126 and improving compatibility with `compare_smooths()` and
+  `smooth_estimates()` allowed the variables to be named correctly.
+
+* *gratia* now depends on version 1.8-41 or later of the *mgcv* package.
+
+## New features
+
+* `draw.gam()` can now handle tensor products that include a marginal random
+  effect smooth. Beware plotting such smooths if there are many levels,
+  however, as a separate surface plot will be produced for each level.
+
+## Bug fixes
+
+* Additional fixes for changes in dplyr 1.1.0.
+
+* `smooth_samples()` now works when sampling from posteriors of multiple smooths
+  with different dimension. #126 reported by @Aariq
+
+# gratia 0.8.0
+
+## User visible changes
+
+* {gratia} now depends on R version 4.1 or later.
+
+* A new vignette "Data slices" is supplied with {gratia}.
+
+* Functions in {gratia} have harmonised to use an argument named `data` instead
+  of `newdata` for passing new data at which to evaluate features of smooths. A
+  message will be printed if `newdata` is used from now on. Existing code does
+  not need to be changed as `data` takes its value from `newdata`.
+  
+  Note that due to the way `...` is handled in R, if your R script uses the
+  `data` argument, *and* is run with versions of gratia prior to 8.0 (when
+  released; 0.7.3.8 if using the development version) the user-supplied data
+  will be silently ignored. As such, scripts using `data` should check that the
+  installed version of gratia is >= 0.8 and package developers should update
+  to depend on versions >= 0.8 by using `gratia (>= 0.8)` in `DESCRIPTION`.
+
+* The order of the plots of smooths has changed in `draw.gam()` so that they
+  again match the order in which smooths were specified in the model formula.
+  See *Bug Fixes* below for more detail or #154.
+
+## New features
+
+* Added basic support for GAMLSS (distributional GAMs) fitted with the
+  `gamlss()´ function from package GJRM. Support is currently restricted to a
+  `draw()´ method.
+
+* `difference_smooths()` can now include the group means in the difference,
+  which many users expected. To include the group means use `group_means = TRUE`
+  in the function call, e.g.
+  `difference_smooths(model, smooth = "s(x)", group_means = TRUE`). Note: this
+  function still differs from `plot_diff()` in package *itsadug*, which
+  essentially computes differences of model predictions. The main practical
+  difference is that other effects beyond the factor by smooth, including random
+  effects, may be included with `plot_diff()`.
+
+  This implements the main wish of #108 (@dinga92) and #143 (@mbolyanatz)
+  despite my protestations that this was complicated in some cases (it isn't;
+  the complexity just cancels out.)
+
+* `data_slice()` has been totally revised. Now, the user provides the values for
+  the variables they want in the slice and any variables in the model that are
+  not specified will be held at typical values (i.e. the value of the
+  observation that is closest to the median for numeric variables, or the modal
+  factor level.)
+
+  Data slices are now produced by passing `name` = `value` pairs for the
+  variables and their values that you want to appear in the slice. For example
+
+  ```
+  m <- gam(y ~ s(x1) + x2 + fac)
+  data_slice(model, x1 = evenly(x1, n = 100), x2 = mean(x2))
+  ```
+
+  The `value` in the pair can be an expression that will be looked up
+  (evaluated) in the `data` argument or the model frame of the fitted model
+  (the default). In the above example, the resulting slice will be a data frame
+  of 100 observations, comprising `x1`, which is a vector of 100 values spread
+  evenly over the range of `x1`, a constant value of the mean of `x2` for the
+  `x2` variable, and a constant factor level, the model class of `fac`, for the
+  `fac` variable of the model.
+
+* `partial_derivatives()` is a new function for computing partial derivatives
+  of multivariate smooths (e.g. `s(x,z)`, `te(x,z)`) with respect to one of
+  the margins of the smooth. Multivariate smooths of any dimension are handled,
+  but only one of the dimensions is allowed to vary. Partial derivatives are
+  estimated using the method of finite differences, with forward, backward,
+  and central finite differences available. Requested by @noamross #101
+
+* `overview()` provides a simple overview of model terms for fitted GAMs.
+
+* The new `bs = "sz"` basis that was released with *mgcv* version 1.18-41 is
+  now supported in `smooth_estimates()`, `draw.gam()`, and
+  `draw.smooth_estimates()` and this basis has its own unique plotting method.
+  #202
+
+* `basis()` now has a method for fitted GAM(M)s which can extract the estimated
+  basis from the model and plot it, using the estimated coefficients for the
+  smooth to weight the basis. #137
+
+  There is also a new `draw.basis()` method for plotting the results of a call
+  to `basis()`. This method can now also handle bivariate bases.
+
+  `tidy_basis()` is a lower level function that does the heavy lifting in
+  `basis()`, and is now exported. `tidy_basis()` returns a tidy representation
+  of a basis supplied as an object inheriting from class `"mgcv.smooth"`. These
+  objects are returned in the `$smooth` component of a fitted GAM(M) model.
+
+* `lp_matrix()` is a new utility function to quickly return the linear predictor
+  matrix for an estimated model. It is a wrapper to
+  `predict(..., type = "lpmatrix")`
+
+* `evenly()` is a synonym for `seq_min_max()` and is preferred going forward.
+  Gains argument `by` to produce sequences over a covariate that increment in
+  units of `by`.
+
+* `ref_level()` and `level()` are new utility functions for extracting the
+  reference or a specific level of a factor respectively. These will be most
+  useful when specifying covariate values to condition on in a data slice.
+
+* `model_vars()` is a new, public facing way of returning a vector of variables
+  that are used in a model.
+
+* `difference_smooths()` will now use the user-supplied data as points at
+  which to evaluate a pair of smooths. Also note that the argument `newdata` has
+  been renamed `data`. #175
+
+* The `draw()` method for `difference_smooths()` now uses better labels for
+  plot titles to avoid long labels with even modest factor levels.
+
+* `derivatives()` now works for factor-smooth interaction (`"fs"`) smooths.
+
+* `draw()` methods now allow the angle of tick labels on the x axis of plots to
+  be rotated using argument `angle`. Requested by @tamas-ferenci #87
+
+* `draw.gam()` and related functions (`draw.parametric_effects()`,
+  `draw.smooth_estimates()`) now add the basis to the plot using a caption.
+  #155
+
+* `smooth_coefs()` is a new utility function for extracting the coefficients
+  for a particular smooth from a fitted model. `smooth_coef_indices()` is an
+  associated function that returns the indices (positions) in the vector of
+  model coefficients (returned by `coef(gam_model)`) of those coefficients that
+  pertain to the stated smooth.
+
+* `draw.gam()` now better handles patchworks of plots where one or more of
+  those plots has fixed aspect ratios. #190
+
+## Bug fixes
+
+* `draw.posterior_smooths` now plots posterior samples with a fixed aspect ratio
+  if the smooth is isotropic. #148
+
+* `derivatives()` now ignores random effect smooths (for which derivatives
+  don't make sense anyway). #168
+
+* `confint.gam(...., method = "simultaneous")` now works with factor by smooths
+  where `parm` is passed the full name of a specific smooth `s(x)faclevel`.
+
+* The order of plots produced by `gratia::draw.gam()` again matches the order
+  in which the smooths entered the model formula. Recent changes to the
+  internals of `gratia::draw.gam()` when the switch to `smooth_estimates()` was
+  undertaken lead to a change in behaviour resulting from the use of
+  `dplyr::group_split()`, and it's coercion internally of a character vector to
+  a factor. This factor is now created explicitly, and the levels set to the
+  correct order. #154
+
+* Setting the `dist` argument to set response or smooth values to `NA` if they
+  lay too far from the support of the data in multivariate smooths, this would
+  lead an incorrect scale for the response guide. This is now fixed. #193
+
+* Argument `fun` to `draw.gam()` was not being applied to any parametric terms.
+  Reported by @grasshoppermouse #195
+
+* `draw.gam()` was adding the uncertainty for all linear predictors to smooths
+  when `overall_uncertainty = TRUE` was used. Now `draw.gam()` only includes the
+  uncertainty for those linear predictors in which a smooth takes part. #158
+
+* `partial_derivatives()` works when provided with a single data point at
+  which to evaluate the derivative. #199
+
+* `transform_fun.smooth_estimates()` was addressing the wrong variable names
+  when trying to transform the confidence interval. #201
+
+* `data_slice()` doesn't fail with an error when used with a model that contains
+  an offset term. #198
+
+* `confint.gam()` no longer uses `evaluate_smooth()`, which is soft deprecated.
+  #167
+
+* `qq_plot()` and `worm_plot()` could compute the wrong deviance residuals used
+  to generate the theoretical quantiles for some of the more exotic families
+  (distributions) available in *mgcv*. This also affected `appraise()` but only
+  for the QQ plot; the residuals shown in the other plots and the deviance
+  residuals shown on the y-axis of the QQ plot were correct. Only the
+  generation of the reference intervals/quantiles was affected.
+
 # gratia 0.7.3
 
 ## User visible changes

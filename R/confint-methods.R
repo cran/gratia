@@ -185,9 +185,8 @@
 #'   is not currently implemented.
 #' @param level numeric, `0 < level < 1`; the confidence level of the point-wise
 #'   or simultaneous interval. The default is `0.95` for a 95% interval.
-#' @param newdata data frame; containing new values of the covariates used in
-#'   the model fit. The selected smooth(s) wil be evaluated at the supplied
-#'   values.
+#' @param data data frame; new values of the covariates used in the model fit.
+#'   The selected smooth(s) wil be evaluated at the supplied values.
 #' @param n numeric; the number of points to evaluate smooths at.
 #' @param type character; the type of interval to compute. One of `"confidence"`
 #'   for point-wise intervals, or `"simultaneous"` for simultaneous intervals.
@@ -209,14 +208,22 @@
 #' @param partial_match logical; should matching `parm` use a partial match or
 #'   an exact match? Can only be used if `length(parm)` is `1`.
 #' @param ... additional arguments for methods
+#' @param newdata DEPRECATED! data frame; containing new values of the
+#'   covariates used in the model fit. The selected smooth(s) wil be evaluated
+#'   at the supplied values.
 #'
-#' @return a data frame with components:
-#' 1. `term`; factor indicating to which term each row relates,
-#' 2. `x`; the vector of values at which the smooth was evaluated,
-#' 3. `lower`; lower limit of the confidence or simultaneous interval,
-#' 4. `est`; estimated value of the smooth
-#' 5. `upper`; upper limit of the confidence or simultaneous interval,
-#' 6. `crit`; critical value for the `100 * level`% confidence interval.
+#' @return a tibble with components:
+#' 1. `smooth`; character indicating to which term each row relates,
+#' 2. `type`; the type of smooth,
+#' 3. `by` the name of the by variable if a by smooth, `NA` otherwise,
+#' 4. one or more vectors of values at which the smooth was evaluated, named as
+#'    per the variables in the smooth,
+#' 5. zero or more variables containing values of the by variable,
+#' 6. `est`; estimated value of the smooth,
+#' 7. `se`; standard error of the estimated value of the smooth,
+#' 8. `crit`; critical value for the `100 * level`% confidence interval.
+#' 9. `lower`; lower limit of the confidence or simultaneous interval,
+#' 10. `upper`; upper limit of the confidence or simultaneous interval,
 #'
 #' @author Gavin L. Simpson
 #'
@@ -226,6 +233,7 @@
 #' @importFrom dplyr bind_rows
 #' @importFrom tibble add_column
 #' @importFrom mvnfast rmvn
+#' @importFrom tidyselect all_of last_col
 #'
 #' @export
 #'
@@ -246,27 +254,27 @@
 #' }
 #' new_data <- sapply(dat[c("x0", "x1", "x2", "x3")], middle)
 #' new_data <- data.frame(new_data)
-#' 
+#'
 #' ## point-wise interval for smooth of x2
-#' ci <- confint(mod, parm = "s(x2)", type = "confidence", newdata = new_data)
+#' ci <- confint(mod, parm = "s(x2)", type = "confidence", data = new_data)
 #' ci
 #'
 #' ## simultaneous interval for smooth of x2
 #' \dontshow{
 #' set.seed(42)
 #' }
-#' si <- confint(mod, parm = "s(x2)", newdata = new_data,
+#' si <- confint(mod, parm = "s(x2)", data = new_data,
 #'               type = "simultaneous", nsim = 3000, ncores = 2)
 #' si
 #' \dontshow{
 #' options(op)
 #' }
-`confint.gam` <- function(object, parm, level = 0.95, newdata = NULL, n = 200,
+`confint.gam` <- function(object, parm, level = 0.95, data = newdata, n = 100,
                           type = c("confidence", "simultaneous"), nsim = 10000,
                           shift = FALSE, transform = FALSE,
                           unconditional = FALSE,
                           ncores = 1, partial_match = FALSE,
-                          ...) {
+                          ..., newdata = NULL) {
     S <- smooths(object)
     ## select smooths
     select <- check_user_select_smooths(smooths = S,
@@ -284,16 +292,21 @@
     by_levs <- NULL
     is_by <- vapply(object[["smooth"]][take], is_by_smooth, logical(1L))
     if (any(is_by)) {
-        S <- vapply(strsplit(S, ":"), `[[`, character(1L), 1L)
+        #S <- vapply(strsplit(S, ":"), `[[`, character(1L), 1L)
         by_levs <- vapply(object[["smooth"]][take], by_level, character(1L))
         by_var <- vapply(object[["smooth"]][take], by_variable, character(1L))
     }
     ## unique smooths (counts all levels of a by factor as a single smooth)
     uS <- unique(S)
 
-    ## how many data points if newdata supplied
-    if (!is.null(newdata)) {
-        n <- NROW(newdata)
+    # warn if user uses newdata
+    if (! is.null(newdata)) {
+        newdata_deprecated()
+    }
+
+    ## how many data points if data supplied
+    if (!is.null(data)) {
+        n <- NROW(data)
     }
 
     ilink <- if (is.logical(transform)) { # transform is logical
@@ -308,65 +321,55 @@
 
     ## which type of confidence interval
     type <- match.arg(type)
-    if (isTRUE(type == "simultaneous")) {
-        ## need VCOV for simultaneous intervals
-        V <- get_vcov(object, unconditional = unconditional)
-
-        ## simulate un-biased deviations given bayesian covar matrix
-        buDiff <- rmvn(n = nsim, mu = rep(0, nrow(V)), sigma = V,
-                       ncores = ncores)
-    }
     ## list to hold results
     out <- vector("list", length = length(uS)) # list for results
 
     if (isTRUE(type == "confidence")) {
         for (i in seq_along(out)) {
-            out[[i]] <- evaluate_smooth(object, uS[i], n = n, newdata = newdata)
-            out[[i]][["crit"]] <- qnorm((1 - level) / 2, lower.tail = FALSE)
+            out[[i]] <- smooth_estimates(object, smooth = uS[i],
+                n = n, data = data, partial_match = partial_match)
+            out[[i]][["crit"]] <- coverage_normal(level)
         }
     } else {
         ## function to do simultaneous intervals for a smooth
         ## this should be outlined as an actual function...
         ## @param smooth list; the individual smooth to work on
         ## @param level numeric; the confidence level
-        ## @param newdata dataframe; values to compute confidence interval at
-        sim_interval <- function(smooth, level, newdata) {
+        ## @param data dataframe; values to compute confidence interval at
+        sim_interval <- function(smooth, level, data) {
             start <- smooth[["first.para"]]
             end <- smooth[["last.para"]]
             para.seq <- start:end
-            Cg <- PredictMat(smooth, newdata)
+            Cg <- PredictMat(smooth, data)
             simDev <- Cg %*% t(buDiff[, para.seq])
-            absDev <- abs(sweep(simDev, 1L, newdata[["se"]], FUN = "/"))
+            absDev <- abs(sweep(simDev, 1L, data[["se"]], FUN = "/"))
             masd <- apply(absDev, 2L, max)
-            quantile(masd, probs = level, type = 8)
+            unname(quantile(masd, probs = level, type = 8))
         }
         ## need VCOV for simultaneous intervals
         V <- get_vcov(object, unconditional = unconditional)
         ## simulate un-biased deviations given bayesian covar matrix
-        buDiff <- rmvn(n = nsim, mu = rep(0, nrow(V)), sigma = V,
+        buDiff <- mvnfast::rmvn(n = nsim, mu = rep(0, nrow(V)), sigma = V,
                        ncores = ncores)
-          #rmvnorm(n = nsim, mean = rep(0, nrow(V)), sigma = V)
         ## loop over smooths
         for (i in seq_along(out)) {
             ## evaluate smooth
-            out[[i]] <- evaluate_smooth(object, uS[i], n = n, newdata = newdata)
+            out[[i]] <- smooth_estimates(object, smooth = uS[i],
+                n = n, data = data, partial_match = partial_match)
 
             # if this is a by var smooth, we need to do this for each level of
             # by var
+            # I think this can now be simplified to just be the code in the
+            # else branch as smooth_estimates knows how to handle very specific
+            # smooth names FIXME
             if (is.null(by_levs)) {        # not by variable smooth
                 smooth <- get_smooth(object, parm) # get the specific smooth
-                crit <- sim_interval(smooth, level = level, newdata = out[[i]])
+                crit <- sim_interval(smooth, level = level, data = out[[i]])
                 out[[i]][["crit"]] <- crit # add on the critical value
             } else {                       # is a by variable smooth
-                out[[i]][["crit"]] <- 0    # fill in a variable crit
-                smooth <- old_get_smooth(object, parm)
-                for (l in seq_along(by_levs)) {
-                    ## the 6L should really refer to the by_variable column...
-                    ind <- out[[i]][[6L]] == by_levs[l] # take only needed rows
-                    crit <- sim_interval(smooth[[l]], level = level, 
-                                         newdata = out[[i]][ind, ])
-                    out[[i]][["crit"]][ind] <- crit # add on the critical value
-                }
+                smooth <- old_get_smooth(object, uS[i])
+                crit <- sim_interval(smooth, level = level, data = out[[i]])
+                out[[i]][["crit"]] <- crit # add on the critical value
             }
         }
     }
@@ -381,7 +384,6 @@
     }
 
     ## simplify to a data frame for return
-    #out <- do.call("bind_rows", out)
     out <- bind_rows(out)
 
     # This was needed with `[.evaluated_smooth` before switching to
@@ -400,6 +402,11 @@
     out[["est"]]   <- ilink(out[["est"]] + const)
     out[["lower"]] <- ilink(out[["lower"]] + const)
     out[["upper"]] <- ilink(out[["upper"]] + const)
+
+    # smooth_estimates has columns in different places, relocate them to match
+    # old output as much as possible
+    out <- relocate(out, all_of(c("est", "se", "crit", "lower", "upper")),
+        .after = last_col())
 
     ## prepare for return
     class(out) <- c("confint.gam", class(out))

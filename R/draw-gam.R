@@ -22,8 +22,10 @@
 #' @param residuals logical; should partial residuals for a smooth be drawn?
 #'   Ignored for anything but a simple univariate smooth.
 #' @param scales character; should all univariate smooths be plotted with the
-#'   same y-axis scale? The default, `scales = "fixed"`, ensures this is done.
-#'   If `scales = "free"` each univariate smooth has its own y-axis scale.
+#'   same y-axis scale? If `scales = "free"`, the default, each univariate
+#'   smooth has its own y-axis scale. If `scales = "fixed"`, a common y axis
+#'   scale is used for all univariate smooths.
+#'   
 #'   Currently does not affect the y-axis scale of plots of the parametric
 #'   terms.
 #' @param constant numeric; a constant to add to the estimated values of the
@@ -53,7 +55,8 @@
 #'   The data are scaled into the unit square before deciding what to exclude,
 #'   and `dist` is a distance within the unit square. See
 #'   [mgcv::exclude.too.far()] for further details.
-#' @param rug logical; draw a rug plot at the botom of each plot?
+#' @param rug logical; draw a rug plot at the botom of each plot for 1-D
+#'   smooths or plot locations of data for higher dimensions.
 #' @param contour logical; should contours be draw on the plot using
 #'   [ggplot2::geom_contour()].
 #' @param ci_alpha numeric; alpha transparency for confidence or simultaneous
@@ -68,14 +71,21 @@
 #' @param partial_match logical; should smooths be selected by partial matches
 #'   with `select`? If `TRUE`, `select` can only be a single string to match
 #'   against.
-#' @param discrete_colour,continuous_colour,continuous_fill suitable scales
-#'   for the types of data.
+#' @param discrete_colour,discrete_fill,continuous_colour,continuous_fill
+#'   suitable scales for the types of data.
 #' @param position Position adjustment, either as a string, or the result of a
 #'   call to a position adjustment function.
+#' @param angle numeric; the angle at which the x axis tick labels are to be
+#'   drawn passed to the `angle` argument of [ggplot2::guide_axis()].
 #' @param ncol,nrow numeric; the numbers of rows and columns over which to
 #'   spread the plots
 #' @param guides character; one of `"keep"` (the default), `"collect"`, or
 #'   `"auto"`. Passed to [patchwork::plot_layout()]
+#' @param widths,heights The relative widths and heights of each column and
+#'   row in the grid. Will get repeated to match the dimensions of the grid. If
+#'   there is more than 1 plot and `widths = NULL`, the value of `widths` will
+#'   be set internally to `widths = 1` to accomodate plots of smooths that
+#'   use a fixed aspect ratio.
 #' @param projection character; projection to use, see [ggplot2::coord_map()]
 #'   for details.
 #' @param orientation an optional vector `c(latitude, longitude, rotation)`
@@ -85,6 +95,7 @@
 #'   default values for `orientation` therefore are
 #'   `c(20, 0, mean(range(longitude))))`` if this is not specified by the user.
 #'   See links in [ggplot2::coord_map()] for more information.
+#' @param wrap logical; wrap plots as a patchwork?
 #' @param ... additional arguments passed to [patchwork::wrap_plots()].
 #'
 #' @note Internally, plots of each smooth are created using [ggplot2::ggplot()]
@@ -100,9 +111,10 @@
 #' @importFrom ggplot2 scale_colour_discrete scale_colour_continuous
 #'   scale_fill_distiller
 #' @importFrom patchwork wrap_plots
-#' @importFrom dplyr mutate rowwise %>% ungroup left_join summarise group_split
+#' @importFrom dplyr mutate rowwise %>% ungroup left_join group_split summarise
 #' @importFrom purrr pluck map_lgl
 #' @importFrom rlang expr_label
+#' @importFrom utils packageVersion getFromNamespace
 #' @export
 #'
 #' @examples
@@ -160,22 +172,25 @@
                        n_contour = NULL,
                        partial_match = FALSE,
                        discrete_colour = NULL,
+                       discrete_fill = NULL,
                        continuous_colour = NULL,
                        continuous_fill = NULL,
                        position = "identity",
+                       angle = NULL,
                        ncol = NULL, nrow = NULL,
-                       guides = "keep",
+                       guides = "keep", widths = NULL, heights = NULL,
                        projection = "orthographic",
                        orientation = NULL,
+                       wrap = TRUE,
                        ...) {
     model_name <- expr_label(substitute(object))
     # fixed or free?
     scales <- match.arg(scales)
 
     # fix up default scales
-    if (is.null(discrete_colour)) {
-        discrete_colour <- scale_colour_discrete()
-    }
+    #if (is.null(discrete_colour)) {
+    #    discrete_colour <- scale_colour_discrete()
+    #}
     if (is.null(continuous_colour)) {
         continuous_colour <- scale_colour_continuous()
     }
@@ -232,11 +247,17 @@
 
         # Take the range of the smooths & their confidence intervals now
         # before we put rug and residuals on
-        sm_rng <- sm_eval %>%
-            rowwise() %>%
-            summarise(rng = range(c(data$est, data$lower_ci,
-                                    data$upper_ci))) %>%
+        if (utils::packageVersion("dplyr") > "1.0.10") {
+            sm_rng <- sm_eval |>
+                rowwise() |>
+                utils::getFromNamespace("reframe", "dplyr")(rng = range(c(data$est,
+                data$lower_ci, data$upper_ci))) |>
+                pluck("rng")
+        } else {sm_rng <- sm_eval |>
+            rowwise() |>
+            summarise(rng = range(c(data$est, data$lower_ci, data$upper_ci))) |>
             pluck("rng")
+        }
 
         # Add partial residuals if requested - by default they are
         # At the end of this, sm_eval will have a new list column containing the
@@ -250,14 +271,28 @@
                 p_resids <- nested_partial_residuals(object, terms = S[select])
 
                 # compute the range of residuals for each smooth
-                p_resids_rng <- p_resids %>%
-                    rowwise() %>%
-                    summarise(rng =
-                        range(.data$partial_residual$partial_residual)) %>%
+                # p_resids_rng <- p_resids |>
+                #     rowwise() |>
+                #     dplyr::reframe(rng =
+                #         range(.data$partial_residual$partial_residual)) |>
+                #     pluck("rng")
+                if (utils::packageVersion("dplyr") > "1.0.10") {
+                    p_resids_rng <- p_resids |>
+                    rowwise() |>
+                    utils::getFromNamespace("reframe", "dplyr")(
+                        rng = range(.data$partial_residual$partial_residual)) |>
                     pluck("rng")
-
+                } else {
+                    p_resids_rng <- p_resids |>
+                    rowwise() |>
+                    summarise(rng =
+                        range(.data$partial_residual$partial_residual)) |>
+                    pluck("rng")
+                }
                 # merge with the evaluated smooth
-                sm_eval <- left_join(sm_eval, p_resids, by = "smooth")
+                sm_eval <- suppress_matches_multiple_warning(
+                  left_join(sm_eval, p_resids, by = "smooth")
+                )
             }
         }
 
@@ -267,7 +302,9 @@
             rug_data <- nested_rug_values(object, terms = S[select])
 
             # merge with the evaluated smooth
-            sm_eval <- left_join(sm_eval, rug_data, by = "smooth")
+            sm_eval <- suppress_matches_multiple_warning(
+              left_join(sm_eval, rug_data, by = "smooth")
+            )
         }
 
         # need to figure out scales if "fixed"
@@ -276,7 +313,8 @@
         }
 
         # draw smooths
-        sm_l <- group_split(sm_eval, .data$smooth)
+        # the factor is to reorder to way the smooths entered the model
+        sm_l <- group_split(sm_eval, factor(.data$smooth, levels = S[select]))
         sm_plts <- map(sm_l,
                        draw_smooth_estimates,
                        constant = constant,
@@ -290,8 +328,10 @@
                        resid_col = resid_col,
                        partial_match = partial_match,
                        discrete_colour = discrete_colour,
+                       discrete_fill = discrete_fill,
                        continuous_colour = continuous_colour,
                        continuous_fill = continuous_fill,
+                       angle = angle,
                        ylim = ylims,
                        projection = projection,
                        orientation = orientation)
@@ -300,33 +340,39 @@
 
     # Are we plotting parametric effects too?
     if (isTRUE(parametric)) {
-        para <- parametric_effects(object, term = terms, #data = data,
-                                   unconditional = unconditional,
-                                   unnest = TRUE, ci_level = ci_level)
-        # Add CI
-        crit <- coverage_normal(ci_level)
-        object <- mutate(para,
-                         lower = .data$partial - (crit * .data$se),
-                         upper = .data$partial + (crit * .data$se))
-        # need to alter the ylim if scales are fixed
-        if (isTRUE(identical(scales, "fixed"))) {
-            ylims <- range(ylims, object$partial, object$upper, object$lower)
-        }
+        if (length(parametric_terms(object)) == 0L) {
+            message("The model contains no parametric terms")
+            parametric <- FALSE
+        } else {
+            para <- parametric_effects(object, term = terms, # data = data,
+                unconditional = unconditional,
+                unnest = TRUE, ci_level = ci_level)
+            # Add CI
+            crit <- coverage_normal(ci_level)
+            object <- mutate(para,
+                lower = .data$partial - (crit * .data$se),
+                upper = .data$partial + (crit * .data$se))
+            # need to alter the ylim if scales are fixed
+            if (isTRUE(identical(scales, "fixed"))) {
+                ylims <- range(ylims, object$partial, object$upper, object$lower)
+            }
 
-        para_plts <- para %>%
-          group_by(.data$term) %>%
-          group_map(.keep = TRUE,
+            para_plts <- para %>%
+                group_by(.data$term) %>%
+                group_map(.keep = TRUE,
                     .f = ~ draw_parametric_effect(.x,
-                                                  ci_level = ci_level,
-                                                  ci_col = ci_col,
-                                                  ci_alpha = ci_alpha,
-                                                  line_col = smooth_col,
-                                                  constant = constant,
-                                                  fun = fun,
-                                                  rug = rug,
-                                                  position = position,
-                                                  ylim = ylims))
-    } # parametric done
+                        ci_level = ci_level,
+                        ci_col = ci_col,
+                        ci_alpha = ci_alpha,
+                        line_col = smooth_col,
+                        constant = constant,
+                        fun = fun,
+                        rug = rug,
+                        position = position,
+                        angle = angle,
+                        ylim = ylims))
+        }
+    }
 
     if (isTRUE(parametric)) {
         sm_plts <- append(sm_plts, para_plts)
@@ -347,8 +393,20 @@
         ncol <- ceiling(sqrt(n_plots))
         nrow <- ceiling(n_plots / ncol)
     }
-    wrap_plots(sm_plts, byrow = TRUE, ncol = ncol, nrow = nrow,
-               guides = guides, ...)
+    if (n_plots > 1L && is.null(widths)) {
+        # it doesn't matter about the widths if only one plot, but if we have
+        # more than one plot and the user didn't change `widths`, then we will
+        # force a value of 1 to give all plots the same relative width
+        widths <- 1
+    }
+
+    if (wrap) {
+        sm_plts <- wrap_plots(sm_plts, byrow = TRUE, ncol = ncol, nrow = nrow,
+            guides = guides, widths = widths, heights = heights, ...)
+    }
+
+    # return
+    sm_plts
 }
 
 #' @export
@@ -362,4 +420,17 @@
 #' @export
 `draw.gamm` <- function(object, ...) {
     draw(object$gam, ...)
+}
+
+# TODO: Remove after dplyr 1.1.0 is released and use `multiple = "all"` instead
+suppress_matches_multiple_warning <- function(expr) {
+  handler_matches_multiple <- function(cnd) {
+    if (inherits(cnd, "dplyr_warning_join_matches_multiple")) {
+      restart <- findRestart("muffleWarning")
+      if (!is.null(restart)) {
+        invokeRestart(restart)
+      }
+    }
+  }
+  withCallingHandlers(expr, warning = handler_matches_multiple)
 }

@@ -31,7 +31,7 @@
 #' @examples
 #' load_mgcv()
 #' \dontshow{
-#' op <- options(cli.unicode = FALSE, digits = 6)
+#' op <- options(cli.unicode = FALSE, pillar.sigfig = 6)
 #' }
 #' sim_df <- data_sim("eg1", n = 400, dist = "normal", scale = 2, seed = 2)
 #' m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = sim_df, method = "REML")
@@ -66,9 +66,10 @@
         data <- as_tibble(data)
     }
     fit <- predict(object, newdata = data, ..., type = "link",
-                   se.fit = TRUE) %>%
-           bind_cols() %>%
-           rlang::set_names(c("fitted", "se"))
+                   se.fit = TRUE) |>
+           as.data.frame() |>
+               rlang::set_names(c("fitted", "se")) |>
+               as_tibble()
     fit <- bind_cols(data, fit)
 
     # create the confidence interval
