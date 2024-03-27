@@ -6,7 +6,7 @@
 
 [![R build
 status](https://github.com/gavinsimpson/gratia/workflows/R-CMD-check/badge.svg)](https://github.com/gavinsimpson/gratia/actions)
-[![codecov.io](https://codecov.io/gh/gavinsimpson/gratia/branch/master/graph/badge.svg)](https://app.codecov.io/gh/gavinsimpson/gratia)
+[![codecov](https://codecov.io/gh/gavinsimpson/gratia/branch/main/graph/badge.svg?token=GG5NQfgRFu)](https://app.codecov.io/gh/gavinsimpson/gratia)
 [![CRAN\_Status\_Badge](https://www.r-pkg.org/badges/version/gratia)](https://cran.r-project.org/package=gratia)
 [![CRAN
 Downloads](https://cranlogs.r-pkg.org/badges/grand-total/gratia)](https://cran.r-project.org/package=gratia)
@@ -28,35 +28,46 @@ The main features of *gratia* are currently
 
     For example, the classic four term additive example from Gu & Wahba:
 
-    ![Estimated smooths from a
-    GAM](man/figures/README-draw-gam-figure-1.png)
+    <figure>
+    <img src="man/figures/README-draw-gam-figure-1.png"
+    alt="Estimated smooths from a GAM" />
+    <figcaption aria-hidden="true">Estimated smooths from a GAM</figcaption>
+    </figure>
 
     Or for a bivariate smooth:
 
-    ![Estimated smooths from a
-    GAM](man/figures/README-draw-gam-figure-2d-1.png)
+    <figure>
+    <img src="man/figures/README-draw-gam-figure-2d-1.png"
+    alt="Estimated smooths from a GAM" />
+    <figcaption aria-hidden="true">Estimated smooths from a GAM</figcaption>
+    </figure>
 
-    Note specialist smoothers (`bs %in% c("mrf","so")`) are not
-    currently supported, but univariate, *factor* and *continuous*
-    `by`-variable smooths, simple random effect smooths (`bs = 're'`),
-    factor-smooth interaction smooths (`bs = "fs"`), and bivariate
+    Note that some specialist smoothers (`bs %in% c("mrf","sw", "sf")`)
+    are not currently supported, but univariate, *factor* and
+    *continuous* `by`-variable smooths, simple random effect smooths
+    (`bs = 're'`), factor-smooth interaction smooths (`bs = "fs"`),
+    constrained factor smooths (`bs = "sz"`), full soap film smooths
+    (`bs = "so"`), and bivariate, trivariate, and quadvariate TPRS and
     tensor product smooths are supported,
 
--   Estimatation of derivatives of fitted smoothers: `derivatives()`,
+-   Estimation of derivatives of fitted smoothers: `derivatives()`,
 
 -   Estimation of point-wise across-the-function confidence intervals
     and simultaneous intervals for smooths: `confint.gam()`.
 
 -   Model diagnostics via `appraise()`
 
-    ![Model diagnostics
-    figure](man/figures/README-appraise-figure-1.png)
+    <figure>
+    <img src="man/figures/README-appraise-figure-1.png"
+    alt="Model diagnostics figure" />
+    <figcaption aria-hidden="true">Model diagnostics figure</figcaption>
+    </figure>
 
 ## Installing *gratia*
 
 *gratia* is now available on CRAN, and can be installed with
 
-    install.packages('gratia')
+    install.packages("gratia")
 
 however *gratia* is under active development and you may wish to install
 the development version from github. The easiest way to do this is via
@@ -68,13 +79,11 @@ have *remotes* installed, then run
 to install the package. Alternatively, binary packages of the
 development version are available from rOpenSci’s R Universe service:
 
-    # Enable repository from gavinsimpson
-    options(repos = c(
-      gavinsimpson = "https://gavinsimpson.r-universe.dev",
-      CRAN = "https://cloud.r-project.org"))
-
-    # Download and install gratia in R
-    install.packages("gratia")
+    # Install gratia in R
+    install.packages("gratia", repos = c(
+      "https://gavinsimpson.r-universe.dev",
+      "https://cloud.r-project.org"
+    ))
 
 ## History
 

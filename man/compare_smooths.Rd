@@ -7,11 +7,13 @@
 compare_smooths(
   model,
   ...,
-  smooths = NULL,
+  select = NULL,
+  smooths = deprecated(),
   n = 100,
   data = NULL,
   unconditional = FALSE,
-  overall_uncertainty = TRUE
+  overall_uncertainty = TRUE,
+  partial_match = FALSE
 )
 }
 \arguments{
@@ -19,8 +21,15 @@ compare_smooths(
 
 \item{...}{Additional models to compare smooths against those of \code{model}.}
 
-\item{smooths}{character; vector of smooths to compare. If not specified
-comparisons will be performed for smooths common to all models supplied.}
+\item{select}{character; select which smooths to compare. The default
+(\code{NULL}) means all smooths in \code{model} will be compared. Numeric \code{select}
+indexes the smooths in the order they are specified in the formula and
+stored in \code{model}. Character \code{select} matches the labels for smooths
+as shown for example in the output from \code{summary(object)}. Logical
+\code{select} operates as per numeric \code{select} in the order that smooths are
+stored.}
+
+\item{smooths}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{select} instead.}
 
 \item{n}{numeric; the number of points over the range of the covariate at
 which to evaluate the smooth.}
@@ -35,20 +44,27 @@ covariance matrix will be used.}
 \item{overall_uncertainty}{logical; should the uncertainty in the model
 constant term be included in the standard error of the evaluate values of
 the smooth?}
+
+\item{partial_match}{logical; should smooths be selected by partial matches
+with \code{select}? If \code{TRUE}, \code{select} can only be a single string to match
+against.}
 }
 \description{
 Compare smooths across models
 }
 \examples{
-\dontshow{op <- options(cli.unicode = FALSE, pillar.sigfig = 5)}
+\dontshow{
+op <- options(cli.unicode = FALSE, pillar.sigfig = 5)
+}
 load_mgcv()
 dat <- data_sim("eg1", seed = 2)
 
 ## models to compare smooths across - artificially create differences
 m1 <- gam(y ~ s(x0, k = 5) + s(x1, k = 5) + s(x2, k = 5) + s(x3, k = 5),
-          data = dat, method = "REML")
-m2 <- gam(y ~ s(x0, bs = 'ts') + s(x1, bs = 'ts') + s(x2, bs = 'ts') +
-          s(x3, bs = 'ts'), data = dat, method = "REML")
+  data = dat, method = "REML"
+)
+m2 <- gam(y ~ s(x0, bs = "ts") + s(x1, bs = "ts") + s(x2, bs = "ts") +
+  s(x3, bs = "ts"), data = dat, method = "REML")
 
 ## build comparisons
 comp <- compare_smooths(m1, m2)
@@ -56,5 +72,7 @@ comp
 ## notice that the result is a nested tibble
 
 draw(comp)
-\dontshow{options(op)}
+\dontshow{
+options(op)
+}
 }

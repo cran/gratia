@@ -17,7 +17,8 @@ eg1 <- data_sim("eg1", n = n, seed = 1)
 
 # fit model
 m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3),
-         data = eg1, method = "REML")
+  data = eg1, method = "REML"
+)
 
 ## ----draw-eg1-1---------------------------------------------------------------
 p <- draw(m)
@@ -57,57 +58,69 @@ names(eg1)
 
 ## ----custom-plot-sx2----------------------------------------------------------
 p_sx2 <- sm %>%
-  filter(smooth == "s(x2)") %>%
+  filter(.smooth == "s(x2)") %>%
   ggplot() +
   geom_rug(aes(x = x2),
-           data = eg1,
-           sides = "b", length = grid::unit(0.02, "npc")) +
-  geom_ribbon(aes(ymin = lower_ci, ymax = upper_ci, x = x2),
-              alpha = 0.2) +
+    data = eg1,
+    sides = "b", length = grid::unit(0.02, "npc")
+  ) +
+  geom_ribbon(aes(ymin = .lower_ci, ymax = .upper_ci, x = x2),
+    alpha = 0.2
+  ) +
   geom_point(aes(x = x2, y = `s(x2)`),
-             data = eg1, cex = 1.5, colour = "steelblue3") +
-  geom_line(aes(x = x2, y = est), lwd = 1.2) +
+    data = eg1, cex = 1.5, colour = "steelblue3"
+  ) +
+  geom_line(aes(x = x2, y = .estimate), lwd = 1.2) +
   labs(y = "Partial effect", title = "s(x2)")
 p_sx2
 
 ## ----custom-plot-other-smooths, echo = FALSE----------------------------------
 p_sx0 <- sm %>%
-  filter(smooth == "s(x0)") %>%
+  filter(.smooth == "s(x0)") %>%
   ggplot() +
   geom_rug(aes(x = x0),
-           data = eg1,
-           sides = "b", length = grid::unit(0.02, "npc")) +
-  geom_ribbon(aes(ymin = lower_ci, ymax = upper_ci, x = x0),
-              alpha = 0.2) +
+    data = eg1,
+    sides = "b", length = grid::unit(0.02, "npc")
+  ) +
+  geom_ribbon(aes(ymin = .lower_ci, ymax = .upper_ci, x = x0),
+    alpha = 0.2
+  ) +
   geom_point(aes(x = x0, y = `s(x0)`),
-             data = eg1, cex = 1.5, colour = "steelblue3") +
-  geom_line(aes(x = x0, y = est), lwd = 1.2) +
+    data = eg1, cex = 1.5, colour = "steelblue3"
+  ) +
+  geom_line(aes(x = x0, y = .estimate), lwd = 1.2) +
   labs(y = "Partial effect", title = "s(x0)")
 
 p_sx1 <- sm %>%
-  filter(smooth == "s(x1)") %>%
+  filter(.smooth == "s(x1)") %>%
   ggplot() +
   geom_rug(aes(x = x1),
-           data = eg1,
-           sides = "b", length = grid::unit(0.02, "npc")) +
-  geom_ribbon(aes(ymin = lower_ci, ymax = upper_ci, x = x1),
-              alpha = 0.2) +
+    data = eg1,
+    sides = "b", length = grid::unit(0.02, "npc")
+  ) +
+  geom_ribbon(aes(ymin = .lower_ci, ymax = .upper_ci, x = x1),
+    alpha = 0.2
+  ) +
   geom_point(aes(x = x1, y = `s(x1)`),
-             data = eg1, cex = 1.5, colour = "steelblue3") +
-  geom_line(aes(x = x1, y = est), lwd = 1.2) +
+    data = eg1, cex = 1.5, colour = "steelblue3"
+  ) +
+  geom_line(aes(x = x1, y = .estimate), lwd = 1.2) +
   labs(y = "Partial effect", title = "s(x1)")
 
 p_sx3 <- sm %>%
-  filter(smooth == "s(x3)") %>%
+  filter(.smooth == "s(x3)") %>%
   ggplot() +
   geom_rug(aes(x = x3),
-           data = eg1,
-           sides = "b", length = grid::unit(0.02, "npc")) +
-  geom_ribbon(aes(ymin = lower_ci, ymax = upper_ci, x = x3),
-              alpha = 0.2) +
+    data = eg1,
+    sides = "b", length = grid::unit(0.02, "npc")
+  ) +
+  geom_ribbon(aes(ymin = .lower_ci, ymax = .upper_ci, x = x3),
+    alpha = 0.2
+  ) +
   geom_point(aes(x = x3, y = `s(x3)`),
-             data = eg1, cex = 1.5, colour = "steelblue3") +
-  geom_line(aes(x = x3, y = est), lwd = 1.2) +
+    data = eg1, cex = 1.5, colour = "steelblue3"
+  ) +
+  geom_line(aes(x = x3, y = .estimate), lwd = 1.2) +
   labs(y = "Partial effect", title = "s(x3)")
 
 ## ----custom-plot-final--------------------------------------------------------
@@ -120,25 +133,35 @@ eg1 <- eg1 %>%
 
 ## ----plot-partial-resids-with-colours-by-fac----------------------------------
 plt <- sm %>%
-  filter(smooth == "s(x2)") %>%
+  filter(.smooth == "s(x2)") %>%
   ggplot() +
   geom_rug(aes(x = x2),
-           data = eg1,
-           sides = "b", length = grid::unit(0.02, "npc")) +
-  geom_ribbon(aes(ymin = lower_ci, ymax = upper_ci, x = x2),
-              alpha = 0.2) +
-  geom_line(aes(x = x2, y = est), lwd = 1.2) +
+    data = eg1,
+    sides = "b", length = grid::unit(0.02, "npc")
+  ) +
+  geom_ribbon(aes(ymin = .lower_ci, ymax = .upper_ci, x = x2),
+    alpha = 0.2
+  ) +
+  geom_line(aes(x = x2, y = .estimate), lwd = 1.2) +
   labs(y = "Partial effect", title = "s(x2)")
 
 plt +
-  geom_point(aes(x = x2, y = `s(x2)`,
-                 colour = fac), # <-- map fac to colour aesthetic
-             data = eg1, cex = 1.5)
+  geom_point(
+    aes(
+      x = x2, y = `s(x2)`,
+      colour = fac
+    ), # <-- map fac to colour aesthetic
+    data = eg1, cex = 1.5
+  )
 
 ## ----plot-partial-resids-with-colours-by-x1-----------------------------------
 plt +
-  geom_point(aes(x = x2, y = `s(x2)`,
-                 colour = x1, size = x1), # <-- map fac to colour aesthetic
-             data = eg1, alpha = 0.3) +   # <-- deleted cex!!
+  geom_point(
+    aes(
+      x = x2, y = `s(x2)`,
+      colour = x1, size = x1
+    ), # <-- map fac to colour aesthetic
+    data = eg1, alpha = 0.3
+  ) + # <-- deleted cex!!
   scale_colour_viridis_c(option = "plasma")
 

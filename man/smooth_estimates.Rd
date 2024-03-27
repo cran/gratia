@@ -9,10 +9,11 @@ smooth_estimates(object, ...)
 
 \method{smooth_estimates}{gam}(
   object,
-  smooth = NULL,
+  select = NULL,
+  smooth = deprecated(),
   n = 100,
-  n_3d = NULL,
-  n_4d = NULL,
+  n_3d = 16,
+  n_4d = 4,
   data = NULL,
   unconditional = FALSE,
   overall_uncertainty = TRUE,
@@ -27,7 +28,11 @@ smooth_estimates(object, ...)
 
 \item{...}{arguments passed to other methods.}
 
-\item{smooth}{character; a single smooth to evaluate.}
+\item{select}{character; select which smooth's posterior to draw from.
+The default (\code{NULL}) means the posteriors of all smooths in \code{model}
+wil be sampled from. If supplied, a character vector of requested terms.}
+
+\item{smooth}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{select} instead.}
 
 \item{n}{numeric; the number of points over the range of the covariate at
 which to evaluate the smooth.}
@@ -35,7 +40,7 @@ which to evaluate the smooth.}
 \item{n_3d, n_4d}{numeric; the number of points over the range of last
 covariate in a 3D or 4D smooth. The default is \code{NULL} which achieves the
 standard behaviour of using \code{n} points over the range of all covariate,
-resulting in \code{n^d} evaluation pointsm, where \code{d} is the dimension of the
+resulting in \code{n^d} evaluation points, where \code{d} is the dimension of the
 smooth. For \code{d > 2} this can result in very many evaluation points and slow
 performance. For smooths of \code{d > 4}, the value of \code{n_4d} will be used for
 all dimensions \verb{> 4}, unless this is \code{NULL}, in which case the default
@@ -71,12 +76,14 @@ A data frame (tibble), which is of class \code{"smooth_estimates"}.
 Evaluate a smooth at a grid of evenly spaced value over the range of the
 covariate associated with the smooth. Alternatively, a set of points at which
 the smooth should be evaluated can be supplied. \code{smooth_estimates()} is a new
-implementation of \code{\link[=evaluate_smooth]{evaluate_smooth()}}, and should be used instead of that
-other function.
+implementation of \code{evaluate_smooth()}, and replaces that function, which has
+been removed from the package.
 }
 \examples{
 load_mgcv()
-\dontshow{op <- options(cli.unicode = FALSE, pillar.sigfig = 6)}
+\dontshow{
+op <- options(cli.unicode = FALSE, pillar.sigfig = 6)
+}
 dat <- data_sim("eg1", n = 400, dist = "normal", scale = 2, seed = 2)
 m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 
@@ -84,6 +91,8 @@ m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 smooth_estimates(m1)
 
 ## or selected smooths
-smooth_estimates(m1, smooth = c("s(x0)", "s(x1)"))
-\dontshow{options(op)}
+smooth_estimates(m1, select = c("s(x0)", "s(x1)"))
+\dontshow{
+options(op)
+}
 }

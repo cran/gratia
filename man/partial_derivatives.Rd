@@ -16,12 +16,13 @@ partial_derivatives(object, ...)
 
 \method{partial_derivatives}{gam}(
   object,
-  term,
+  select = NULL,
+  term = deprecated(),
   focal = NULL,
   data = newdata,
   order = 1L,
   type = c("forward", "backward", "central"),
-  n = 200,
+  n = 100,
   eps = 1e-07,
   interval = c("confidence", "simultaneous"),
   n_sim = 10000,
@@ -31,6 +32,7 @@ partial_derivatives(object, ...)
   offset = NULL,
   ncores = 1,
   partial_match = FALSE,
+  seed = NULL,
   ...,
   newdata = NULL
 )
@@ -40,10 +42,12 @@ partial_derivatives(object, ...)
 
 \item{...}{arguments passed to other methods.}
 
-\item{term}{character; vector of one or more smooth terms for which
+\item{select}{character; vector of one or more smooth terms for which
 derivatives are required. If missing, derivatives for all smooth terms
 will be returned. Can be a partial match to a smooth term; see argument
 \code{partial_match} below.}
+
+\item{term}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{select} instead.}
 
 \item{focal}{character; name of the focal variable. The partial derivative
 of the estimated smooth with respect to this variable will be returned.
@@ -91,22 +95,21 @@ to work on Windows with current \code{R}).}
 with \code{term}? If \code{TRUE}, \code{term} can only be a single string to match
 against.}
 
+\item{seed}{numeric; RNG seed to use.}
+
 \item{newdata}{Deprecated: use \code{data} instead.}
 }
 \value{
 A tibble, currently with the following variables:
 \itemize{
-\item \code{smooth}: the smooth each row refers to,
-\item \code{var}: the name of the variable for which the partial derivative was
-evaluated,
-\item \code{data}: values of \code{var} at which the derivative was evaluated,
-\item \code{partial_deriv}: the estimated partial derivative,
-\item \code{se}: the standard error of the estimated partial derivative,
-\item \code{crit}: the critical value such that \code{derivative} ± \code{(crit * se)} gives
+\item \code{.smooth}: the smooth each row refers to,
+\item \code{.partial_deriv}: the estimated partial derivative,
+\item \code{.se}: the standard error of the estimated partial derivative,
+\item \code{.crit}: the critical value such that \code{derivative} ± \code{(crit * se)} gives
 the upper and lower bounds of the requested confidence or simultaneous
 interval (given \code{level}),
-\item \code{lower}: the lower bound of the confidence or simultaneous interval,
-\item \code{upper}: the upper bound of the confidence or simultaneous interval.
+\item \code{.lower_ci}: the lower bound of the confidence or simultaneous interval,
+\item \code{.upper_ci}: the upper bound of the confidence or simultaneous interval.
 }
 }
 \description{
@@ -134,31 +137,33 @@ m <- gam(y ~ te(x, z, k = c(5, 5)), data = df, method = "REML")
 ds <- data_slice(m, x = evenly(x, n = 100), z = 0.4)
 
 # evaluate te(x,z) at values of x & z
-sm <- smooth_estimates(m, smooth = "te(x,z)", data = ds) |>
-    add_confint()
+sm <- smooth_estimates(m, select = "te(x,z)", data = ds) |>
+  add_confint()
 
 # partial derivatives
 pd_x <- partial_derivatives(m, data = ds, type = "central", focal = "x")
 
 # draw te(x,z)
 p1 <- draw(m, rug = FALSE) &
-    geom_hline(yintercept = 0.4, linewidth = 1)
+  geom_hline(yintercept = 0.4, linewidth = 1)
 p1
 
 # draw te(x,z) along slice
 cap <- expression(z == 0.4)
 p2 <- sm |>
-    ggplot(aes(x = x, y = est)) +
-    geom_ribbon(aes(ymin = lower_ci, ymax = upper_ci), alpha = 0.2) +
-    geom_line() +
-    labs(x = "x", y = "Partial effect", title = "te(x,z)",
-        caption = cap)
+  ggplot(aes(x = x, y = .estimate)) +
+  geom_ribbon(aes(ymin = .lower_ci, ymax = .upper_ci), alpha = 0.2) +
+  geom_line() +
+  labs(
+    x = "x", y = "Partial effect", title = "te(x,z)",
+    caption = cap
+  )
 p2
 
 # draw partial derivs
 p3 <- pd_x |>
-    draw() +
-    labs(caption = cap)
+  draw() +
+  labs(caption = cap)
 p3
 
 # draw all three panels

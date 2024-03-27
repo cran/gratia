@@ -8,10 +8,12 @@ smooth_data(
   model,
   id,
   n = 100,
+  n_2d = NULL,
   n_3d = NULL,
   n_4d = NULL,
   offset = NULL,
-  include_all = FALSE
+  include_all = FALSE,
+  var_order = NULL
 )
 }
 \arguments{
@@ -20,6 +22,9 @@ smooth_data(
 \item{id}{the number ID of the smooth within \code{model} to process.}
 
 \item{n}{numeric; the number of new observations to generate.}
+
+\item{n_2d}{numeric; the number of new observations to generate for the
+second dimension of a 2D smooth. \emph{Currently ignored}.}
 
 \item{n_3d}{numeric; the number of new observations to generate for the third
 dimension of a 3D smooth.}
@@ -37,13 +42,18 @@ the returned data frame. If \code{TRUE}, a representative value will be included
 for all other covariates in the model that aren't actually used in the
 smooth. This can be useful if you want to pass the returned data frame on
 to \code{\link[mgcv:smoothCon]{mgcv::PredictMat()}}.}
+
+\item{var_order}{character; the order in which the terms in the smooth
+should be processed. Only useful for tensor products with at least one
+2d marginal smooth.}
 }
 \description{
 Generate regular data over the covariates of a smooth
 }
 \examples{
-
-\dontshow{op <- options(cli.unicode = FALSE, pillar.sigfig = 4)}
+\dontshow{
+op <- options(cli.unicode = FALSE, pillar.sigfig = 4)
+}
 load_mgcv()
 df <- data_sim("eg1", seed = 42)
 m <- bam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df)
@@ -55,5 +65,7 @@ smooth_data(m, id = 2)
 # other covariates in the model
 smooth_data(m, id = 2, include_all = TRUE)
 
-\dontshow{options(op)}
+\dontshow{
+options(op)
+}
 }

@@ -3,6 +3,8 @@
 \name{fitted_values}
 \alias{fitted_values}
 \alias{fitted_values.gam}
+\alias{fitted_values.gamm}
+\alias{fitted_values.scam}
 \title{Generate fitted values from a estimated GAM}
 \usage{
 fitted_values(object, ...)
@@ -14,6 +16,10 @@ fitted_values(object, ...)
   ci_level = 0.95,
   ...
 )
+
+\method{fitted_values}{gamm}(object, ...)
+
+\method{fitted_values}{scam}(object, ...)
 }
 \arguments{
 \item{object}{a fitted model. Currently only models fitted by \code{\link[mgcv:gam]{mgcv::gam()}}
@@ -43,14 +49,25 @@ used to fit the model (if \code{data} was \code{NULL}), or the variables supplie
 \item \code{lower}, \code{upper}: the limits of the credible interval on the fitted values,
 on the specified scale.
 }
+
+Models fitted with certain families will include additional variables
+\itemize{
+\item \code{mgcv::ocat()} models: when \code{scale = "repsonse"}, the returned object will
+contain a \code{row} column and a \code{category} column, which indicate to which row
+of the \code{data} each row of the returned object belongs. Additionally, there
+will be \code{nrow(data) * n_categories} rows in the returned object; each row
+is the predicted probability for a single category of the response.
+}
 }
 \description{
 Generate fitted values from a estimated GAM
 }
 \note{
-Regardless of the scale on which the fitted values are returned, the
-\code{se} component of the returned object is on the \emph{link} (\emph{linear predictor})
-scale, not the response scale.
+For most families, regardless of the scale on which the fitted values
+are returned, the \code{se} component of the returned object is on the \emph{link}
+(\emph{linear predictor}) scale, not the response scale. An exception is the
+\code{mgcv::ocat()} family, for which the \code{se} is on the response scale if
+\code{scale = "response"}.
 }
 \examples{
 load_mgcv()
@@ -61,5 +78,7 @@ sim_df <- data_sim("eg1", n = 400, dist = "normal", scale = 2, seed = 2)
 m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = sim_df, method = "REML")
 fv <- fitted_values(m)
 fv
-\dontshow{options(op)}
+\dontshow{
+options(op)
+}
 }

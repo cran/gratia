@@ -77,20 +77,23 @@ Then you can generate your own plot using the ggplot2 package, for example
 ```{r ggplot-smooth}
 library("ggplot2")
 library("dplyr")
-sm %>%
-  add_confint() %>%
-  ggplot(aes(y = est, x = x2)) +
-    geom_ribbon(aes(ymin = lower_ci, ymax = upper_ci),
-                alpha = 0.2, fill = "forestgreen") +
-    geom_line(colour = "forestgreen", size = 1.5) +
-    labs(y = "Partial effect",
-         title = expression("Partial effect of" ~ f(x[2])),
-         x = expression(x[2]))
+sm |>
+  add_confint() |>
+  ggplot(aes(y = .estimate, x = x2)) +
+  geom_ribbon(aes(ymin = .lower_ci, ymax = .upper_ci),
+    alpha = 0.2, fill = "forestgreen"
+  ) +
+  geom_line(colour = "forestgreen", linewidth = 1.5) +
+  labs(
+    y = "Partial effect",
+    title = expression("Partial effect of" ~ f(x[2])),
+    x = expression(x[2])
+  )
 ```
 
 ## Model diagnostics
 
-The `appraise()` function provides standard diagnotic plots for GAMs
+The `appraise()` function provides standard diagnostic plots for GAMs
 
 ```{r appraise}
 appraise(m)

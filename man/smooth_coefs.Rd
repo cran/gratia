@@ -13,19 +13,19 @@
 \usage{
 smooth_coefs(object, ...)
 
-\method{smooth_coefs}{gam}(object, term, ...)
+\method{smooth_coefs}{gam}(object, select, term = deprecated(), ...)
 
-\method{smooth_coefs}{bam}(object, term, ...)
+\method{smooth_coefs}{bam}(object, select, term = deprecated(), ...)
 
-\method{smooth_coefs}{gamm}(object, term, ...)
+\method{smooth_coefs}{gamm}(object, select, term = deprecated(), ...)
 
-\method{smooth_coefs}{gamm4}(object, term, ...)
+\method{smooth_coefs}{gamm4}(object, select, term = deprecated(), ...)
 
-\method{smooth_coefs}{list}(object, term, ...)
+\method{smooth_coefs}{list}(object, select, term = deprecated(), ...)
 
 \method{smooth_coefs}{mgcv.smooth}(object, model, ...)
 
-\method{smooth_coefs}{scam}(object, term, ...)
+\method{smooth_coefs}{scam}(object, select, term = deprecated(), ...)
 }
 \arguments{
 \item{object}{a fitted GAM(M) object, or, for the \code{"mgcv.smooth"} method,
@@ -33,8 +33,10 @@ an object that inherits from class \code{mgcv.smooth}.}
 
 \item{...}{arguments passed to other methods.}
 
-\item{term}{character; the label of the smooth whose coefficients will be
+\item{select}{character; the label of the smooth whose coefficients will be
 returned.}
+
+\item{term}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{select} instead.}
 
 \item{model}{a fitted GAM(M) object.}
 }
@@ -46,15 +48,19 @@ Returns a vector of model coefficients of the parametric terms that represent
 the supplied smooth.
 }
 \examples{
-\dontshow{op <- options(pillar.sigfig = 3, cli.unicode = FALSE)}
+\dontshow{
+op <- options(pillar.sigfig = 3, cli.unicode = FALSE)
+}
 load_mgcv()
 df <- data_sim("eg1", seed = 2)
 m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df, method = "REML")
 
 ## IGNORE_RDIFF_BEGIN
-smooth_coefs(m, term = "s(x2)")
+smooth_coefs(m, select = "s(x2)")
 ## IGNORE_RDIFF_END
-\dontshow{options(op)}
+\dontshow{
+options(op)
+}
 }
 \seealso{
 \code{\link[=smooth_coef_indices]{smooth_coef_indices()}} for extracting the indices of the

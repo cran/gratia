@@ -3,11 +3,20 @@
 \name{typical_values}
 \alias{typical_values}
 \alias{typical_values.gam}
+\alias{typical_values.data.frame}
 \title{Typical values of model covariates}
 \usage{
 typical_values(object, ...)
 
-\method{typical_values}{gam}(object, vars = everything(), ...)
+\method{typical_values}{gam}(
+  object,
+  vars = everything(),
+  envir = environment(formula(object)),
+  data = NULL,
+  ...
+)
+
+\method{typical_values}{data.frame}(object, vars = everything(), ...)
 }
 \arguments{
 \item{object}{a fitted GAM(M) model.}
@@ -16,6 +25,12 @@ typical_values(object, ...)
 
 \item{vars}{terms to include or exclude from the returned object. Uses
 tidyselect principles.}
+
+\item{envir}{the environment within which to recreate the data used to fit
+\code{object}.}
+
+\item{data}{an optional data frame of data used to fit the model if
+reconstruction of the data from the model doesn't work.}
 }
 \description{
 Typical values of model covariates

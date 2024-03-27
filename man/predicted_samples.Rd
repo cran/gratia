@@ -21,7 +21,9 @@ predicted_samples(model, ...)
 \item{model}{a fitted model of the supported types}
 
 \item{...}{arguments passed to other methods. For \code{fitted_samples()}, these
-are passed on to \code{predict.gam()}.}
+are passed on to \code{\link[=predict.gam]{predict.gam()}}. For \code{posterior_samples()} these are
+passed on to \code{fitted_samples()}. For \code{predicted_samples()} these are
+passed on to the relevant \code{simulate()} method.}
 
 \item{n}{numeric; the number of posterior samples to return.}
 
@@ -65,9 +67,13 @@ m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 predicted_samples(m, n = 5, seed = 42)
 
 ## Can pass arguments to predict.gam()
-\dontshow{set.seed(6791)}
-newd <- data.frame(x0 = runif(10), x1 = runif(10), x2 = runif(10),
-                   x3 = runif(10))
+\dontshow{
+set.seed(6791)
+}
+newd <- data.frame(
+  x0 = runif(10), x1 = runif(10), x2 = runif(10),
+  x3 = runif(10)
+)
 
 ## Exclude s(x2)
 predicted_samples(m, n = 5, newd, exclude = "s(x2)", seed = 25)
@@ -78,9 +84,13 @@ predicted_samples(m, n = 5, newd, exclude = "s(x1)", seed = 25)
 ## Select which terms --- result should be the same as previous
 ## but note that we have to include any parametric terms, including the
 ## constant term
-predicted_samples(m, n = 5, newd, seed = 25,
-                  terms = c("Intercept", "s(x0)", "s(x2)", "s(x3)"))
-\dontshow{options(op)}
+predicted_samples(m,
+  n = 5, newd, seed = 25,
+  terms = c("Intercept", "s(x0)", "s(x2)", "s(x3)")
+)
+\dontshow{
+options(op)
+}
 }
 \author{
 Gavin L. Simpson

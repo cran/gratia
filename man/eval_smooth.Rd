@@ -3,6 +3,8 @@
 \name{eval_smooth}
 \alias{eval_smooth}
 \alias{eval_smooth.mgcv.smooth}
+\alias{eval_smooth.soap.film}
+\alias{eval_smooth.scam_smooth}
 \alias{eval_smooth.fs.interaction}
 \alias{eval_smooth.sz.interaction}
 \alias{eval_smooth.random.effect}
@@ -14,6 +16,31 @@
 eval_smooth(smooth, ...)
 
 \method{eval_smooth}{mgcv.smooth}(
+  smooth,
+  model,
+  n = 100,
+  n_3d = NULL,
+  n_4d = NULL,
+  data = NULL,
+  unconditional = FALSE,
+  overall_uncertainty = TRUE,
+  dist = NULL,
+  ...
+)
+
+\method{eval_smooth}{soap.film}(
+  smooth,
+  model,
+  n = 100,
+  n_3d = NULL,
+  n_4d = NULL,
+  data = NULL,
+  unconditional = FALSE,
+  overall_uncertainty = TRUE,
+  ...
+)
+
+\method{eval_smooth}{scam_smooth}(
   smooth,
   model,
   n = 100,
@@ -106,7 +133,7 @@ which to evaluate the smooth.}
 \item{n_3d, n_4d}{numeric; the number of points over the range of last
 covariate in a 3D or 4D smooth. The default is \code{NULL} which achieves the
 standard behaviour of using \code{n} points over the range of all covariate,
-resulting in \code{n^d} evaluation pointsm, where \code{d} is the dimension of the
+resulting in \code{n^d} evaluation points, where \code{d} is the dimension of the
 smooth. For \code{d > 2} this can result in very many evaluation points and slow
 performance. For smooths of \code{d > 4}, the value of \code{n_4d} will be used for
 all dimensions \verb{> 4}, unless this is \code{NULL}, in which case the default

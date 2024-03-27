@@ -7,10 +7,15 @@
 data_sim(
   model = "eg1",
   n = 400,
-  scale = 2,
+  scale = NULL,
   theta = 3,
-  dist = c("normal", "poisson", "binary", "negbin", "tweedie"),
-  seed = NULL
+  power = 1.5,
+  dist = c("normal", "poisson", "binary", "negbin", "tweedie", "gamma", "ocat",
+    "ordered categorical"),
+  n_cat = 4,
+  cuts = c(-1, 0, 5),
+  seed = NULL,
+  gfam_families = c("binary", "tweedie", "normal")
 )
 }
 \arguments{
@@ -25,22 +30,98 @@ the name of a model. See Details for possible options.}
 default is entirely arbitrary, chosen only to provide simulated data that
 exhibits extra dispersion beyond that assumed by under a Poisson.}
 
+\item{power}{numeric; the Tweedie power parameter.}
+
 \item{dist}{character; a sampling distribution for the response
-variable.}
+variable. \code{"ordered categorical"} is a synonym of \code{"ocat"}.}
+
+\item{n_cat}{integer; the number of categories for categorical response.
+Currently only used for \code{distr \%in\% c("ocat", "ordered categorical")}.}
+
+\item{cuts}{numeric; vector of cut points on the latent variable, excluding
+the end points \code{-Inf} and \code{Inf}. Must be one fewer than the number of
+categories: \code{length(cuts) == n_cat - 1}.}
 
 \item{seed}{numeric; the seed for the random number generator. Passed to
 \code{\link[base:Random]{base::set.seed()}}.}
+
+\item{gfam_families}{character; a vector of distributions to use in
+generating data with grouped families for use with \code{family = gfam()}. The
+allowed distributions as as per \code{dist}.}
 }
 \description{
 A tidy reimplementation of the functions implemented in \code{\link[mgcv:gamSim]{mgcv::gamSim()}}
 that can be used to fit GAMs. An new feature is that the sampling
 distribution can be applied to all the example types.
 }
+\details{
+\code{data_sim()} can simulate data from several underlying models of
+known true functions. The available options currently are:
+\itemize{
+\item \code{"eg1"}: a four term additive true model. This is the classic Gu & Wahba
+four univariate term test model. See \code{\link{gw_functions}} for more details of
+the underlying four functions.
+\item \code{"eg2"}: a bivariate smooth true model.
+\item \code{"eg3"}: an example containing a continuous by smooth (varying
+coefficient) true model. The model is \eqn{\hat{y}_i = f_2(x_{1i})x_{2i}}{
+yhat = f(x1)x2} where the function \eqn{f_2()} is \eqn{f_2(x) = 0.2 * x^{11} *
+(10 * (1 - x))^6 + 10 * (10 * x)^3 * (1 - x)^{10}}{f(x) = 0.2 * x^11 * (10 *
+(1 - x))^6 + 10 * (10 * x)^3 * (1 - x)^10}.
+\item \code{"eg4"}: a factor by smooth true model. The true model contains a factor
+with 3 levels, where the response for the \emph{n}th level follows the \emph{n}th
+Gu & Wabha function (for \eqn{n \in {1, 2, 3}}{n in {1,2,3}}).
+\item \code{"eg5"}: an additive plus factor true model. The response is a linear
+combination of the Gu & Wabha functions 2, 3, 4 (the latter is a null
+function) plus a factor term with four levels.
+\item \code{"eg6"}: an additive plus random effect term true model.
+\item ´"eg7"\verb{: a version of the model in }"eg1"`, but where the covariates are
+correlated.
+\item \code{"gwf2"}: a model where the response is Gu & Wabha's
+\eqn{f_2(x_i)}{f_2(x_i)} plus noise.
+\item \code{"lwf6"}: a model where the response is Luo & Wabha's "example 6"
+function \eqn{sin(2(4x-2)) + 2 exp(-256(x-0.5)^2)}{
+    sin(2 * ((4 * x) - 2)) + (2 * exp(-256 * (x - .5)^2))} plus noise.
+\item \code{"gfam"}: simulates data for use with GAMs with
+\code{family = gfam(families)}. See example in \code{\link[mgcv:gfam]{mgcv::gfam()}}. If this model
+is specified then \code{dist} is ignored and \code{gfam_families} is used to
+specify which distributions are included in the simulated data. Can be a
+vector of any of the families allowed by \code{dist}. For
+\code{"ocat" \%in\% gfam_families} (or \code{"ordered categorical"}), 4 classes are
+assumed, which can't be changed. Link functions used are \code{"identity"}
+for \code{"normal"}, \code{"logit"} for \code{"binary"}, \code{"ocat"}, and
+\code{"ordered categorical"}, and \code{"exp"} elsewhere.
+}
+
+The random component providing noise or sampling variation can follow one
+of the distributions, specified via argument \code{dist}
+\itemize{
+\item \code{"normal"}: Gaussian,
+\item \code{"poisson"}: Poisson,
+\item \code{"binary"}: Bernoulli,
+\item \code{"negbin"}: Negative binomial,
+\item \code{"tweedie"}: Tweedie,
+\item \code{"gamma"}: gamma , and
+\item \code{"ordered categorical"}: ordered categorical
+}
+
+Other arguments provide the parameters for the distribution.
+}
 \examples{
 \dontshow{
-set.seed(1)
 op <- options(pillar.sigfig = 5, cli.unicode = FALSE)
 }
-data_sim("eg1")
-\dontshow{options(op)}
+data_sim("eg1", n = 100, seed = 1)
+
+# an ordered categorical response
+data_sim("eg1", n = 100, dist = "ocat", n_cat = 4, cuts = c(-1, 0, 5))
+\dontshow{
+options(op)
+}
+}
+\references{
+Gu, C., Wahba, G., (1993). Smoothing Spline ANOVA with Component-Wise
+Bayesian "Confidence Intervals." \emph{J. Comput. Graph. Stat.} \strong{2}, 97–117.
+
+Luo, Z., Wahba, G., (1997). Hybrid adaptive splines. \emph{J. Am. Stat. Assoc.}
+\strong{92}, 107–116.
 }

@@ -60,19 +60,23 @@ supplied, a suitable label will be generated.}
 supplied, a suitable label will be generated.}
 
 \item{title}{character or expression; the title for the plot. See
-\code{\link[ggplot2:labs]{ggplot2::labs()}}.}
+\code{\link[ggplot2:labs]{ggplot2::labs()}}. May be a vector, one per penalty.}
 
 \item{subtitle}{character or expression; the subtitle for the plot. See
-\code{\link[ggplot2:labs]{ggplot2::labs()}}.}
+\code{\link[ggplot2:labs]{ggplot2::labs()}}. May be a vector, one per penalty.}
 
 \item{caption}{character or expression; the plot caption. See
-\code{\link[ggplot2:labs]{ggplot2::labs()}}.}
+\code{\link[ggplot2:labs]{ggplot2::labs()}}. May be a vector, one per penalty.}
 
-\item{ci_col, ci_alpha}{fill colour and alpha transparency for the reference
+\item{ci_col}{fill colour for the reference interval when
+\code{method = "simulate"}.}
+
+\item{ci_alpha}{alpha transparency for the reference
 interval when \code{method = "simulate"}.}
 
-\item{point_col, point_alpha}{colour and alpha transparency for points on the
-QQ plot.}
+\item{point_col}{colour of points on the QQ plot.}
+
+\item{point_alpha}{alpha transparency of points on the QQ plot.}
 
 \item{line_col}{colour used to draw the reference line.}
 }
@@ -88,12 +92,13 @@ simulated residuals method (\code{method = "simulated"}). To avoid confusion,
 load_mgcv()
 ## simulate binomial data...
 dat <- data_sim("eg1", n = 200, dist = "binary", scale = .33, seed = 0)
-p <- binomial()$linkinv(dat$f)               # binomial p
+p <- binomial()$linkinv(dat$f) # binomial p
 n <- sample(c(1, 3), 200, replace = TRUE) # binomial n
 dat <- transform(dat, y = rbinom(n, n, p), n = n)
-m <- gam( y / n ~ s(x0) + s(x1) + s(x2) + s(x3),
-         family = binomial, data = dat, weights = n,
-         method = "REML")
+m <- gam(y / n ~ s(x0) + s(x1) + s(x2) + s(x3),
+  family = binomial, data = dat, weights = n,
+  method = "REML"
+)
 
 ## Worm plot; default using direct randomization of uniform quantiles
 ## Note no reference bands are drawn with this method.
@@ -101,8 +106,10 @@ worm_plot(m)
 
 ## Alternatively use simulate new data from the model, which
 ## allows construction of reference intervals for the Q-Q plot
-worm_plot(m, method = "simulate", point_col = "steelblue",
-          point_alpha = 0.4)
+worm_plot(m,
+  method = "simulate", point_col = "steelblue",
+  point_alpha = 0.4
+)
 
 ## ... or use the usual normality assumption
 worm_plot(m, method = "normal")
