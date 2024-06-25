@@ -7,12 +7,6 @@ library("tibble")
 library("nlme")
 library("ggplot2")
 
-## Need a local wrapper to allow conditional use of vdiffr
-`expect_doppelganger` <- function(title, fig, ...) {
-  testthat::skip_if_not_installed("vdiffr")
-  vdiffr::expect_doppelganger(title, fig, ...)
-}
-
 ## Fit models
 n_quick <- 300
 quick_eg1 <- data_sim("eg1", n = n_quick, seed = 21)
@@ -90,6 +84,12 @@ su_m_quadvar_t2 <- gam(y ~ t2(x0, x1, x2, x3, k = c(3, 3, 3, 3)),
 su_m_cont_by <- gam(y ~ s(x2, by = x1), data = su_eg3, method = "REML")
 
 su_m_factor_by <- gam(y ~ fac + s(x2, by = fac) + s(x0),
+  data = su_eg4, method = "REML"
+)
+
+# for issue #285
+su_m_factor_by_re <- gam(y ~ s(fac, bs = "re") + s(x2) +
+    s(x2, by = fac, m = 1) + s(x0),
   data = su_eg4, method = "REML"
 )
 
@@ -582,3 +582,18 @@ soap_data <- soap_fs_data(bnd = soap_fsb)
 m_soap <- gam(y ~
     s(v, w, k = 30, bs = "so", xt = list(bnd = soap_fsb, nmax = 100)),
   data = soap_data, method = "REML", knots = soap_knots)
+
+# Issue 284
+df_284 <- data_sim("eg1", seed = 42)
+df_284 <- df_284 |>
+  mutate(
+    month = factor(
+      rep(
+        month.abb[1:10],
+        times = 40),
+      levels = month.abb[1:10],
+      ordered = TRUE
+    )
+  )
+m_284 <- gam(y ~ month + s(x0) + s(x1) + s(x2) + s(x3),
+  data = df_284, method = "REML")

@@ -1,4 +1,4 @@
-## ----include = FALSE----------------------------------------------------------
+## ----setup-knitr, include = FALSE---------------------------------------------
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
@@ -36,7 +36,7 @@ plant <- plant |>
   mutate(tt = fct_cross(treatment, type))
 m_plant <- gam(uptake ~ treatment * type + s(conc, by = tt, k = 6) +
     s(plant, bs = "re"),
-  data = plant, method = "REML", familly = Gamma(link = "log")
+  data = plant, method = "REML", family = Gamma(link = "log")
 )
 overview(m_plant)
 

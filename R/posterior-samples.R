@@ -31,13 +31,13 @@
 #' @param thin numeric; the number of samples to skip when taking `n` draws.
 #'   Results in `thin * n` draws from the posterior being taken. Only used with
 #'   `method = "mh"`.
-#' @param t_df numeric; degrees of freedome for t distribution proposals. Only
+#' @param t_df numeric; degrees of freedom for t distribution proposals. Only
 #'   used with `method = "mh"`.
 #' @param rw_scale numeric; Factor by which to scale posterior covariance
 #'   matrix when generating random walk proposals. Negative or non finite to
 #'   skip the random walk step. Only used with `method = "mh"`.
 #' @param ... arguments passed to other methods. For `fitted_samples()`, these
-#'   are passed on to [predict.gam()]. For `posterior_samples()` these are
+#'   are passed on to [mgcv::predict.gam()]. For `posterior_samples()` these are
 #'   passed on to `fitted_samples()`. For `predicted_samples()` these are
 #'   passed on to the relevant `simulate()` method.
 #' @param newdata Deprecated: use `data` instead.
@@ -47,6 +47,11 @@
 #'   OpenMP is supported (but appears to work on Windows with current `R`).
 #' @param draws matrix; user supplied posterior draws to be used when
 #'   `method = "user"`.
+#' @param mvn_method character; one of `"mvnfast"` or `"mgcv"`. The default is
+#'   uses `mvnfast::rmvn()`, which can be considerably faster at generate large
+#'   numbers of MVN random values than `mgcv::rmvn()`, but which might not work
+#'   for some marginal fits, such as those where the covariance matrix is close
+#'   to singular.
 #'
 #' @details
 #' # Note
@@ -91,15 +96,18 @@
 #' @export
 #' @rdname posterior_samples
 `posterior_samples.gam` <- function(
-    model, n, data = newdata, seed = NULL,
+    model, n = 1, data = newdata, seed = NULL,
     method = c("gaussian", "mh", "inla", "user"),
     n_cores = 1, burnin = 1000, thin = 1, t_df = 40, rw_scale = 0.25,
     freq = FALSE, unconditional = FALSE,
-    weights = NULL, draws = NULL, ...,
+    weights = NULL, draws = NULL, mvn_method = c("mvnfast", "mgcv"), ...,
     newdata = NULL,
     ncores = NULL) {
   # generate new response data from the model including the uncertainty in
   # the model.
+
+  method <- match.arg(method)
+  mvn_method <- match.arg(mvn_method)
 
   # start my getting draws of expectation
   sim_eta <- fitted_samples(model,
@@ -107,7 +115,7 @@
     scale = "response", method = method, n_cores = n_cores, burnin = burnin,
     thin = thin, t_df = t_df, rw_scale = rw_scale, freq = freq,
     unconditional = unconditional, weights = weights, newdata = newdata,
-    ncores = ncores, draws = draws, ...
+    ncores = ncores, draws = draws, mvn_method = mvn_method, ...
   )
 
   if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
@@ -229,7 +237,7 @@
 #'
 #' @importFrom stats vcov coef predict
 #' @importFrom dplyr mutate
-#' @importFrom tidyr gather
+#' @importFrom tidyr pivot_longer
 #' @importFrom tibble as_tibble
 #' @importFrom mvnfast rmvn
 #'
@@ -261,6 +269,7 @@
     method = c("gaussian", "mh", "inla", "user"),
     n_cores = 1, burnin = 1000, thin = 1, t_df = 40, rw_scale = 0.25,
     freq = FALSE, unconditional = FALSE, draws = NULL,
+    mvn_method = c("mvnfast", "mgcv"),
     ..., newdata = NULL, ncores = NULL) {
   if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
     runif(1)
@@ -288,8 +297,8 @@
   }
 
   scale <- match.arg(scale)
-
   method <- match.arg(method)
+  mvn_method <- match.arg(mvn_method)
 
   # get posterior draws
   betas <- post_draws(
@@ -297,13 +306,27 @@
     n_cores = n_cores, model = model,
     burnin = burnin, thin = thin, t_df = t_df, rw_scale = rw_scale,
     index = NULL, frequentist = freq, unconditional = unconditional,
-    draws = draws, seed = seed
+    draws = draws, seed = seed, mvn_method = mvn_method
   )
+  ## betas is for *all* coefs, including distributional parameters
+  lss_idx <- lss_eta_index(model)
+  if (gen_fam <- inherits(family(model), "general.family")) {
+    warning("Currently, only for LSS families where location is the mean.")
+    lss_loc <- lss_idx[[1L]] # for now just take the location linpred
+  } else {
+    lss_loc <- lss_idx[[1L]]
+  }
+
   ## don't need to pass freq, unconditional here as that is done for V
   Xp <- predict(model, newdata = data, type = "lpmatrix", ...)
-  sims <- Xp %*% t(betas)
+  sims <- Xp[, lss_loc, drop = FALSE] %*% t(betas[, lss_loc, drop = FALSE])
   # handle the offset if present; it is an attribute on the Xp matrix
+  # it is a list - with 1 component if a normal model and `l` components if it
+  # is a model with `l` linear predictors.
   m_offset <- attr(Xp, "model.offset")
+  if (is.list(m_offset)) {
+    m_offset <- m_offset[[1L]] # only for location ?
+  }
   if (!is.null(m_offset)) {
     sims <- sims + m_offset
   }
@@ -316,9 +339,24 @@
   colnames(sims) <- paste0(".V", seq_len(NCOL(sims)))
   sims <- as_tibble(sims)
   names(sims) <- as.character(seq_len(ncol(sims)))
-  sims <- add_column(sims, .row = seq_len(nrow(sims)))
-  sims <- gather(sims, key = ".draw", value = ".fitted", -.row) |>
-    mutate(.draw = as.integer(.data$.draw))
+  sims <- sims |>
+    add_column(
+      .row = seq_len(nrow(sims)),
+      .parameter = rep("location", nrow(sims))
+    )
+  sims <- sims |>
+    pivot_longer(
+      cols = !any_of(c(".row", ".parameter")),
+      values_to = ".fitted",
+      names_to = ".draw",
+      cols_vary = "slowest",
+      names_transform = list(".draw" = as.integer)
+    ) |>
+    relocate(c(".row", ".draw", ".parameter"), .before = 1L)
+  # sims <- gather(sims, key = ".draw", value = ".fitted",
+  # -.data$.row, -.data$.parameter) |>
+  #   mutate(.draw = as.integer(.data$.draw)) |>
+  #   relocate(c(".row", ".draw", ".parameter"), .before = 1L)
   attr(sims, "seed") <- RNGstate
   ## add classes
   class(sims) <- c("fitted_samples", class(sims))
@@ -540,6 +578,7 @@
     rng_per_smooth = FALSE,
     draws = NULL,
     partial_match = NULL,
+    mvn_method = c("mvnfast", "mgcv"),
     ...,
     newdata = NULL,
     ncores = NULL) {
@@ -607,6 +646,7 @@
 
   # what posterior sampling are we using
   method <- match.arg(method)
+  mvn_method <- match.arg(mvn_method)
 
   # get posterior draws - call this once for all parameters
   if (isFALSE(rng_per_smooth)) {
@@ -615,7 +655,7 @@
       n_cores = n_cores, model = model,
       burnin = burnin, thin = thin, t_df = t_df, rw_scale = rw_scale,
       index = NULL, frequentist = freq, unconditional = unconditional,
-      draws = draws, seed = seed,
+      draws = draws, seed = seed, mvn_method = mvn_method
     )
   }
 
@@ -892,6 +932,11 @@
 #'   `object`.
 #' @param draws matrix; user supplied posterior draws to be used when
 #'   `method = "user"`.
+#' @param mvn_method character; one of `"mvnfast"` or `"mgcv"`. The default is
+#'   uses `mvnfast::rmvn()`, which can be considerably faster at generate large
+#'   numbers of MVN random values than `mgcv::rmvn()`, but which might not work
+#'   for some marginal fits, such as those where the covariance matrix is close
+#'   to singular.
 #'
 #' @inheritParams response_derivatives
 #'
@@ -945,11 +990,13 @@
     seed = NULL,
     envir = environment(formula(object)),
     draws = NULL,
+    mvn_method = c("mvnfast", "mgcv"),
     ...) {
   ## handle type
   type <- match.arg(type)
   ## handle method
   method <- match.arg(method)
+  mvn_method <- match.arg(mvn_method)
   ## handle scale
   scale <- match.arg(scale)
 
@@ -995,7 +1042,8 @@
   ## compute posterior draws of E(y) (on response scale)
   fs <- fitted_samples(
     model = object, n = n_sim, data = fd_data,
-    method = method, seed = seed, draws = draws, ...
+    method = method, seed = seed, draws = draws,
+    mvn_method = mvn_method, ...
   )
 
   fs <- fs |>

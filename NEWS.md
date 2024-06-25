@@ -1,3 +1,63 @@
+# gratia 0.9.2
+
+## Breaking changes
+
+* `parametric_effects()` slightly escaped the great renaming that happened for
+  0.9.0. Columns `type` and `term` did not gain a prefix `.`. This is now
+  rectified and these two columns are now `.type` and `.term`.
+
+## User visible changes
+
+* Plots of random effects are now labelled with their smooth label. Previously,
+  the title was taken fro the variable involved in the smooth, but this doesn't
+  work for terms like `s(subject, continuous_var, bs = "re")` for random slopes, 
+  which previsouly would have the title `"subject"`. Now such terms will have
+  title `"s(subject,continuous_var)"`. Simple random intercept terms,
+  `s(subject, bs = "re")`, are now titled `"s(subject)"`. #287
+
+* The vignettes
+    1. `custom-plotting.Rmd`, and
+    2. `posterior-simulation.Rmd`
+  were moved to `vignettes/articles` and thus are no longer available as package
+  vignettes. Instead, they are accessible as Articles through the package
+  website: <https://gavinsimpson.github.io/gratia/>
+
+## New features
+
+* `fitted_samples()` now works for `gam()` models with multiple linear
+  predictors, but currently only the location parameter is supported. The
+  parameter is indicated through a new variable `.parameter` in the returned
+  object.
+
+## Bug fixes
+
+* `partial_residuals()` was computing partial residuals from the *deviance*
+  residuals. For compatibility with `mgcv::plot.gam()`, partial residuals are
+  now computed from the *working* residuals. Reported by @wStockhausen #273
+
+* `appraise()` was not passing the `ci_col` argument on `qq_plot()` and
+  `worm_plot()`. Reported by Sate Ahmed.
+
+* Couldn't pass `mvn_method` on to posterior sampling functions from user facing
+  functions `fitted_samples()`, `posterior_samples()`, `smooth_samples()`,
+  `derivative_samples()`, and `repsonse_derivatives()`. Reported by @stefgehrig
+  #279
+
+* `fitted_values()` works again for quantile GAMs fitted by `qgam()`.
+
+* `confint.gam()` was not applying `shift` to the estimate and upper and lower
+  interval. #280 reported by @TIMAVID & @rbentham
+
+* `parametric_effects()` and `draw.parametric_effects()` would forget about the
+  levels of factors (intentionally), but this would lead to problems with
+  ordered factors where the ordering of levels was not preserved. Now,
+  `parametric_effects()` returns a named list of factor levels as attribute
+  `"factor_levels"` containing the required information and the order of levels
+  is preserved when plotting. #284 Reported by @mhpob
+
+* `parametric_effects()` would fail if there were parametric terms in the model
+  but they were all interaction terms (which we don't currently handle). #282
+
 # gratia 0.9.0
 
 ## Breaking changes

@@ -4,13 +4,14 @@ output:
   rmarkdown::html_vignette:
     fig_width: 8
     fig_height: 5.3333
+    dev: "png"
 vignette: >
   %\VignetteIndexEntry{Data slices}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r, include = FALSE}
+```{r setup-knitr, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
@@ -62,7 +63,7 @@ plant <- plant |>
   mutate(tt = fct_cross(treatment, type))
 m_plant <- gam(uptake ~ treatment * type + s(conc, by = tt, k = 6) +
     s(plant, bs = "re"),
-  data = plant, method = "REML", familly = Gamma(link = "log")
+  data = plant, method = "REML", family = Gamma(link = "log")
 )
 overview(m_plant)
 ```

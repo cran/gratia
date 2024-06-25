@@ -690,9 +690,8 @@
 #'   `"auto"`. Passed to [patchwork::plot_layout()]
 #' @param level numeric; the coverage level for QQ plot reference intervals.
 #'   Must be strictly `0 < level < 1`. Only used with `method = "simulate"`.
-#' @param ci_alpha,ci_col numeric; the level of alpha transparency for the
-#'   QQ plot reference interval when `method = "simulate"`, or points drawn in
-#'   plots.
+#' @param ci_alpha,ci_col colour and transparency used to draw the QQ plot
+#'   reference interval when `method = "simulate"`.
 #' @param point_col,point_alpha colour and transparency used to draw points in
 #'   the plots. See [graphics::par()] section **Color Specification**. This is
 #'   passed to the individual plotting functions, and therefore affects the
@@ -765,21 +764,24 @@
     )
   }
 
-  plt1 <- if (isTRUE(use_worm)) {
-    worm_plot(model,
-      method = method, type = type, n_uniform = n_uniform,
-      n_simulate = n_simulate, level = level, ci_alpha = ci_alpha,
-      point_col = point_col, point_alpha = point_alpha,
-      line_col = line_col
-    )
+  qq_plot_fun <- if (isTRUE(use_worm)) {
+    worm_plot
   } else {
-    qq_plot(model,
-      method = method, type = type, n_uniform = n_uniform,
-      n_simulate = n_simulate, level = level, ci_alpha = ci_alpha,
-      point_col = point_col, point_alpha = point_alpha,
-      line_col = line_col
-    )
+    qq_plot
   }
+  plt1 <- qq_plot_fun(
+    model,
+    method = method,
+    type = type,
+    n_uniform = n_uniform,
+    n_simulate = n_simulate,
+    level = level,
+    ci_col = ci_col,
+    ci_alpha = ci_alpha,
+    point_col = point_col,
+    point_alpha = point_alpha,
+    line_col = line_col
+  )
   plt2 <- residuals_linpred_plot(model,
     type = type, point_col = point_col,
     point_alpha = point_alpha,

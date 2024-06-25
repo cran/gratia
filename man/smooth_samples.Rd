@@ -26,6 +26,7 @@ smooth_samples(model, ...)
   rng_per_smooth = FALSE,
   draws = NULL,
   partial_match = NULL,
+  mvn_method = c("mvnfast", "mgcv"),
   ...,
   newdata = NULL,
   ncores = NULL
@@ -35,7 +36,7 @@ smooth_samples(model, ...)
 \item{model}{a fitted model of the supported types}
 
 \item{...}{arguments passed to other methods. For \code{fitted_samples()}, these
-are passed on to \code{\link[=predict.gam]{predict.gam()}}. For \code{posterior_samples()} these are
+are passed on to \code{\link[mgcv:predict.gam]{mgcv::predict.gam()}}. For \code{posterior_samples()} these are
 passed on to \code{fitted_samples()}. For \code{predicted_samples()} these are
 passed on to the relevant \code{simulate()} method.}
 
@@ -85,7 +86,7 @@ Only used with \code{method = "mh"}.}
 Results in \code{thin * n} draws from the posterior being taken. Only used with
 \code{method = "mh"}.}
 
-\item{t_df}{numeric; degrees of freedome for t distribution proposals. Only
+\item{t_df}{numeric; degrees of freedom for t distribution proposals. Only
 used with \code{method = "mh"}.}
 
 \item{rw_scale}{numeric; Factor by which to scale posterior covariance
@@ -103,6 +104,12 @@ RNG is performed for all model parameters}
 \item{partial_match}{logical; should smooths be selected by partial matches
 with \code{select}? If \code{TRUE}, \code{select} can only be a single string to match
 against.}
+
+\item{mvn_method}{character; one of \code{"mvnfast"} or \code{"mgcv"}. The default is
+uses \code{mvnfast::rmvn()}, which can be considerably faster at generate large
+numbers of MVN random values than \code{mgcv::rmvn()}, but which might not work
+for some marginal fits, such as those where the covariance matrix is close
+to singular.}
 
 \item{newdata}{Deprecated: use \code{data} instead.}
 
