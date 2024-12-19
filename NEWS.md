@@ -1,3 +1,54 @@
+# gratia 0.10.0
+
+## New features
+
+* `conditional_values()` and its `draw()` method compute and plot predictions 
+  from a fitted GAM that are conditional on one or more covariates. The 
+  function is a wrapper around `fitted_values()` but allows the user simple ways
+  to specify which covariates to condition on and at what values those
+  covariates should take. It provides similar functionality to
+  `marginaleffects::plot_predictions()`, but is simpler. See #300.
+
+* `penalty()` and `basis()` can now allow the smooth to be reparameterized such
+  that the resulting basis has an identity matrix. This more clearly highlights
+  the penalty null space, the functions that the penalty has no effect on.
+
+* `draw.gam()` and `draw.smooth_estimates()` gain argument `caption`, which, if
+  set to `FALSE` will not plot the smooth basis type as a caption on the plot.
+  #307
+
+* `appraise()` and `qq_plot.gam()` now allow the user to set a random seed that
+  is used when generating reference quantiles with `method = "uniform"` or
+  `method = "simulate"`.
+
+## Bug fixes
+
+* `derivative_samples()` was ignoring the `scale` argument. #293 Reported by
+  @jonathonmellor
+
+* Argument `level` to `derivative_samples()` was included accidentally. As of
+  v0.9.2.9002 this argument is deprecated and using it will now generate a
+  warning. #291
+
+* `draw()` was not plotting cyclic P spline smooths. Reported by @Zuckerbrot
+  #297
+
+* `derivatives()` would fail for `"fs"` smooths with other parametric effects in
+  the model. Reported by @mahonmb #301
+
+* Partial residuals in `partial_residuals()` and `draw.gam()` were wrong for
+  GAMs fitted with `family = binomial()` where the `weights` argument contained
+  the binomial sample sizes because the prior weights were being used to form
+  weighted working residuals. Now working weights are used instead. Reported by
+  @emchuron #273
+
+* Internal function `gammals_link()` was expecting `"theta"` as a synonym for
+  the scale parameter but the master table has `"phi"` coded as the synonym.
+  Now both work as expected.
+
+* `level()` assumed that `level` would have only a single value even though it
+  could handle multiple levels. #321
+
 # gratia 0.9.2
 
 ## Breaking changes

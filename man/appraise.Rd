@@ -14,6 +14,7 @@ appraise(model, ...)
   use_worm = FALSE,
   n_uniform = 10,
   n_simulate = 50,
+  seed = NULL,
   type = c("deviance", "pearson", "response"),
   n_bins = c("sturges", "scott", "fd"),
   ncol = NULL,
@@ -31,12 +32,29 @@ appraise(model, ...)
 \method{appraise}{lm}(model, ...)
 }
 \arguments{
-\item{model}{a fitted model. Currently only class \code{"gam"}.}
+\item{model}{a fitted model. Currently models inheriting from class \code{"gam"},
+as well as classes \code{"glm"} and \code{"lm"} from calls to \link[stats:glm]{stats::glm} or
+\link[stats:lm]{stats::lm} are supported.}
 
 \item{...}{arguments passed to \code{\link[patchwork:wrap_plots]{patchwork::wrap_plots()}}.}
 
-\item{method}{character; method used to generate theoretical quantiles. Note
-that \code{method = "direct"} is deprecated in favour of \code{method = "uniform"}.}
+\item{method}{character; method used to generate theoretical quantiles.
+The default is \code{"uniform"}, which generates reference quantiles using
+random draws from a uniform distribution and the inverse cummulative
+distribution function (CDF) of the fitted values. The reference quantiles
+are averaged over \code{n_uniform} draws. \code{"simulate"} generates reference
+quantiles by simulating new response data from the model at the observed
+values of the covariates, which are then residualised to generate reference
+quantiles, using \code{n_simulate} simulated data sets. \code{"normal"} generates
+reference quantiles using the standard normal distribution. \code{"uniform"} is
+more computationally efficient, but \code{"simulate"} allows reference bands to
+be drawn on the QQ-plot. \code{"normal"} should be avoided but is used as a fall
+back if a random number generator (\code{"simulate"}) or the inverse of the CDF
+(\verb{"uniform"``) are not available from the }family` used during model
+fitting.
+
+Note that \code{method = "direct"} is deprecated in favour of
+\code{method = "uniform"}.}
 
 \item{use_worm}{logical; should a worm plot be drawn in place of the QQ plot?}
 
@@ -46,6 +64,9 @@ in the direct computation method (\code{method = "direct"}) for QQ plots.}
 \item{n_simulate}{numeric; number of data sets to simulate from the estimated
 model when using the simulation method (\code{method = "simulate"}) for QQ
 plots.}
+
+\item{seed}{numeric; the random number seed to use for \code{method = "simulate"}
+and \code{method = "uniform"}.}
 
 \item{type}{character; type of residuals to use. Only \code{"deviance"},
 \code{"response"}, and \code{"pearson"} residuals are allowed.}
@@ -92,7 +113,7 @@ appraise(mod, point_col = "steelblue", point_alpha = 0.4)
 ## To change the theme for all panels use the & operator, for example to
 ## change the ggplot theme for all panels
 library("ggplot2")
-appraise(mod,
+appraise(mod, seed = 42,
   point_col = "steelblue", point_alpha = 0.4,
   line_col = "black"
 ) & theme_minimal()

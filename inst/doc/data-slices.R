@@ -21,8 +21,8 @@ plant <- CO2 |>
   mutate(plant = factor(plant, ordered = FALSE))
 
 ## ----plot-plant-data----------------------------------------------------------
-plant_ylab <- expression(CO[2] ~ uptake ~ (mu * mol ~ m^{-3})) # nolint: brace_linter.
-plant_xlab <- expression(CO[2] ~ concentration ~ (mL ~ L^{-1})) # nolint: brace_linter.
+plant_ylab <- expression(CO[2] ~ uptake ~ (mu * mol ~ m^{-3}))
+plant_xlab <- expression(CO[2] ~ concentration ~ (mL ~ L^{-1}))
 
 plant |>
   ggplot(aes(x = conc, y = uptake, group = plant, colour = treatment)) +
@@ -129,7 +129,7 @@ z_val <- with(ds3, round(quantile(z, probs = 0.25), 2))
 ylab <- bquote(hat(f)(x, .(z_val)))
 
 ## ----smooth-estimates-bivar---------------------------------------------------
-sm <- smooth_estimates(m_biv, smooth = "te(x,z)", data = ds3) |>
+sm <- smooth_estimates(m_biv, select = "te(x,z)", data = ds3) |>
   add_confint()
 sm
 
@@ -149,7 +149,7 @@ ds4 <- data_slice(m_biv,
   z = round(quantile(z, probs = c(0.25, 0.5, 0.75)), 2)
 )
 
-sm <- smooth_estimates(m_biv, smooth = "te(x,z)", data = ds4) |>
+sm <- smooth_estimates(m_biv, select = "te(x,z)", data = ds4) |>
   add_confint() |>
   mutate(fz = factor(z))
 

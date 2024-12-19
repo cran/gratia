@@ -519,7 +519,9 @@ test_that("norm_minus_one_to_one works with NA", {
 test_that("model_constant returns the intercept estimate", {
   expect_silent(b <- model_constant(m_gam))
   expect_type(b, "double")
-  expect_identical(b, unname(coef(m_gam)[1L]))
+  ref <- unname(coef(m_gam)[1L])
+  attr(ref, "par_names") <- "location"
+  expect_identical(b, ref)
   expect_named(b, expected = NULL)
 })
 
@@ -595,4 +597,22 @@ test_that("model vars works for various GAMs", {
   expect_identical(mvars, paste0("x", 0:3))
   expect_silent(mvars <- model_vars(m_gamm4))
   expect_identical(mvars, paste0("x", 0:3))
+})
+
+test_that("dispersion works for a GAM", {
+  expect_identical(dispersion(m_gam), m_gam$sig2)
+})
+
+test_that("dispersion works for a GLM", {
+  expect_identical(dispersion(m_glm), summary(m_glm)$dispersion)
+})
+
+test_that("n_eta work", {
+  expect_identical(n_eta(m_gam), 1L)
+  expect_identical(n_eta(m_accel), 2L)
+})
+
+test_that("model_constant works for a GAMLSS", {
+  expect_length(model_constant(m_accel), 2L)
+  expect_length(model_constant(m_gam), 1L)
 })

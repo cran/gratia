@@ -5,7 +5,10 @@
 #' is used instead.
 #'
 #' @param object a fitted GAM, the result of a call to [mgcv::gam()].
-#' @param data a optional data frame that may or may not be used? FIXME!
+#' @param data an optional data frame that is used to supply the data at which
+#'   the smooths will be evaluated and plotted. This is usually not needed, but
+#'   is an option if you need fine control over exactly what data are used for
+#'   plotting.
 #' @param select character, logical, or numeric; which smooths to plot. If
 #'   `NULL`, the default, then all model smooths are drawn. Numeric `select`
 #'   indexes the smooths in the order they are specified in the formula and
@@ -113,6 +116,7 @@
 #'   generated for tile centres without respect to the spacing of those tiles.
 #' @param wrap logical; wrap plots as a patchwork? If \code{FALSE}, a list of
 #'   ggplot objects is returned, 1 per term plotted.
+#' @param caption logical; show the smooth type in the caption of each plot?
 #' @param envir an environment to look up the data within.
 #' @param ... additional arguments passed to [patchwork::wrap_plots()].
 #'
@@ -197,11 +201,15 @@
     default_crs = NULL,
     lims_method = "cross",
     wrap = TRUE,
+    caption = TRUE,
     envir = environment(formula(object)),
     ...
   ) {
-  # fixed or free?
+  # fixed or free scale?
   scales <- match.arg(scales)
+
+  # adding a caption?
+  caption <- as.logical(caption)
 
   # fix up default scales
   # if (is.null(discrete_colour)) {
@@ -388,7 +396,9 @@
       crs = crs,
       default_crs = default_crs,
       lims_method = lims_method,
-      tensor_term_order = tensor_term_order
+      tensor_term_order = tensor_term_order,
+      caption = caption,
+      ... # FIXME: temporary fix to allow captions to be suppressed-ish
     )
   } # end stuff for smooths...
 

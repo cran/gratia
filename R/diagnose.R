@@ -1,17 +1,38 @@
 ## Functions to diagnose problems with fitted GAMs
 
-#' @title Quantile-quantile plot of model residuals
+#' Quantile-quantile plot of model residuals
 #'
-#' @param model a fitted model. Currently only class `"gam"`.
+#' Quantile-quantile plots (QQ-plots) for GAMs using the reference quantiles of
+#' Augustin *et al* (2012).
 #'
-#' @param method character; method used to generate theoretical quantiles. Note
-#'   that `method = "direct"` is deprecated in favour of `method = "uniform"`.
+#' @param model a fitted model. Currently models inheriting from class `"gam"`,
+#'   as well as classes `"glm"` and `"lm"` from calls to [stats::glm] or
+#'   [stats::lm] are supported.
+#' @param method character; method used to generate theoretical quantiles.
+#'   The default is `"uniform"`, which generates reference quantiles using
+#'   random draws from a uniform distribution and the inverse cummulative
+#'   distribution function (CDF) of the fitted values. The reference quantiles
+#'   are averaged over `n_uniform` draws. `"simulate"` generates reference
+#'   quantiles by simulating new response data from the model at the observed
+#'   values of the covariates, which are then residualised to generate reference
+#'   quantiles, using `n_simulate` simulated data sets. `"normal"` generates
+#'   reference quantiles using the standard normal distribution. `"uniform"` is
+#'   more computationally efficient, but `"simulate"` allows reference bands to
+#'   be drawn on the QQ-plot. `"normal"` should be avoided but is used as a fall
+#'   back if a random number generator (`"simulate"`) or the inverse of the CDF
+#'   are not available from the `family` used during model fitting
+#'   (`"uniform"``).
+#'
+#'   Note that `method = "direct"` is deprecated in favour of
+#'   `method = "uniform"`.
 #' @param type character; type of residuals to use. Only `"deviance"`,
 #'   `"response"`, and `"pearson"` residuals are allowed.
 #' @param n_uniform numeric; number of times to randomize uniform quantiles
 #'   in the direct computation method (`method = "uniform"`).
 #' @param n_simulate numeric; number of data sets to simulate from the estimated
 #'   model when using the simulation method (`method = "simulate"`).
+#' @param seed numeric; the random number seed to use for `method = "simulate"`
+#'   and `method = "uniform"`.
 #' @param level numeric; the coverage level for reference intervals. Must be
 #'   strictly `0 < level < 1`. Only used with `method = "simulate"`.
 #' @param xlab character or expression; the label for the y axis. If not
@@ -36,6 +57,18 @@
 #' @note The wording used in [mgcv::qq.gam()] uses *direct* in reference to the
 #'   simulated residuals method (`method = "simulated"`). To avoid confusion,
 #'   `method = "direct"` is deprecated in favour of `method = "uniform"`.
+#'
+#' @seealso [mgcv::qq.gam] for more details on the methods used.
+#'
+#' @references
+#'
+#' The underlying methodology used when `method` is `"simulate"` or `"uniform"`
+#' is described in Augustin *et al* (2012):
+#'
+#' Augustin, N.H., Sauleau, E.-A., Wood, S.N., (2012) On quantile quantile plots
+#' for generalized linear models. *Computational Statatistics and Data Analysis*
+#' **56**, 2404-2409 \doi{doi:10.1016/j.csda.2012.01.026}.
+#'
 #'
 #' @export
 `qq_plot` <- function(model, ...) {
@@ -77,24 +110,45 @@
 #' ## Alternatively use simulate new data from the model, which
 #' ## allows construction of reference intervals for the Q-Q plot
 #' qq_plot(m,
-#'   method = "simulate", point_col = "steelblue",
+#'   method = "simulate",
+#'   seed = 42,
+#'   point_col = "steelblue",
 #'   point_alpha = 0.4
 #' )
 #'
 #' ## ... or use the usual normality assumption
 #' qq_plot(m, method = "normal")
 `qq_plot.gam` <- function(model,
-                          method = c("uniform", "simulate", "normal", "direct"),
-                          type = c("deviance", "response", "pearson"),
-                          n_uniform = 10, n_simulate = 50,
-                          level = 0.9,
-                          ylab = NULL, xlab = NULL,
-                          title = NULL, subtitle = NULL, caption = NULL,
-                          ci_col = "black",
-                          ci_alpha = 0.2,
-                          point_col = "black",
-                          point_alpha = 1,
-                          line_col = "red", ...) {
+    method = c("uniform", "simulate", "normal", "direct"),
+    type = c("deviance", "response", "pearson"),
+    n_uniform = 10,
+    n_simulate = 50,
+    seed = NULL,
+    level = 0.9,
+    ylab = NULL,
+    xlab = NULL,
+    title = NULL,
+    subtitle = NULL,
+    caption = NULL,
+    ci_col = "black",
+    ci_alpha = 0.2,
+    point_col = "black",
+    point_alpha = 1,
+    line_col = "red", ...) {
+  # sort out seed
+  if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+    runif(1)
+  }
+  if (is.null(seed)) {
+    RNGstate <- get(".Random.seed", envir = .GlobalEnv)
+  } else {
+    R.seed <- get(".Random.seed", envir = .GlobalEnv)
+    set.seed(seed)
+    RNGstate <- structure(seed, kind = as.list(RNGkind()))
+    on.exit(assign(".Random.seed", R.seed, envir = .GlobalEnv))
+  }
+
+  # figure out method stuff
   method <- match.arg(method) # what method for the QQ plot?
   if (identical(method, "direct")) {
     message("`method = \"direct\"` is deprecated, use `\"uniform\"`")
@@ -671,15 +725,34 @@
 
 #' @title Model diagnostic plots
 #'
-#' @param model a fitted model. Currently only class `"gam"`.
-#' @param method character; method used to generate theoretical quantiles. Note
-#'   that `method = "direct"` is deprecated in favour of `method = "uniform"`.
+#' @param model a fitted model. Currently models inheriting from class `"gam"`,
+#'   as well as classes `"glm"` and `"lm"` from calls to [stats::glm] or
+#'   [stats::lm] are supported.
+#' @param method character; method used to generate theoretical quantiles.
+#'   The default is `"uniform"`, which generates reference quantiles using
+#'   random draws from a uniform distribution and the inverse cummulative
+#'   distribution function (CDF) of the fitted values. The reference quantiles
+#'   are averaged over `n_uniform` draws. `"simulate"` generates reference
+#'   quantiles by simulating new response data from the model at the observed
+#'   values of the covariates, which are then residualised to generate reference
+#'   quantiles, using `n_simulate` simulated data sets. `"normal"` generates
+#'   reference quantiles using the standard normal distribution. `"uniform"` is
+#'   more computationally efficient, but `"simulate"` allows reference bands to
+#'   be drawn on the QQ-plot. `"normal"` should be avoided but is used as a fall
+#'   back if a random number generator (`"simulate"`) or the inverse of the CDF
+#'   (`"uniform"``) are not available from the `family` used during model
+#'   fitting.
+#'
+#'   Note that `method = "direct"` is deprecated in favour of
+#'   `method = "uniform"`.
 #' @param use_worm logical; should a worm plot be drawn in place of the QQ plot?
 #' @param n_uniform numeric; number of times to randomize uniform quantiles
 #'   in the direct computation method (`method = "direct"`) for QQ plots.
 #' @param n_simulate numeric; number of data sets to simulate from the estimated
 #'   model when using the simulation method (`method = "simulate"`) for QQ
 #'   plots.
+#' @param seed numeric; the random number seed to use for `method = "simulate"`
+#'   and `method = "uniform"`.
 #' @param type character; type of residuals to use. Only `"deviance"`,
 #'   `"response"`, and `"pearson"` residuals are allowed.
 #' @param n_bins character or numeric; either the number of bins or a string
@@ -723,7 +796,7 @@
 #' ## To change the theme for all panels use the & operator, for example to
 #' ## change the ggplot theme for all panels
 #' library("ggplot2")
-#' appraise(mod,
+#' appraise(mod, seed = 42,
 #'   point_col = "steelblue", point_alpha = 0.4,
 #'   line_col = "black"
 #' ) & theme_minimal()
@@ -737,6 +810,7 @@
                            method = c("uniform", "simulate", "normal", "direct"),
                            use_worm = FALSE,
                            n_uniform = 10, n_simulate = 50,
+                           seed = NULL,
                            type = c("deviance", "pearson", "response"),
                            n_bins = c("sturges", "scott", "fd"),
                            ncol = NULL, nrow = NULL,
@@ -775,6 +849,7 @@
     type = type,
     n_uniform = n_uniform,
     n_simulate = n_simulate,
+    seed = seed,
     level = level,
     ci_col = ci_col,
     ci_alpha = ci_alpha,

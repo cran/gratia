@@ -258,7 +258,7 @@
     }
     ## if they do all inherit from the correct class, then run term_names
     ## on each element and combine - returns $term and $by from each smooth
-    unlist(sapply(smooths, FUN = term_names))
+    unlist(lapply(smooths, FUN = term_names))
   }
 
   ## check that the vars we need are in data
@@ -466,7 +466,7 @@
 #' @param model a fitted model; currently only [mgcv::gam()] and [mgcv::bam()]
 #'   models are suported.
 #' @param data an optional data frame of values to evaluate `smooth` at.
-#' @param ... arguments assed to other methods
+#' @param ... arguments passed to other methods
 #'
 #' @inheritParams smooth_estimates
 #'
@@ -547,7 +547,12 @@
     by_var <- NA_character_
   }
 
-  ## deal with data if supplied
+  # Deal with data if supplied
+  # As a special case, if no `data`, then we should generate some data here for
+  # soap film from the boundary
+  if (is.null(data)) {
+    data <- soap_film_data(smooth)
+  } 
   data <- process_user_data_for_eval(
     data = data, model = model,
     n = n, n_3d = n_3d, n_4d = n_4d,
@@ -558,7 +563,7 @@
   )
 
   # handle soap film smooths
-  # can use this if Simon accepts the proposed changes tin inSide()
+  # can use this if Simon accepts the proposed changes to inSide()
   is_soap_film <- inherits(smooth, "soap.film")
   if (is_soap_film) {
     bnd <- boundary(smooth) # smooth$xt$bnd
@@ -1019,6 +1024,7 @@
                                     crs = NULL,
                                     default_crs = NULL,
                                     lims_method = "cross",
+                                    caption = TRUE,
                                     ...) {
   # add confidence intervals if they don't already exist
   if (!all(c(".lower_ci", ".upper_ci") %in% names(object))) {
@@ -1076,7 +1082,8 @@
     crs = crs,
     default_crs = default_crs,
     lims_method = lims_method,
-    tensor_term_order = tensor_term_order, # pass on tensor order info
+    tensor_term_order = tensor_term_order, # pass on tensor order info,
+    caption = caption,
     ...
   )
 
@@ -1109,6 +1116,7 @@
                                     default_crs = NULL,
                                     lims_method = "cross",
                                     tensor_term_order = NULL,
+                                    caption = NULL,
                                     ...) {
   sm_vars <- tensor_term_order[[unique(object$.smooth)]]
   if (is.null(sm_vars)) {
@@ -1143,7 +1151,7 @@
   if (sm_dim == 1L &&
     sm_type %in% c(
       "TPRS", "TPRS (shrink)", "CRS", "CRS (shrink)",
-      "Cyclic CRS", "P spline", "B spline", "Duchon spline",
+      "Cyclic CRS", "Cyclic P spline", "P spline", "B spline", "Duchon spline",
       "GP",
       "Mono inc P spline",
       "Mono dec P spline",
@@ -1267,6 +1275,7 @@
     crs = crs,
     default_crs = default_crs,
     lims_method = lims_method,
+    caption = caption,
     ...
   )
 }
@@ -1443,8 +1452,11 @@
       as.character(unique(object$.smooth))
     )
   }
-  if (is.null(caption)) {
+  # add the basis via caption if caption is TRUE or NULL
+  if ((is.logical(caption) && isTRUE(caption)) || is.null(caption)) {
     caption <- paste("Basis:", object[[".type"]])
+  } else {
+    caption <- NULL
   }
   if (all(!is.na(object[[".by"]]))) {
     if (grouped_by) {
@@ -1569,8 +1581,11 @@
   if (is.null(title)) {
     title <- unique(object[[".smooth"]])
   }
-  if (is.null(caption)) {
+  # add the basis via caption if caption is TRUE or NULL
+  if ((is.logical(caption) && isTRUE(caption)) || is.null(caption)) {
     caption <- paste("Basis:", object[[".type"]])
+  } else {
+    caption <- NULL
   }
 
   if (all(!is.na(object[[".by"]]))) {
@@ -1605,8 +1620,8 @@
     guides(
       fill = guide_colourbar(
         title = guide_title,
-        direction = "vertical",
-        barheight = grid::unit(0.25, "npc")
+        direction = "vertical"#,
+        #barheight = grid::unit(5, "lines") #grid::unit(0.25, "npc")
       ),
       x = guide_axis(angle = angle)
     )
@@ -1711,8 +1726,11 @@
   if (is.null(title)) {
     title <- unique(object[[".smooth"]])
   }
-  if (is.null(caption)) {
+  # add the basis via caption if caption is TRUE or NULL
+  if ((is.logical(caption) && isTRUE(caption)) || is.null(caption)) {
     caption <- paste("Facets:", variables[3], "; Basis:", object[[".type"]])
+  } else {
+    caption <- NULL
   }
 
   if (all(!is.na(object[[".by"]]))) {
@@ -1747,8 +1765,8 @@
     guides(
       fill = guide_colourbar(
         title = guide_title,
-        direction = "vertical",
-        barheight = grid::unit(0.25, "npc")
+        direction = "vertical"#,
+        #barheight = grid::unit(5, "lines") #grid::unit(0.25, "npc")
       ),
       x = guide_axis(angle = angle)
     )
@@ -1867,12 +1885,15 @@
   if (is.null(title)) {
     title <- unique(object[[".smooth"]])
   }
-  if (is.null(caption)) {
+  # add the basis via caption if caption is TRUE or NULL
+  if ((is.logical(caption) && isTRUE(caption)) || is.null(caption)) {
     caption <- paste(
       "Facet rows:", variables[3],
       "; columns:", variables[4],
       "; Basis:", object[[".type"]]
     )
+  } else {
+    caption <- NULL
   }
 
   if (all(!is.na(object[[".by"]]))) {
@@ -1907,8 +1928,8 @@
     guides(
       fill = guide_colourbar(
         title = guide_title,
-        direction = "vertical",
-        barheight = grid::unit(0.25, "npc")
+        direction = "vertical"#,
+        #barheight = grid::unit(5, "lines") #grid::unit(0.25, "npc")
       ),
       x = guide_axis(angle = angle)
     )
@@ -2006,8 +2027,11 @@
   if (is.null(title)) {
     title <- unique(object$.smooth) # variables
   }
-  if (is.null(caption)) {
+  # add the basis via caption if caption is TRUE or NULL
+  if ((is.logical(caption) && isTRUE(caption)) || is.null(caption)) {
     caption <- paste("Basis:", object[[".type"]])
+  } else {
+    caption <- NULL
   }
 
   if (all(!is.na(object[[".by"]]))) {
@@ -2101,8 +2125,11 @@
   if (is.null(title)) {
     title <- unique(object[[".smooth"]])
   }
-  if (is.null(caption)) {
+  # add the basis via caption if caption is TRUE or NULL
+  if ((is.logical(caption) && isTRUE(caption)) || is.null(caption)) {
     caption <- paste("Basis:", object[[".type"]])
+  } else {
+    caption <- NULL
   }
 
   if (all(!is.na(object[[".by"]]))) {
@@ -2327,8 +2354,11 @@
   if (is.null(title)) {
     title <- unique(object[[".smooth"]])
   }
-  if (is.null(caption)) {
+  # add the basis via caption if caption is TRUE or NULL
+  if ((is.logical(caption) && isTRUE(caption)) || is.null(caption)) {
     caption <- paste("Basis:", object[[".type"]])
+  } else {
+    caption <- NULL
   }
 
   if (all(!is.na(object[[".by"]]))) {
@@ -2482,9 +2512,11 @@
   if (is.null(title)) {
     title <- unique(object[[".smooth"]])
   }
-
-  if (is.null(caption)) {
+  # add the basis via caption if caption is TRUE or NULL
+  if ((is.logical(caption) && isTRUE(caption)) || is.null(caption)) {
     caption <- paste("Basis:", object[[".type"]])
+  } else {
+    caption <- NULL
   }
 
   if (all(!is.na(object[[".by"]]))) {
@@ -2518,8 +2550,8 @@
   plt <- plt +
     guides(
       fill = guide_colourbar(
-        title = guide_title, direction = "vertical",
-        barheight = grid::unit(0.25, "npc")
+        title = guide_title, direction = "vertical"#,
+        #barheight = grid::unit(5, "lines") #grid::unit(0.25, "npc")
       ),
       x = guide_axis(angle = angle)
     )
@@ -2545,7 +2577,7 @@
 
 #' @importFrom ggplot2 ggplot geom_point geom_raster geom_contour
 #'   expand_limits labs guides guide_colourbar theme guide_axis geom_line
-#'   geom_path scale_fill_distiller
+#'   geom_path scale_fill_distiller coord_fixed
 #' @importFrom grid unit
 #' @importFrom rlang .data
 #' @keywords internal
@@ -2601,7 +2633,8 @@
     x = .data[[variables[1]]],
     y = .data[[variables[2]]]
   )) +
-    geom_raster(mapping = aes(fill = .data[[plot_var]]))
+    geom_raster(mapping = aes(fill = .data[[plot_var]])) +
+    coord_fixed(ratio = 1)
 
   if (isTRUE(contour)) {
     plt <- plt + geom_contour(
@@ -2622,8 +2655,11 @@
   if (is.null(title)) {
     title <- unique(object[[".smooth"]])
   }
-  if (is.null(caption)) {
+  # add the basis via caption if caption is TRUE or NULL
+  if ((is.logical(caption) && isTRUE(caption)) || is.null(caption)) {
     caption <- paste("Basis:", object[[".type"]])
+  } else {
+    caption <- NULL
   }
 
   if (all(!is.na(object[[".by"]]))) {
@@ -2658,8 +2694,8 @@
     guides(
       fill = guide_colourbar(
         title = guide_title,
-        direction = "vertical",
-        barheight = grid::unit(0.25, "npc")
+        direction = "vertical"#,
+        #barheight = grid::unit(5, "lines") #grid::unit(0.25, "npc")
       ),
       x = guide_axis(angle = angle)
     )
