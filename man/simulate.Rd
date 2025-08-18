@@ -60,7 +60,7 @@ for excluding the effects of random effect terms.}
 \item{newdata}{Deprecated. Use \code{data} instead.}
 }
 \value{
-(Currently) A matrix with \code{nsim} columns.
+(Currently) A data frame with \code{nsim} columns.
 }
 \description{
 Simulations from the posterior distribution of a fitted GAM model involve
@@ -70,7 +70,7 @@ distribution used when fitting the model.
 }
 \details{
 For \code{simulate.gam()} to function, the \code{family} component of the fitted
-model must contain, or be updateable to contain, the required random
+model must contain, or be updatable to contain, the required random
 number generator. See \code{\link[mgcv:fix.family.link]{mgcv::fix.family.rd()}}.
 }
 \examples{

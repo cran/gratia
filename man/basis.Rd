@@ -5,7 +5,7 @@
 \alias{basis.gam}
 \alias{basis.scam}
 \alias{basis.gamm}
-\alias{basis.list}
+\alias{basis.gamm4}
 \alias{basis.default}
 \title{Basis expansions for smooths}
 \usage{
@@ -50,7 +50,7 @@ basis(object, ...)
   ...
 )
 
-\method{basis}{list}(
+\method{basis}{gamm4}(
   object,
   select = NULL,
   term = deprecated(),
@@ -70,6 +70,7 @@ basis(object, ...)
   constraints = FALSE,
   at = NULL,
   diagonalize = FALSE,
+  coefficients = NULL,
   ...
 )
 }
@@ -119,14 +120,17 @@ the basis should be evaluated.}
 the associated penalty is an identity matrix. This has the effect of
 turning the last diagonal elements of the penalty to zero, which highlights
 the penalty null space.}
+
+\item{coefficients}{numeric; vector of values for the coefficients of the
+basis functions.}
 }
 \value{
 A tibble.
 }
 \description{
-Creates a basis expansion from a definition of a smoother using the syntax
-of \emph{mgcv}'s smooths via \code{\link[mgcv:s]{mgcv::s()}}., \code{\link[mgcv:te]{mgcv::te()}}, \code{\link[mgcv:te]{mgcv::ti()}}, and
-\code{\link[mgcv:t2]{mgcv::t2()}}, or from a fitted GAM(M).
+Basis expansions from a definition of a smoother using the syntax of \emph{mgcv}'s
+smooths via \code{\link[mgcv:s]{mgcv::s()}}., \code{\link[mgcv:te]{mgcv::te()}}, \code{\link[mgcv:te]{mgcv::ti()}}, and \code{\link[mgcv:t2]{mgcv::t2()}}, or
+directly from a fitted GAM(M).
 }
 \examples{
 load_mgcv()

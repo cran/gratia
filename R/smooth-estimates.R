@@ -9,7 +9,7 @@
 #' @param object an object of class `"gam"` or `"gamm"`.
 #' @param select character; select which smooth's posterior to draw from.
 #'   The default (`NULL`) means the posteriors of all smooths in `model`
-#'   wil be sampled from. If supplied, a character vector of requested terms.
+#'   will be sampled from. If supplied, a character vector of requested terms.
 #' @param smooth `r lifecycle::badge("deprecated")` Use `select` instead.
 #' @param n numeric; the number of points over the range of the covariate at
 #'   which to evaluate the smooth.
@@ -38,6 +38,9 @@
 #' @param partial_match logical; in the case of character `select`, should
 #'   `select` match partially against `smooths`? If `partial_match = TRUE`,
 #'   `select` must only be a single string, a character vector of length 1.
+#' @param clip logical; should evaluation points be clipped to the boundary of
+#'   a soap film smooth? The default is `FALSE`, which will return `NA` for any
+#'   point that is deemed to lie outside the boundary of the soap film.
 #' @param ... arguments passed to other methods.
 #'
 #' @return A data frame (tibble), which is of class `"smooth_estimates"`.
@@ -59,6 +62,13 @@
 #'
 #' ## or selected smooths
 #' smooth_estimates(m1, select = c("s(x0)", "s(x1)"))
+#'
+#' # parallel processing of smooths
+#' if (requireNamespace("mirai") && requireNamespace("carrier")) {
+#'   library("mirai")
+#'   daemons(2)                          # only low for CRAN requirements
+#'   smooth_estimates(m1)
+#' }
 #' \dontshow{
 #' options(op)
 #' }
@@ -72,6 +82,8 @@
 #' @importFrom tidyr unnest
 #' @importFrom rlang expr_label
 #' @importFrom lifecycle deprecated is_present
+#' @importFrom purrr in_parallel map
+#' @importFrom mirai daemons_set
 `smooth_estimates.gam` <- function(object,
     select = NULL,
     smooth = deprecated(),
@@ -84,6 +96,7 @@
     dist = NULL,
     unnest = TRUE,
     partial_match = FALSE,
+    clip = FALSE,
     ...) {
   if (lifecycle::is_present(smooth)) {
     lifecycle::deprecate_warn("0.8.9.9", "smooth_estimates(smooth)",
@@ -129,16 +142,29 @@
   #     n_4d <- n
   # }
 
-  for (i in seq_along(sm_list)) {
-    sm_list[[i]] <- eval_smooth(smooths[[i]],
-      model = object,
-      n = n,
-      n_3d = n_3d,
-      n_4d = n_4d,
-      data = data,
+  # loop over selected smooths and evaluate them, now with parallel processing
+  if (isFALSE(mirai::daemons_set())) {
+    sm_list <- map(
+      smooths,
+      eval_smooth,
+      model = object, n = n, n_3d = n_3d, n_4d = n_4d, data = data,
       unconditional = unconditional,
-      overall_uncertainty = overall_uncertainty,
-      dist = dist
+      overall_uncertainty = overall_uncertainty, dist = dist, clip = clip
+    )
+  } else {
+    sm_list <- map(
+      smooths,
+      in_parallel(
+        \(sm) eval_smooth(
+          sm, model = object, n = n, n_3d = n_3d, n_4d = n_4d,
+          data = data, unconditional = unconditional,
+          overall_uncertainty = overall_uncertainty, dist = dist
+        ),
+        object = object, n = n, n_3d = n_3d, n_4d = n_4d, data = data,
+        unconditional = unconditional,
+        overall_uncertainty = overall_uncertainty, dist = dist, clip = clip,
+        eval_smooth = gratia::eval_smooth
+      )
     )
   }
 
@@ -285,7 +311,7 @@
 #'
 #' @param smooth currently an object that inherits from class `mgcv.smooth`.
 #' @param model a fitted model; currently only [mgcv::gam()] and [mgcv::bam()]
-#'   models are suported.
+#'   models are supported.
 #' @param data a data frame of values to evaluate `smooth` at.
 #' @param frequentist logical; use the frequentist covariance matrix?
 #'
@@ -301,13 +327,19 @@
 `spline_values` <- function(
     smooth, data, model, unconditional,
     overall_uncertainty = TRUE, frequentist = FALSE) {
+  is_soap <- is_soap_film(smooth)
   X <- PredictMat(smooth, data) # prediction matrix
+  offset <- attr(X, "offset")
   start <- smooth[["first.para"]]
   end <- smooth[["last.para"]]
   para.seq <- start:end
   coefs <- coef(model)[para.seq]
 
-  fit <- drop(X %*% coefs)
+  fit <- if (is_soap && !is.null(offset)) {
+    drop(X %*% coefs) + attr(X, "offset")
+  } else {
+    drop(X %*% coefs)
+  }
 
   label <- smooth_label(smooth)
 
@@ -372,7 +404,7 @@
 #'
 #' @param smooth currently an object that inherits from class `mgcv.smooth`.
 #' @param model a fitted model; currently only [mgcv::gam()] and [mgcv::bam()]
-#'   models are suported.
+#'   models are supported.
 #' @param data an optional data frame of values to evaluate `smooth` at.
 #' @param frequentist logical; use the frequentist covariance matrix?
 #'
@@ -464,7 +496,7 @@
 #'
 #' @param smooth currently an object that inherits from class `mgcv.smooth`.
 #' @param model a fitted model; currently only [mgcv::gam()] and [mgcv::bam()]
-#'   models are suported.
+#'   models are supported.
 #' @param data an optional data frame of values to evaluate `smooth` at.
 #' @param ... arguments passed to other methods
 #'
@@ -532,16 +564,18 @@
 #' @importFrom dplyr n mutate relocate bind_rows
 #' @importFrom tidyselect all_of
 #' @export
-`eval_smooth.soap.film` <- function(smooth,
-    model,
-    n = 100,
-    n_3d = NULL,
-    n_4d = NULL,
-    data = NULL,
-    unconditional = FALSE,
-    overall_uncertainty = TRUE,
-    #clip_soap = TRUE, # ?hmm thinking
-    ...) {
+`eval_smooth.soap.film` <- function(
+  smooth,
+  model,
+  n = 100,
+  n_3d = NULL,
+  n_4d = NULL,
+  data = NULL,
+  unconditional = FALSE,
+  overall_uncertainty = TRUE,
+  clip = TRUE, # ?hmm thinking
+  ...
+) {
   by_var <- by_variable(smooth) # even if not a by as we want NA later
   if (by_var == "NA") {
     by_var <- NA_character_
@@ -550,9 +584,9 @@
   # Deal with data if supplied
   # As a special case, if no `data`, then we should generate some data here for
   # soap film from the boundary
-  if (is.null(data)) {
-    data <- soap_film_data(smooth)
-  } 
+  #if (is.null(data)) {
+  #  data <- soap_film_data(smooth, n = n, n_3d = n_3d, n_4d = n_4d)
+  #}
   data <- process_user_data_for_eval(
     data = data, model = model,
     n = n, n_3d = n_3d, n_4d = n_4d,
@@ -564,14 +598,24 @@
 
   # handle soap film smooths
   # can use this if Simon accepts the proposed changes to inSide()
-  is_soap_film <- inherits(smooth, "soap.film")
-  if (is_soap_film) {
+  is_soap <- is_soap_film(smooth)
+  if (is_soap) {
     bnd <- boundary(smooth) # smooth$xt$bnd
     # in_side <- inSide(bnd, x = data[[smooth$vn[[1]]]],
     #  y = data[[smooth$vn[[1]]]],
     # xname = "v", yname = "w") # needs fixed inSide
     # use in_side to filter the data before we evaluate the spline
     # any point outside the domain is NA anyway
+    if (isTRUE(clip)) {
+      is_inside <- inside(
+        data,
+        bnd,
+        x_var = smooth$vn[[1]],
+        y_var = smooth$vn[[2]]
+      )
+
+      data <- filter(data, is_inside)
+    }
   }
 
   ## values of spline at data
@@ -588,7 +632,7 @@
   eval_sm <- add_smooth_type_column(eval_sm, sm_type = smooth_type(smooth))
 
   ## add on the boundary info
-  if (is_soap_film) {
+  if (is_soap) {
     # how many points on each boundary?
     pts <- vapply(bnd, \(x) length(x[[1]]), integer(1))
     # capture the boundary as a tibble
@@ -597,7 +641,7 @@
         .estimate = rep(NA_real_, times = n()),
         .se = rep(NA_real_, times = n()),
         .bndry = rep(TRUE, times = n()),
-        .loop = rep(seq_along(pts), each = pts)) |>
+        .loop = rep(seq_along(pts), times = pts)) |>
       relocate(all_of(c(".smooth", ".estimate", ".se", ".bndry", ".loop")),
         .before = 1L)
     bndry <- add_by_var_column(bndry, by_var = by_var)
@@ -605,8 +649,10 @@
 
     eval_sm <- eval_sm |>
       unnest(cols = "data") |>
-      mutate(.bndry = rep(FALSE, times = n()),
-        .loop = rep(NA_integer_, times = n())) |>
+      mutate(
+        .bndry = rep(FALSE, times = n()),
+        .loop = rep(NA_integer_, times = n())
+      ) |>
       relocate(all_of(c(".bndry", ".loop")), .after = 5L) |>
       bind_rows(bndry) |>
       nest(data = !matches(c(".smooth", ".type", ".by")))
@@ -681,6 +727,7 @@
 #' @keywords internal
 #' @noRd
 #' @importFrom rlang .data
+#' @importFrom vctrs vec_slice
 `process_user_data_for_eval` <- function(
     data, model, n, n_3d, n_4d, id,
     var_order = NULL) {
@@ -703,7 +750,7 @@
     ## if this is a by variable, filter the by variable for the required
     ## level now
     if (is_factor_by_smooth(smooth)) {
-      data <- data %>% filter(.data[[by_var]] == by_level(smooth))
+      data <- vec_slice(data, data[[by_var]] == by_level(smooth))
     }
   }
   data
@@ -1249,7 +1296,8 @@
     return(NULL)
   }
 
-  plot_smooth(object,
+  plot_smooth(
+    object,
     variables = sm_vars,
     rug = rug_data,
     partial_residuals = p_residuals,
@@ -2490,6 +2538,22 @@
       crs = crs, default_crs = default_crs,
       lims_method = lims_method
     )
+  # foo <- object |> select(latitude, longitude, .estimate)
+  # foo_df <- as.data.frame(foo)
+  # sf <- stars::st_as_stars(foo_df) |>
+  #   sf::st_set_crs("OGC:CRS84") |>
+  #   sf::st_as_sf(points = FALSE) |>
+  #   sf::st_set_agr("constant")
+  # st_ortho_cut <- function(x, lon_0, lat_0, radius = 9800000) {
+  #   stopifnot(st_is_longlat(x))
+  #   pt <- sf::st_sfc(st_point(c(lon_0, lat_0)), crs = "OGC:CRS84")
+  #   buf <- sf::st_buffer(pt, units::set_units(radius, "m"))
+  #   ortho <- paste0("+proj=ortho +lat_0=", lat_0, " +lon_0=", lon_0)
+  #   sf::st_transform(sf::st_intersection(x, buf), sf::st_crs(ortho))
+  # }
+  # sf_o <- st_ortho_cut(sf, lat_0 = 20, lon_0 = mean(range(object[[variables[2]]])))
+  
+  # ggplot() + geom_sf(data = sf, aes(fill = .estimate))
 
   if (isTRUE(contour)) {
     plt <- plt + geom_contour(
@@ -2580,26 +2644,29 @@
 #'   geom_path scale_fill_distiller coord_fixed
 #' @importFrom grid unit
 #' @importFrom rlang .data
+#' @importFrom vctrs vec_slice
 #' @keywords internal
 #' @noRd
-`plot_smooth.soap_film` <- function(object,
-    variables = NULL,
-    rug = NULL,
-    show = c("estimate", "se"),
-    contour = TRUE,
-    contour_col = "black",
-    n_contour = NULL,
-    constant = NULL,
-    fun = NULL,
-    xlab = NULL,
-    ylab = NULL,
-    title = NULL,
-    subtitle = NULL,
-    caption = NULL,
-    ylim = NULL,
-    continuous_fill = NULL,
-    angle = NULL,
-    ...) {
+`plot_smooth.soap_film` <- function(
+  object,
+  variables = NULL,
+  rug = NULL,
+  show = c("estimate", "se"),
+  contour = TRUE,
+  contour_col = "black",
+  n_contour = NULL,
+  constant = NULL,
+  fun = NULL,
+  xlab = NULL,
+  ylab = NULL,
+  title = NULL,
+  subtitle = NULL,
+  caption = NULL,
+  ylim = NULL,
+  continuous_fill = NULL,
+  angle = NULL,
+  ...
+) {
   if (is.null(variables)) {
     variables <- vars_from_label(unique(object[[".smooth"]]))
   }
@@ -2629,10 +2696,17 @@
     guide_limits <- range(object[[".se"]])
   }
 
-  plt <- ggplot(object |> filter(!.data[[".bndry"]]), aes(
-    x = .data[[variables[1]]],
-    y = .data[[variables[2]]]
-  )) +
+  # extract the boundary data
+  bndry <- vec_slice(object, object[[".bndry"]])
+  object <- vec_slice(object, !object[[".bndry"]])
+
+  plt <- ggplot(
+    object,
+    aes(
+      x = .data[[variables[1]]],
+      y = .data[[variables[2]]]
+    )
+  ) +
     geom_raster(mapping = aes(fill = .data[[plot_var]])) +
     coord_fixed(ratio = 1)
 
@@ -2718,9 +2792,15 @@
 
   ## add the boundary
   plt <- plt +
-    geom_path(data = object |> filter(.data[[".bndry"]]),
-      mapping = aes(x = .data[[variables[1]]],
-        y = .data[[variables[2]]]), linewidth = 2, colour = "black")
+    geom_path(
+      data = bndry,
+      mapping = aes(
+        x = .data[[variables[1]]],
+        y = .data[[variables[2]]],
+        group = .data[[".loop"]] # need to group by loops in case >1 loop
+      ),
+      linewidth = 2, colour = "black"
+    )
 
   plt
 }

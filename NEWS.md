@@ -1,3 +1,171 @@
+# gratia 0.11.0
+
+*gratia* now has a [paper](https://doi.org/10.21105/joss.06962) describing the package in the [Journal of Open Source Software](https://joss.theoj.org/). If you use *gratia* in your work, please cite this paper rather than the generic citation previously created by `citation()`:
+
+> Simpson, G.L. (2024) gratia: An R package for exploring generalized additive models. *The Journal of Open Source Software* **9**, 6962.
+
+## User visible changes
+
+* Experimental support for computing with parallel processes via the *purrr* 📦
+  in `smooth_estimates()` and `basis()`, though it is of limited use in the 
+  latter. Parallel processing will operate if a call to `mirai::daemons()` has
+  been issued in the current R session.
+
+* Rug plots in `draw.gam()` now only show the unique data values to avoid 
+  needless overplotting. This behaviour is controlled via new argument
+  `distinct_rug`. Setting this to `FALSE` will get the previous behaviour.
+
+* `simulate.gam()` gains a `print()` method and thus no longer prints its
+  attributes.
+
+* `citation("gratia")` now suggests to use Simpson (2024) *Journal of Open
+  Source Software* **9**(104), 9862, when citing the package.
+
+* `simulate.gam()` now returns a data frame, bringing it into line with
+  `stats::simulate.lm()`.
+
+* With soap film smooths, `draw.gam()` no longer plots points that are deemed 
+  outside the boundary of the soap film (as determined by `mgcv::inSide()`).
+  `smooth_estimates()` continues to return these points however, because it
+  might be confusing to suddenly lose evaluation points. This behaviour can be
+  controlled by the argument `clip`, which is available to `draw.gam()` and
+  `smooth_estimates.gam()` currently.
+
+* `draw.compare_smooths()` now uses "Partial effect" as the y-axis label, in
+  common with other partial effect plots in *gratia*.
+
+## New features
+
+* `assemble()` is a new generic function for assembling sets of plots from model
+  objects. It is effectively `draw()` but without actually plotting on the
+  current device. Instead it returns a list of `ggplot` objects. Currently, a
+  method for `"gam"` models, `assemble.gam()`, is provided which `draw.gam()`
+  uses. Part of the wish of @ha0ye #35
+
+* `appraise()` with `method = "simulate"` can now handle *mgcv*'s multivariate
+  normal models fitted with `family = mvn()`and Tweedie location scale models
+  fitted with `family = twlss()`.
+
+* `fix_family_rd()` is an (currently) internal function that extends 
+  `mgcv::fix.family.rd()`. This function adds a `rfoo()` function to the `$rd` 
+  component of the `family()` object stored in the model. This function is used
+  to generate new values of the response at supplied values of the linear
+  predictor. `fix_family_rd()` calls `mgcv::fix.family.rd()` so it is backward 
+  compatible with *mgcv*'s behaviour, but it is designed to extend the
+  behaviour through support for a richer set of models.
+
+  Currently, `fix_family_rd()` adds support for multivariate normal models 
+  fitted with `family = mvn()` and location-scale Tweedie models fitted with
+  `family = twlss()`, but the latter is currently slow.
+
+  The functionality of `fix_family_rd()` may move to another package or even 
+  to *mgcv* if suitable.
+
+* `difference_smooths()` can now be used to compare named smooths using
+  `select = c("s(x):f1", "s(x):f2")` etc, where the vector of smooth names must
+  match exactly something returned by `smooths()`. Smooths to be compared must
+  have the same covariate (`x` in the example) and same factor-by variable
+  (`f` in the example). Tensor product factor-by smooths are handled likewise.
+  This effectively handles the problem of #315, reported by @3rd3.
+
+  Additionally, `difference_smooths()` with `group_means = TRUE` can now
+  include group means specified using a random effect smooth, e.g. following
+  the above example for `select`, a random effect smooth `s(f, bs = "re")`, with
+  name `s(f)`, is looked for in the model matrix and its effects included in the
+  comparisons.
+
+* `data_slice()` gains argument `.observed_only` which allows simple filtering
+  of the combinations of values specified in the slice to those that are in the
+  data frame supplied or in the model frame of a fitted GAM.
+
+* `posterior_samples()`, `predicted_samples()`, `fitted_samples()`, and
+  `simulate.gam()` now simulate for all linear predictors (i.e., all responses)
+  in `mvn()` and `multinom()` models as these are all location parameter linear
+  predictors.
+
+* `fitted_values()` now works for GAMs fitted with families `ziP()`, `mvn()`,
+  and `multinom()`. The non-working of `fitted-values()` for `ziP()` models was
+  reported in #341 by @rroyaute
+
+* `posterior_samples()`, `fitted_samples()`, `predicted_samples()`,
+  `derivatives_samples()`, and `response_derivatives()` now all work with
+  models fitted by `scam::scam()`.
+
+* `basis()` can now take a vector of coefficients for the basis functions when
+  using the default method: `basis(s(x), data = df, coefficients = rnorm(10))`.
+  Wish of #136
+
+* `draw.gam()` and `draw.smooth_estimates()` can now handle soap film smooths 
+  with known boundary values, and with nested boundaries.
+
+* `scale_fill_partial_effect()` is a *ggplot* scale function that implements
+  the default diverging red-blue gradient used by *gratia* when plotting partial
+  effect surfaces for multivariate smooths.
+
+* `quantile_residuals()` computes probability integral transform (PIT) and
+  randomised quantile residuals for some GAMs and GLMs. Currently only models fitted with a `gaussian()`, `binomial()`, `Gamma()`, or `poisson()` family
+  are supported.
+
+* `residuals_linpred_plot()` and `residuals_hist_plot()` can now use PIT or
+  randomised quantile residuals in their diagnostic plots.
+
+## Bug fixes
+
+* `conditional_values()` would fail if a variable it was conditioning on was
+  also a name of a function. #323 (but not really fixed when this was initially
+  closed)
+
+* `parametric_effects()` was only keeping one set of factor levels when there 
+  were multiple parametric factor terms in a model. Reported by @tamas-ferenci 
+  as part of discussion to #284
+
+* `mh_draws()` would fail in the case of drawing only `n = 1` samples. #328
+  Reported by @zsusswein
+
+* `simulate.gam()` now works for the `ocat()` family, which has a non-standard
+  `rd` function in its `family()` object. Reported by @hhp94, #319
+
+* `gaussian_draws()` would fail in some cases with *gamm4* models because the
+  coefficients were returned as a vector, not the expected matrix. #332 reported
+  by @JaredStufft-Elion
+
+* `draw.smooth_estimates()` would generate very many warnings when plotting
+  spline on the sphere smoothers (`bs = "sos"`) because `geom_tile()` was
+  creating tiles that extended beyond valid geographical coordinates for the
+  tile centre coordinates that it was being provided. The function that creates
+  the data to evaluate the spline at now tries to avoid this. Note this fix is
+  not a complete solution. #334 Reported by @StefanoMezzini
+
+* `link()` and `inv_link()` failed to extract the link an inverse link functions
+  for `mvn()` and `multinom()` models.
+
+* `link()` and `inv_link()` now work correctly for models fitted with the
+  `ziP()` family. #341 Reported by @rroyaute
+
+* `basis.scam()` was incorrectly trying to identify the smooths named in 
+  `select`.
+
+* `basis.scam()` would fail if the SCAM contained any non-constrained (i.e. 
+  ordinary) smooths.
+
+* `overview()` was displaying more significant digits in the p values than it
+  was accurate to in terms of reporting p values as "<0.001". A new argument
+  `digits` controls how many digits are used when formatting p values, with 
+  default of `3`.
+
+* `theta()` now works for models fitted with the `gfam()` family. Previously it
+  would fail because it assumes all `family()$getTheta` functions had an
+  argument `trans` to transform the theta values to the correct scale.
+
+* `overview()` was not showing the model intercept, and was displaying slightly
+  different results from those shown by `summary.gam()`.
+
+* `smooth_estimates()` was not adding any known boundary condition that was
+  part of a soap film smooth.
+
+* `draw.gamlss()` (for `GJRM::gamlss()` models) now doesn't fail with an error 
+  if there is more than a single smooth in any of the linear predictors.
+
 # gratia 0.10.0
 
 ## New features
@@ -62,7 +230,7 @@
 * Plots of random effects are now labelled with their smooth label. Previously,
   the title was taken fro the variable involved in the smooth, but this doesn't
   work for terms like `s(subject, continuous_var, bs = "re")` for random slopes, 
-  which previsouly would have the title `"subject"`. Now such terms will have
+  which previously would have the title `"subject"`. Now such terms will have
   title `"s(subject,continuous_var)"`. Simple random intercept terms,
   `s(subject, bs = "re")`, are now titled `"s(subject)"`. #287
 
@@ -239,7 +407,7 @@ to `select` and the function will continue.
   categorical distributions.
 
 * `data_sim()` gains two new example models `"gwf2"`, simulating data only from
-  Gu & Wabha's *f2* function, and `"lwf6"`, example function 6 from Luo & Wabha
+  Gu & Wahba's *f2* function, and `"lwf6"`, example function 6 from Luo & Wahba
   (1997 JASA 92(437), 107-116).
 
 * `data_sim()` can also simulate data for use with GAMs fitted using
@@ -368,7 +536,7 @@ to `select` and the function will continue.
   from fitted model coefficients. `generate_daws()` is an S3 generic function so
   is extensible by users. Currently provides a simple interface to a simple
   Gaussian approximation sampler (`gaussian_draws()`) and the simple Metropolis
-  Hasting sample (`mh_draws()`) available via `mgcv::gam.mh()`. #211
+  Hastings sample (`mh_draws()`) available via `mgcv::gam.mh()`. #211
 
 * `smooth_label()` is a new function for extracting the labels 'mgcv' creates for
   smooths from the smooth object itself.
@@ -400,7 +568,7 @@ to `select` and the function will continue.
 
 * Constrained factor smooths (`bs = "sz"`) where the factor is not the first
   variable mentioned in the smooth (i.e. `s(x, f, bs = "sz")` for continuous
-  `x` and factor `f`) are now plotable with `draw()`. #208
+  `x` and factor `f`) are now plottable with `draw()`. #208
 
 * `parametric_effects()` was unable to handle special parametric terms like
   `poly(x)` or `log(x)` in formulas. Reported by @fhui28 #212
@@ -837,7 +1005,7 @@ can handle more types of models and smooths, especially so in the case of
 
 * New helper functions `typical_values()`, `factor_combos()` and
   `data_combos()` for quickly creating data sets for producing predictions from
-  fitted models where some covariatess are fixed at come typical or
+  fitted models where some covariates are fixed at come typical or
   representative values.
 
     `typical_values()` is a new helper function to return typical values for the

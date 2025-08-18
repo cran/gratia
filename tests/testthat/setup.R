@@ -87,6 +87,15 @@ su_m_factor_by <- gam(y ~ fac + s(x2, by = fac) + s(x0),
   data = su_eg4, method = "REML"
 )
 
+su_m_factor_by_re <- gam(y ~ s(fac, bs = "re") + s(x2, by = fac) + s(x0),
+  data = su_eg4, method = "REML"
+)
+
+su_m_factor_by_re_decomp <- gam(
+  y ~ s(fac, bs = "re") + s(x2) + s(x2, by = fac, m = 1) + s(x0),
+  data = su_eg4, method = "REML"
+)
+
 # for issue #285
 su_m_factor_by_re <- gam(y ~ s(fac, bs = "re") + s(x2) +
     s(x2, by = fac, m = 1) + s(x0),
@@ -159,13 +168,13 @@ if (packageVersion("mgcv") >= "1.8.41") {
   )
 }
 
-su_eg2_by <- su_eg2 %>%
-  mutate(y = y + y^2 + y^3) %>%
-  bind_rows(su_eg2) %>%
+su_eg2_by <- su_eg2 |>
+  mutate(y = y + y^2 + y^3) |>
+  bind_rows(su_eg2) |>
   mutate(fac = factor(rep(c("A", "B"), each = nrow(su_eg2))))
+
 su_m_bivar_by_fac <- gam(y ~ fac + s(x, z, k = 40, by = fac),
-  data = su_eg2_by,
-  method = "REML"
+  data = su_eg2_by, method = "REML"
 )
 
 su_gamm_univar_4 <- gamm(y ~ s(x0) + s(x1) + s(x2) + s(x3),
@@ -231,7 +240,7 @@ m_glm <- glm(y ~ x0 + x1 + x2 + x3, data = quick_eg1)
 
 data(CO2)
 m_ordered_by <- gam(uptake ~ Plant + s(conc, k = 5) +
-    s(conc, by = Plant, k = 5), data = CO2, method = "REML")
+  s(conc, by = Plant, k = 5), data = CO2, method = "REML")
 
 ## -- rootogram models ---------------------------------------------------------
 df_pois <- data_sim("eg1", dist = "poisson", n = 500L, scale = 0.2, seed = 42)
@@ -293,6 +302,10 @@ su_re <- withr::with_seed(42, transform(su_re, y = y + X %*% rnorm(10) * 0.5))
 rm1 <- gam(y ~ s(fac, bs = "re") + s(x0) + s(x1) + s(x2) + s(x3),
   data = su_re, method = "ML"
 )
+# gamm4 version of a model with ranefs
+rm_gamm4 <- gamm4(y ~ s(x0) + s(x1) + s(x2) + s(x3),
+  data = su_re, REML = TRUE, random = ~ (1 | fac)
+)
 
 #-- A factor by GAM with random effects ----------------------------------------
 su_re2 <- su_eg4
@@ -307,7 +320,7 @@ rm2 <- gam(y ~ fac + s(ranef, bs = "re", by = fac) + s(x0) + s(x1) + s(x2),
 )
 
 # -- A distributed lag model example -------------------------------------------
-su_dlnm <- su_eg1 %>%
+su_dlnm <- su_eg1 |>
   mutate(
     f_lag = cbind(
       dplyr::lag(f, 1),
@@ -317,7 +330,7 @@ su_dlnm <- su_eg1 %>%
       dplyr::lag(f, 5)
     ),
     lag = matrix(1:5, ncol = 5)
-  ) %>%
+  ) |>
   filter(!is.na(f_lag[, 5]))
 
 # fit DLNM GAM
@@ -586,12 +599,89 @@ rm(i_m, i_xt)
 
 soap_fsb <- list(mgcv::fs.boundary())
 names(soap_fsb[[1]]) <- c("v", "w")
-soap_knots <- data.frame(v = rep(seq(-0.5, 3, by = 0.5), 4),
-  w = rep(c(-0.6, -0.3, 0.3, 0.6), rep(8, 4)))
+soap_knots <- data.frame(
+  v = rep(seq(-0.5, 3, by = 0.5), 4),
+  w = rep(c(-0.6, -0.3, 0.3, 0.6), rep(8, 4))
+)
 soap_data <- soap_fs_data(bnd = soap_fsb)
-m_soap <- gam(y ~
-    s(v, w, k = 30, bs = "so", xt = list(bnd = soap_fsb, nmax = 100)),
-  data = soap_data, method = "REML", knots = soap_knots)
+
+m_soap <- gam(
+  y ~ s(v, w, k = 30, bs = "so", xt = list(bnd = soap_fsb, nmax = 100)),
+  data = soap_data, method = "REML", knots = soap_knots
+)
+
+m_soap_sep <- gam(
+  y ~ s(v, w, k = 30, bs = "sf", xt = list(bnd = soap_fsb, nmax = 100)) +
+    s(v, w, k = 30, bs = "sw", xt = list(bnd = soap_fsb, nmax = 100)),
+  data = soap_data, method = "REML", knots = soap_knots
+)
+
+# Now add a known boundary condition
+soap_fsb2 <- soap_fsb
+soap_fsb2[[1]]$f <- mgcv::fs.test(
+  soap_fsb2[[1]]$v, soap_fsb2[[1]]$w, b = 1, exclude = FALSE
+)
+
+m_soap_bndry <- gam(
+  y ~ s(v, w, bs = "so", xt = list(bnd = soap_fsb2, nmax = 100)),
+  data = soap_data, method = "REML", knots = soap_knots
+)
+
+## --- Nested boundary example ------------------------------------------------
+
+`soap_nested_bndry` <- function(n = 100, a = 0.3, b = 0.3) {
+  bndry <- list(
+    list(x = 0, y = 0),
+    list(x = 0, y = 0)
+  )
+  theta <- seq(0, 2 * pi, length = n)
+  bndry[[1]]$x <- sin(theta)
+  bndry[[1]]$y <- cos(theta)
+  bndry[[2]]$x <- a + b * sin(theta)
+  bndry[[2]]$y <- a + b * cos(theta)
+  bndry
+}
+
+`soap_nested_knots` <- function(n_knots = 8, bndry) {
+  y_grid <- x_grid <- seq(-1, 1, length = n_knots)
+  x <- rep(x_grid, n_knots)
+  y <- rep(y_grid, rep(n_knots, n_knots))
+  idx <- mgcv::inSide(bndry, x, y)
+  knots <- data.frame(x = x[idx], y = y[idx])
+  knots
+}
+
+`soap_nested_data` <- function(n = 300, seed = 1, bndry) {
+  f <- function(x, y) {
+    exp(-(x - 0.3)^2 - (y - 0.3)^2)
+  }
+  df <- withr::with_seed(
+    seed, {
+      x <- runif(n) * 2 - 1
+      y <- runif(n) * 2 - 1
+      ind <- inSide(bndry, x, y)
+      x <- x[ind]
+      y <- y[ind]
+      n <- length(x)
+      z <- f(x, y) + rnorm(n) * 0.1
+      tibble(x = x, y = y, z = z, f = f(x, y))
+    }
+  )
+  df
+}
+
+sf_nested_bndry <- soap_nested_bndry()
+sf_nested_knots <- soap_nested_knots(bndry = sf_nested_bndry)
+sf_nested_df <- soap_nested_data(bndry = sf_nested_bndry)
+
+m_soap_nested <- gam(
+  z ~ s(
+    x, y, k = c(30, 15), bs = "so", xt = list(bnd = sf_nested_bndry, nmax = 60)
+  ),
+  data = sf_nested_df, method = "REML", knots = sf_nested_knots
+)
+
+# -- End Soap films -----------------------------------------------------------
 
 # Issue 284
 df_284 <- data_sim("eg1", seed = 42)
@@ -603,7 +693,112 @@ df_284 <- df_284 |>
         times = 40),
       levels = month.abb[1:10],
       ordered = TRUE
-    )
+    ),
+    var = as.factor(rep(letters[1:2], 400/2))
   )
-m_284 <- gam(y ~ month + s(x0) + s(x1) + s(x2) + s(x3),
-  data = df_284, method = "REML")
+m_284 <- gam(
+  y ~ month + var + s(x0) + s(x1) + s(x2) + s(x3),
+  data = df_284,
+  method = "REML"
+)
+
+# multivariate normal model
+sim_mvn_data <- function(n = 300, seed) {
+  # from ?mvn
+  V <- matrix(c(2, 1, 1, 2), 2, 2)
+  withr::with_seed(seed,
+    {
+      x0 <- runif(n)
+      x1 <- runif(n)
+      x2 <- runif(n)
+      x3 <- runif(n)
+      y <- matrix(0, n, 2)
+      # think my $rd can handle this, so get rid of loop by using the $rd from
+      # fix_family_rd?
+      for (i in 1:n) {
+        mu <- c(gw_f0(x0[i]) + gw_f1(x1[i]), gw_f2(x2[i]))
+        y[i,] <- mgcv::rmvn(1, mu, V)
+      }
+    }
+  )
+  dat <- tibble(
+    y0 = y[,1],
+    y1 = y[,2],
+    x0 = x0,
+    x1 = x1,
+    x2 = x2,
+    x3 = x3
+  )
+  dat
+}
+mvn_df <- sim_mvn_data(seed = 1234)
+m_mvn <- gam(
+  list(
+    y0 ~ s(x0) + s(x1),
+    y1 ~ s(x2) + s(x3)
+  ),
+  family = mvn(d = 2),
+  data = mvn_df
+)
+
+## Multinomial model, using example from Simon's ?mgcv::multinom
+sim_multinom_data <- function(n = 1000, seed) {
+  # from ?mgcv::multinom
+  f1 <- function(x) sin(3 * pi * x) * exp(-x)
+  f2 <- function(x) x^3
+  f3 <- function(x) 0.5 * exp(-x^2) - 0.2
+  f4 <- function(x) 1
+  withr::with_seed(seed,
+    {
+      x1 <- runif(n)
+      x2 <- runif(n)
+      eta1 <- 2 * (f1(x1) + f2(x2)) - 0.5
+      eta2 <- 2 * (f3(x1) + f4(x2)) - 1
+      p <- exp(cbind(0, eta1, eta2))
+      p <- p / rowSums(p) # prob of each category
+      cum_p <- t(apply(p, 1, cumsum)) # cumulative probability
+      y <- apply(cum_p, 1, \(x) min(which(x > runif(1)))) - 1
+    }
+  )
+  dat <- tibble(
+    y  = y,
+    x1 = x1,
+    x2 = x2
+  )
+  dat
+}
+multinom_df <- sim_multinom_data(n = 1000, seed = 12345)
+m_multinom <- gam(
+  list(
+    y ~ s(x1) + s(x2),
+      ~ s(x1) + s(x2)
+  ),
+  family = multinom(K = 2),
+  data = multinom_df
+)
+
+# ziP() example - issue #341
+zip_data <- function(seed = 0, n = 400, theta = c(-2, 0.3)) {
+  rzip <- function(gamma, theta = c(-2, 0.3)) {
+    ## From ?ziP (c) Simon Wood
+    ## generate zero inflated Poisson random variables, where 
+    ## lambda = exp(gamma), eta = theta[1] + exp(theta[2])*gamma
+    ## and 1-p = exp(-exp(eta)).
+    y <- gamma
+    n <- length(y)
+    lambda <- exp(gamma)
+    eta <- theta[1] + exp(theta[2]) * gamma
+    p <- 1 - exp(-exp(eta))
+    ind <- p > runif(n)
+    y[!ind] <- 0
+    np <- sum(ind)
+    ## generate from zero truncated Poisson, given presence...
+    y[ind] <- qpois(runif(np, dpois(0, lambda[ind]), 1), lambda[ind])
+    y
+  }
+  df <- data_sim("eg1", seed = seed, n = n, scale = 2)
+  df$y <- withr::with_seed(seed = seed, rzip(df$f / 4 - 1, theta = theta))
+  df
+}
+zip_df <- zip_data(seed = 1)
+m_ziP <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), family = ziP(), data = zip_df)

@@ -616,3 +616,55 @@ test_that("model_constant works for a GAMLSS", {
   expect_length(model_constant(m_accel), 2L)
   expect_length(model_constant(m_gam), 1L)
 })
+
+test_that("rtw works for twlss model", {
+  skip_on_cran()
+  skip_on_ci()
+  fit <- fitted(m_twlss)
+  tw_pars <- get_tw_bounds(m_twlss)
+  expect_snapshot(
+    with_seed(
+      123,
+      rtw(
+        fit[, 1],
+        theta_2_power(fit[, 2], a = tw_pars[1], b = tw_pars[2]),
+        exp(fit[, 3]))
+    )
+  )
+})
+
+test_that("if a multivariate model is identified correctly", {
+  expect_identical(is_multivariate_y(m_mvn), TRUE)
+  expect_identical(is_multivariate_y(m_gam), FALSE)
+})
+
+test_that("is_mgcv_family works", {
+  expect_true(is_mgcv_family(poisson()))
+  expect_true(is_mgcv_family(binomial()))
+  expect_true(is_mgcv_family(gaussian()))
+  expect_true(is_mgcv_family(Gamma()))
+  expect_true(is_mgcv_family(inverse.gaussian()))
+  expect_true(is_mgcv_family(quasi()))
+  expect_true(is_mgcv_family(quasipoisson()))
+  expect_true(is_mgcv_family(quasibinomial()))
+  expect_true(is_mgcv_family(ziplss()))
+  expect_true(is_mgcv_family(mvn()))
+  expect_true(is_mgcv_family(tw()))
+  expect_true(is_mgcv_family(tw()))
+  expect_true(is_mgcv_family(ocat(R = 3)))
+  expect_true(is_mgcv_family(multinom(K = 3)))
+  expect_true(is_mgcv_family(gumbls()))
+  expect_true(is_mgcv_family(gevlss()))
+  expect_true(is_mgcv_family(scat()))
+  expect_true(is_mgcv_family(betar()))
+  expect_true(is_mgcv_family(Tweedie(p = 1.5)))
+  expect_true(is_mgcv_family(cnorm()))
+  expect_true(is_mgcv_family(cpois()))
+  expect_true(is_mgcv_family(clog()))
+  expect_true(is_mgcv_family(shash()))
+  expect_true(is_mgcv_family(twlss()))
+  expect_true(is_mgcv_family(family(m_ziP)))
+
+  expect_false(is_mgcv_family(1L))
+  expect_false(is_mgcv_family(m_gam))
+})

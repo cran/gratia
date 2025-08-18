@@ -10,7 +10,7 @@
 #'   [stats::lm] are supported.
 #' @param method character; method used to generate theoretical quantiles.
 #'   The default is `"uniform"`, which generates reference quantiles using
-#'   random draws from a uniform distribution and the inverse cummulative
+#'   random draws from a uniform distribution and the inverse cumulative
 #'   distribution function (CDF) of the fitted values. The reference quantiles
 #'   are averaged over `n_uniform` draws. `"simulate"` generates reference
 #'   quantiles by simulating new response data from the model at the observed
@@ -52,7 +52,7 @@
 #' @param point_col colour of points on the QQ plot.
 #' @param point_alpha alpha transparency of points on the QQ plot.
 #' @param line_col colour used to draw the reference line.
-#' @param ... arguments passed ot other methods.
+#' @param ... arguments passed to other methods.
 #'
 #' @note The wording used in [mgcv::qq.gam()] uses *direct* in reference to the
 #'   simulated residuals method (`method = "simulated"`). To avoid confusion,
@@ -66,7 +66,7 @@
 #' is described in Augustin *et al* (2012):
 #'
 #' Augustin, N.H., Sauleau, E.-A., Wood, S.N., (2012) On quantile quantile plots
-#' for generalized linear models. *Computational Statatistics and Data Analysis*
+#' for generalized linear models. *Computational Statistics and Data Analysis*
 #' **56**, 2404-2409 \doi{doi:10.1016/j.csda.2012.01.026}.
 #'
 #'
@@ -119,22 +119,23 @@
 #' ## ... or use the usual normality assumption
 #' qq_plot(m, method = "normal")
 `qq_plot.gam` <- function(model,
-    method = c("uniform", "simulate", "normal", "direct"),
-    type = c("deviance", "response", "pearson"),
-    n_uniform = 10,
-    n_simulate = 50,
-    seed = NULL,
-    level = 0.9,
-    ylab = NULL,
-    xlab = NULL,
-    title = NULL,
-    subtitle = NULL,
-    caption = NULL,
-    ci_col = "black",
-    ci_alpha = 0.2,
-    point_col = "black",
-    point_alpha = 1,
-    line_col = "red", ...) {
+  method = c("uniform", "simulate", "normal", "direct"),
+  type = c("deviance", "response", "pearson"),
+  n_uniform = 10,
+  n_simulate = 50,
+  seed = NULL,
+  level = 0.9,
+  ylab = NULL,
+  xlab = NULL,
+  title = NULL,
+  subtitle = NULL,
+  caption = NULL,
+  ci_col = "black",
+  ci_alpha = 0.2,
+  point_col = "black",
+  point_alpha = 1,
+  line_col = "red", ...
+) {
   # sort out seed
   if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
     runif(1)
@@ -159,7 +160,7 @@
   if (identical(method, "uniform") && is.null(ff_qf)) {
     method <- "simulate"
   }
-  ff_rd <- fix.family.rd(family(model))[["rd"]]
+  ff_rd <- fix_family_rd(family(model))[["rd"]]
   if (identical(method, "simulate") && is.null(ff_rd)) {
     method <- "normal"
   }
@@ -272,7 +273,7 @@
                           level = 0.9, detrend = FALSE) {
   type <- match.arg(type)
   family <- family(model)
-  family <- fix.family.rd(family)
+  family <- fix_family_rd(family)
   rd_fun <- family[["rd"]]
   alpha <- (1 - level) / 2
 
@@ -317,10 +318,22 @@
       model = model
     )
   )
-  n_obs <- NROW(fit)
+  ## mv_response <- c("Multivariate normal", "multinom")
+  if ((!family_name(family) %in% multivariate_y()) && is.matrix(fit)) {
+    fit <- fit[, 1]
+  }
+  n_obs <- if (is.matrix(fit)) {
+    length(as.vector(fit))
+  } else {
+    NROW(fit) # NROW(fit)
+  }
   out <- quantile(sims, probs = (seq_len(n_obs) - 0.5) / n_obs)
   int <- apply(sims, 1L, quantile, probs = c(alpha, 1 - alpha))
-  r <- sort(residuals(model, type = type))
+  r <- residuals(model, type = type)
+  if (is.matrix(r)) {
+    r <- as.vector(r)
+  }
+  r <- sort(r)
 
   ## detrend for worm plots?
   if (isTRUE(detrend)) {
@@ -348,6 +361,10 @@
     dev_resid_fun = dev_resid_fun, var_fun = var_fun,
     na_action = na_action, model = model
   )
+  # r can be a matrix for models like mvn(), so collapse to a vector
+  if (is.matrix(r)) {
+    r <- as.vector(r)
+  }
   ## sort residuals & return
   sort(r)
 }
@@ -490,7 +507,7 @@
 `deviance_residuals` <- function(y, fit, weights, dev_resid_fun, model) {
   if ("object" %in% names(formals(dev_resid_fun))) {
     # have to handle families that provide a residuals function, which
-    # takes the fitted model as in put
+    # takes the fitted model as input
     model$y <- y
     model$fitted.values <- fit
     model$prior.weights <- weights
@@ -525,8 +542,16 @@
 #' @title Plot of residuals versus linear predictor values
 #'
 #' @param model a fitted model. Currently only class `"gam"`.
-#' @param type character; type of residuals to use. Only `"deviance"`,
-#'   `"response"`, and `"pearson"` residuals are allowed.
+#' @param type character; type of residuals to use. One of `"deviance"`,
+#'   `"response"`, `"pearson"`, `"pit"`, and `"quantile"` residuals are
+#'   allowed. `"pit"` uses probability integral transform (PIT) residuals,
+#'   which, if the model is correct should be approximately uniformly
+#'   distributed, while `"quantile"` transforms the PIT residuals through
+#'   application of the inverse CDF of the standard normal, and therefore the
+#'   quantile residuals should be approximately normally distributed (mean = 0,
+#'   sd = 1) if the model is correct. PIT and quantile residuals are not yet
+#'   available for most families that can be handled by `gam()`, but most
+#'   standard families are supported, e.g. those used by `glm()`.
 #' @param xlab character or expression; the label for the y axis. If not
 #'   supplied, a suitable label will be generated.
 #' @param ylab character or expression; the label for the y axis. If not
@@ -543,21 +568,46 @@
 #'   all plots.
 #' @param point_alpha numeric; alpha transparency for points in plots.
 #' @param line_col colour specification for 1:1 line.
+#' @param seed integer; random seed to use for PIT or quantile residuals.
 #'
 #' @export
 #'
 #' @importFrom stats napredict residuals
 #' @importFrom tools toTitleCase
 #' @importFrom ggplot2 ggplot aes geom_point geom_hline labs
-`residuals_linpred_plot` <- function(model,
-                                     type = c("deviance", "pearson", "response"),
-                                     ylab = NULL, xlab = NULL, title = NULL,
-                                     subtitle = NULL, caption = NULL,
-                                     point_col = "black", point_alpha = 1,
-                                     line_col = "red") {
+`residuals_linpred_plot` <- function(
+  model,
+  type = c("deviance", "pearson", "response", "pit", "quantile"),
+  ylab = NULL,
+  xlab = NULL,
+  title = NULL,
+  subtitle = NULL,
+  caption = NULL,
+  point_col = "black",
+  point_alpha = 1,
+  line_col = "red",
+  seed = NULL
+) {
   type <- match.arg(type)
-  r <- residuals(model, type = type)
+  y_intercept <- 0
+  if (type %in% c("pit", "quantile")) {
+    r <- quantile_residuals(model, type = type, seed = seed)
+    if (is.null(ylab) && type == "pit") {
+      ylab <- "PIT residuals"
+      y_intercept <- 0.5
+    }
+  } else {
+    r <- residuals(model, type = type)
+    y_intercept <- 0
+  }
+  mv_y <- family_name(model) %in% multivariate_y()
+  if (is.matrix(r) && mv_y) { # handle mvn() like fits
+    r <- as.vector(r)
+  }
   eta <- model[["linear.predictors"]]
+  if (is.matrix(eta) && mv_y) {
+    eta <- as.vector(eta) # handle multinom(), mvn() like fits
+  }
 
   na_action <- na.action(model)
   if (is.matrix(eta) && !is.matrix(r)) {
@@ -570,7 +620,7 @@
     x = .data$eta,
     y = .data$residuals
   )) +
-    geom_hline(yintercept = 0, col = line_col)
+    geom_hline(yintercept = y_intercept, col = line_col)
 
   ## add point layer
   plt <- plt + geom_point(colour = point_col, alpha = point_alpha)
@@ -604,18 +654,29 @@
 #' @export
 #'
 #' @importFrom ggplot2 ggplot aes geom_point labs
-`observed_fitted_plot` <- function(model,
-                                   ylab = NULL, xlab = NULL, title = NULL,
-                                   subtitle = NULL, caption = NULL,
-                                   point_col = "black", point_alpha = 1) {
+`observed_fitted_plot` <- function(
+  model,
+  ylab = NULL,
+  xlab = NULL,
+  title = NULL,
+  subtitle = NULL,
+  caption = NULL,
+  point_col = "black",
+  point_alpha = 1
+) {
   ## extract data for plot
   fit <- fitted(model)
   ## handle case where fitted is a matrix; extended.families
-  ##   - the needs to be more involved as what about mvn or multinom familities
+  ##   - the needs to be more involved as what about mvn or multinom families
+  mv_y <- family_name(model) %in% multivariate_y()
   if (NCOL(fit) > 1L) {
-    fit <- fit[, 1]
+    fit <- if (mv_y) {
+      as.vector(fit) # was fit[, 1], but changed for mvn
+    } else {
+      fit[, 1]
+    }
   }
-  obs <- model[["y"]]
+  obs <- as.vector(model[["y"]]) # also for mvn, etc
 
   df <- data.frame(observed = obs, fitted = fit)
 
@@ -663,14 +724,23 @@
 #' @importFrom tools toTitleCase
 #' @importFrom stats residuals
 #' @importFrom grDevices nclass.Sturges nclass.scott nclass.FD
-`residuals_hist_plot` <- function(model,
-                                  type = c("deviance", "pearson", "response"),
-                                  n_bins = c("sturges", "scott", "fd"),
-                                  ylab = NULL, xlab = NULL, title = NULL,
-                                  subtitle = NULL, caption = NULL) {
+`residuals_hist_plot` <- function(
+  model,
+  type = c("deviance", "pearson", "response", "pit", "quantile"),
+  n_bins = c("sturges", "scott", "fd"),
+  ylab = NULL, xlab = NULL, title = NULL,
+  subtitle = NULL, caption = NULL,
+  seed = NULL
+) {
   ## extract data for plot
   type <- match.arg(type)
-  df <- data.frame(residuals = residuals(model, type = type))
+
+  if (type %in% c("pit", "quantile")) {
+    r <- quantile_residuals(model, type = type, seed = seed)
+  } else {
+    r <- as.vector(residuals(model, type = type))
+  }
+  df <- data.frame(residuals = r)
 
   ## work out number of bins
   if (is.character(n_bins)) {
@@ -697,7 +767,8 @@
 
   ## add point layer
   plt <- plt + geom_histogram(
-    bins = n_bins, colour = "black",
+    bins = n_bins,
+    colour = "black",
     fill = "grey80"
   )
 
@@ -730,7 +801,7 @@
 #'   [stats::lm] are supported.
 #' @param method character; method used to generate theoretical quantiles.
 #'   The default is `"uniform"`, which generates reference quantiles using
-#'   random draws from a uniform distribution and the inverse cummulative
+#'   random draws from a uniform distribution and the inverse cumulative
 #'   distribution function (CDF) of the fitted values. The reference quantiles
 #'   are averaged over `n_uniform` draws. `"simulate"` generates reference
 #'   quantiles by simulating new response data from the model at the observed

@@ -256,9 +256,10 @@ family_type.family <- function(object, ...) {
     fun <- extract_link.family(family, inverse = inverse)
   } else if (family[["family"]] %in% c("Multivariate normal", "multinom")) {
     if (is.null(which_eta)) {
-      stop("Which linear predictor not specified; see 'which_eta'",
-        .call. = FALSE
-      )
+      # stop("Which linear predictor not specified; see argument 'which_eta'",
+      #   call. = FALSE
+      # )
+      which_eta <- 1L
     }
     len_linfo <- length(linfo)
     if (which_eta > len_linfo || which_eta < 1) {
@@ -336,6 +337,7 @@ family_type.family <- function(object, ...) {
     grepl("^Cox PH", distr, ignore.case = TRUE) ~ "cox_ph",
     grepl("^censored normal", distr, ignore.case = TRUE) ~ "cnorm",
     grepl("^cnorm", distr, ignore.case = TRUE) ~ "cnorm",
+    grepl("^Multivariate normal", distr, ignore.case = TRUE) ~ "mvn",
     .default = as.character(distr)
   )
 
@@ -371,11 +373,11 @@ family_type.family <- function(object, ...) {
       ziplss = ziplss_link(object, parameter, inverse = inverse),
       mvn = mvn_link(object, parameter,
         inverse = inverse,
-        which_eta = which_eta
+        which_eta = ifelse(is.null(which_eta), 1, which_eta)
       ),
       multinom = multinom_link(object, parameter,
         inverse = inverse,
-        which_eta = which_eta
+        which_eta = ifelse(is.null(which_eta), 1, which_eta)
       ),
       shash = shash_link(object, parameter, inverse = inverse),
       cnorm = cnorm_link(object, parameter, inverse = inverse),
@@ -531,7 +533,19 @@ family_type.family <- function(object, ...) {
 
 `zip_link` <- function(family, parameter = c("location", "mu"),
                        inverse = FALSE) {
-  stop_if_not_family(family, type = "zero inflated Poisson")
+  # stop_if_not_family(family, type = "zero inflated Poisson")
+  # the raw family is "zero inflated Poisson", but when used on fitted model it
+  # is "Zero inflated Poisson(xxx)" with xxx being two numbers that related to
+  # the zero inflation. Note the inconsistent capitalisation.
+  if (!is_mgcv_family(family)) {
+    stop("'family' is not a family object", call. = FALSE)
+  }
+  if (!any(
+    grepl("^Zero inflated Poisson", family$family),
+    grepl("^zero inflated Poisson", family$family)
+  )) {
+    stop("'family' is not of type '\"zero inflated Poisson\"'", call. = FALSE)
+  }
 
   parameter <- match.arg(parameter)
 
@@ -671,7 +685,7 @@ family_type.family <- function(object, ...) {
 ## - only checks type if `type` is not NULL
 `stop_if_not_family` <- function(object, type = NULL) {
   ## check if object is a family; throw error if not
-  if (!inherits(object, c("family", "extended.family", "general.family"))) {
+  if (!is_mgcv_family(object)) {
     stop("'family' is not a family object", call. = FALSE)
   }
 
@@ -714,6 +728,11 @@ family_type.family <- function(object, ...) {
 
 #' @export
 `family_name.glm` <- function(object, ...) {
+  family(object)[["family"]]
+}
+
+#' @export
+`family_name.lm` <- function(object, ...) {
   family(object)[["family"]]
 }
 

@@ -26,10 +26,11 @@
 #' @importFrom stats delete.response formula model.frame
 #' @importFrom tibble as_tibble add_column
 #' @importFrom rlang .data
-#' @importFrom purrr map_df
-#' @importFrom dplyr mutate bind_cols bind_rows distinct %>% relocate rename
+#' @importFrom purrr map_df map
+#' @importFrom dplyr mutate bind_cols bind_rows distinct relocate rename
 #' @importFrom tidyr nest unnest
 #' @importFrom tidyselect any_of last_col
+#' @importFrom cli cli_alert_info
 #'
 #' @rdname parametric_effects
 #' @export
@@ -67,12 +68,14 @@
   # check order of terms; if > 1 interaction and not handled
   ord <- attr(tt, "order")[match(valid_terms, attr(tt, "term.labels"))]
   if (any(int <- ord > 1)) {
-    message("Interaction terms are not currently supported.")
+    cli_alert_info("Interaction terms are not currently supported.")
     valid_terms <- valid_terms[!(ord > 1)]
   }
-  # return early if no vallid terms to
+  # return early if no valid terms to
   if (length(valid_terms) == 0L) {
-    message("The model doesn't contain any non-interaction parametric terms")
+    cli_alert_info(
+      "The model doesn't contain any non-interaction parametric terms"
+    )
     return(NULL)
   }
 
@@ -159,13 +162,24 @@
     out
   }
 
-  effects <- map_df(valid_terms,
+  # effects <- map_df(valid_terms,
+  #  .f = fun, data = data, pred = pred,
+  #  vars = vars
+  # )
+  effects <- map(valid_terms,
     .f = fun, data = data, pred = pred,
     vars = vars
   )
 
+  # capture the `factor_levels` attribute off each term's data frame
+  f_levels <- lapply(effects, \(x) attr(x, "factor_levels")) |>
+    unlist(recursive = FALSE) # peel off the outer layer of the list
+  # now we can bind the data frames together - need to do it this way to
+  # preserve the levels of all factors - see #284
+  effects <- effects |> bind_rows()
+
   if (unnest) {
-    f_levels <- attr(effects, "factor_levels")
+    # f_levels <- attr(effects, "factor_levels")
     effects <- unnest(effects, cols = "data") |>
       relocate(c(".partial", ".se"), .after = last_col())
     attr(effects, "factor_levels") <- f_levels
@@ -228,8 +242,8 @@ draw.parametric_effects <- function(object,
 
   f_levels <- attr(object, "factor_levels")
 
-  plts <- object %>%
-    group_by(.data$.term) %>%
+  plts <- object |>
+    group_by(.data$.term) |>
     group_map(
       .keep = TRUE,
       .f = ~ draw_parametric_effect(.x,

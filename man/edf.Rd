@@ -24,16 +24,15 @@ model_edf(object, ..., type = c("default", "unconditional", "alternative"))
 
 \item{...}{arguments passed to methods.}
 
-\item{select}{character, logical, or numeric; which smooths to plot. If
-\code{NULL}, the default, then all model smooths are drawn. Numeric \code{select}
-indexes the smooths in the order they are specified in the formula and
-stored in \code{object}. Character \code{select} matches the labels for smooths
-as shown for example in the output from \code{summary(object)}. Logical
+\item{select}{character, logical, or numeric; which smooths EDF to extract.
+If \code{NULL}, the default, EDFs for all smooths will be returned. Numeric
+\code{select} indexes the smooths in the order they are specified in the
+formula and stored in \code{object}. Character \code{select} matches the labels for
+smooths as shown for example in the output from \code{summary(object)}. Logical
 \code{select} operates as per numeric \code{select} in the order that smooths are
 stored.}
 
-\item{smooth}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{select} instead.
-extracted. If \code{NULL}, the default, EDFs for all smooths will be returned.}
+\item{smooth}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{select} instead.}
 
 \item{type}{character: which type of EDF to return. \code{"default"} returns the
 standard EDF; \code{"unconditional"} selects the EDF corrected for smoothness
@@ -58,11 +57,11 @@ Wood (2017; pp. 252) describes an alternative EDF for the  model
 \deqn{\mathrm{EDF} = 2\mathrm{tr}(\mathbf{F}) -
   \mathrm{tr}(\mathbf{FF}),}{EDF = 2 * tr(F) - tr(F),} where
 \eqn{\mathrm{tr}} is the matrix trace and \eqn{\mathbf{F}}{F} is a matrix
-mapping un-penalized coefficient estimates to the penalized coefficient
+mapping unpenalised coefficient estimates to the penalized coefficient
 estimates.  The trace of \eqn{\mathbf{F}}{F} is effectively the average
-shrinkage of the coefficients multipled by the number of coefficients
+shrinkage of the coefficients multiplied by the number of coefficients
 (Wood, 2017). Smooth-specific EDFs then are obtained by summing up the
-relevent elements of \eqn{\mathrm{diag}(2\mathbf{F} - \mathbf{FF})}.
+relevant elements of \eqn{\mathrm{diag}(2\mathbf{F} - \mathbf{FF})}.
 }
 \examples{
 load_mgcv()

@@ -56,6 +56,7 @@
 
 #' @export
 #' @importFrom rlang has_name .data
+#' @importFrom vctrs vec_slice
 #' @importFrom dplyr filter reframe pull
 `[.parametric_effects` <- function(x, i, j, drop = FALSE) {
   cls <- class(x)
@@ -64,11 +65,10 @@
   x <- NextMethod()
   class(x) <- cls
   if (has_name(x, ".type")) {
-    f_names <- x |>
-      filter(.data$.type %in% c("factor", "ordered")) |>
-      reframe(f = unique(.data$.term)) |>
-      pull("f")
-    if (!is.na(f_levels)) {
+    f_names <- vec_slice(x, x[[".type"]] %in% c("factor", "ordered")) |>
+      reframe(f = unique(.data$.term))
+    f_names <- f_names[["f"]]
+    if (!is.null(f_levels)) {
       f_levels <- f_levels[f_names]
     }
   } else {

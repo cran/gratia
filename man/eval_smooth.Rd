@@ -37,6 +37,7 @@ eval_smooth(smooth, ...)
   data = NULL,
   unconditional = FALSE,
   overall_uncertainty = TRUE,
+  clip = TRUE,
   ...
 )
 
@@ -125,7 +126,7 @@ eval_smooth(smooth, ...)
 \item{...}{arguments passed to other methods}
 
 \item{model}{a fitted model; currently only \code{\link[mgcv:gam]{mgcv::gam()}} and \code{\link[mgcv:bam]{mgcv::bam()}}
-models are suported.}
+models are supported.}
 
 \item{n}{numeric; the number of points over the range of the covariate at
 which to evaluate the smooth.}
@@ -154,6 +155,10 @@ a location is too far from data to be plotted when plotting 2-D smooths.
 The data are scaled into the unit square before deciding what to exclude,
 and \code{dist} is a distance within the unit square. See
 \code{\link[mgcv:exclude.too.far]{mgcv::exclude.too.far()}} for further details.}
+
+\item{clip}{logical; should evaluation points be clipped to the boundary of
+a soap film smooth? The default is \code{FALSE}, which will return \code{NA} for any
+point that is deemed to lie outside the boundary of the soap film.}
 }
 \description{
 S3 methods to evaluate individual smooths

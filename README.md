@@ -1,3 +1,4 @@
+
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
 # gratia
@@ -7,9 +8,14 @@
 [![R build
 status](https://github.com/gavinsimpson/gratia/workflows/R-CMD-check/badge.svg)](https://github.com/gavinsimpson/gratia/actions)
 [![codecov](https://codecov.io/gh/gavinsimpson/gratia/branch/main/graph/badge.svg?token=GG5NQfgRFu)](https://app.codecov.io/gh/gavinsimpson/gratia)
-[![CRAN\_Status\_Badge](https://www.r-pkg.org/badges/version/gratia)](https://cran.r-project.org/package=gratia)
+[![CRAN_Status_Badge](https://www.r-pkg.org/badges/version/gratia)](https://cran.r-project.org/package=gratia)
 [![CRAN
 Downloads](https://cranlogs.r-pkg.org/badges/grand-total/gratia)](https://cran.r-project.org/package=gratia)
+[![DOI](https://joss.theoj.org/papers/10.21105/joss.06962/status.svg)](https://doi.org/10.21105/joss.06962)
+[![r-universe
+version](https://gavinsimpson.r-universe.dev/gratia/badges/version)](https://gavinsimpson.r-universe.dev/gratia)
+[![r-universe
+status](https://gavinsimpson.r-universe.dev/gratia/badges/checks)](https://gavinsimpson.r-universe.dev/gratia)
 <!-- badges: end -->
 
 ## Overview
@@ -25,70 +31,84 @@ package, via a reimplementation of the `plot()` method for GAMs that
 ‘mgcv’ provides, as well as ‘tidyverse’ compatible representations of
 estimated smooths.
 
+## Citation
+
+If you use *gratia* in your work, please cite the package using:
+
+Simpson, G. L., (2024). gratia: An R package for exploring generalized
+additive models. *Journal of Open Source Software*, **9**(104), 6962,
+<https://doi.org/10.21105/joss.06962>
+
 ## Features
 
 The main features of *gratia* are currently
 
--   A *ggplot2*-based replacement for `mgcv:::plot.gam()`: `draw.gam()`.
+- A *ggplot2*-based replacement for `mgcv:::plot.gam()`: `draw.gam()`.
 
-    For example, the classic four term additive example from Gu & Wahba:
+  For example, the classic four term additive example from Gu & Wahba:
 
-    <figure>
-    <img src="man/figures/README-draw-gam-figure-1.png"
-    alt="Estimated smooths from a GAM" />
-    <figcaption aria-hidden="true">Estimated smooths from a GAM</figcaption>
-    </figure>
+  <figure>
+  <img src="man/figures/README-draw-gam-figure-1.png"
+  alt="Estimated smooths from a GAM" />
+  <figcaption aria-hidden="true">Estimated smooths from a GAM</figcaption>
+  </figure>
 
-    Or for a bivariate smooth:
+  Or for a bivariate smooth:
 
-    <figure>
-    <img src="man/figures/README-draw-gam-figure-2d-1.png"
-    alt="Estimated smooths from a GAM" />
-    <figcaption aria-hidden="true">Estimated smooths from a GAM</figcaption>
-    </figure>
+  <figure>
+  <img src="man/figures/README-draw-gam-figure-2d-1.png"
+  alt="Estimated smooths from a GAM" />
+  <figcaption aria-hidden="true">Estimated smooths from a GAM</figcaption>
+  </figure>
 
-    Note that some specialist smoothers (`bs %in% c("mrf","sw", "sf")`)
-    are not currently supported, but univariate, *factor* and
-    *continuous* `by`-variable smooths, simple random effect smooths
-    (`bs = 're'`), factor-smooth interaction smooths (`bs = "fs"`),
-    constrained factor smooths (`bs = "sz"`), full soap film smooths
-    (`bs = "so"`), and bivariate, trivariate, and quadvariate TPRS and
-    tensor product smooths are supported,
+  Note that some specialist smoothers (`bs %in% c("mrf","sw", "sf")`)
+  are not currently supported, but univariate, *factor* and *continuous*
+  `by`-variable smooths, simple random effect smooths (`bs = 're'`),
+  factor-smooth interaction smooths (`bs = "fs"`), constrained factor
+  smooths (`bs = "sz"`), full soap film smooths (`bs = "so"`), and
+  bivariate, trivariate, and quadvariate TPRS and tensor product smooths
+  are supported,
 
--   Estimation of derivatives of fitted smoothers: `derivatives()`,
+- Estimation of derivatives of fitted smoothers: `derivatives()`,
 
--   Estimation of point-wise across-the-function confidence intervals
-    and simultaneous intervals for smooths: `confint.gam()`.
+- Estimation of point-wise across-the-function confidence intervals and
+  simultaneous intervals for smooths: `confint.gam()`.
 
--   Model diagnostics via `appraise()`
+- Model diagnostics via `appraise()`
 
-    <figure>
-    <img src="man/figures/README-appraise-figure-1.png"
-    alt="Model diagnostics figure" />
-    <figcaption aria-hidden="true">Model diagnostics figure</figcaption>
-    </figure>
+  <figure>
+  <img src="man/figures/README-appraise-figure-1.png"
+  alt="Model diagnostics figure" />
+  <figcaption aria-hidden="true">Model diagnostics figure</figcaption>
+  </figure>
 
 ## Installing *gratia*
 
 *gratia* is now available on CRAN, and can be installed with
 
-    install.packages("gratia")
+``` r
+install.packages("gratia")
+```
 
 however *gratia* is under active development and you may wish to install
 the development version from github. The easiest way to do this is via
 the `install_github()` function from package *remotes*. Make sure you
 have *remotes* installed, then run
 
-    remotes::install_github("gavinsimpson/gratia")
+``` r
+remotes::install_github("gavinsimpson/gratia")
+```
 
 to install the package. Alternatively, binary packages of the
 development version are available from rOpenSci’s R Universe service:
 
-    # Install gratia in R
-    install.packages("gratia", repos = c(
-      "https://gavinsimpson.r-universe.dev",
-      "https://cloud.r-project.org"
-    ))
+``` r
+# Install gratia in R
+install.packages("gratia", repos = c(
+  "https://gavinsimpson.r-universe.dev",
+  "https://cloud.r-project.org"
+))
+```
 
 ## History
 
@@ -122,10 +142,10 @@ was already a package named *Grace* on CRAN. So I looked elsewhere for
 inspiration.
 
 The English word “grace” derives from the Latin *gratia*, meaning
-“favor, charm, thanks” ([according to Merriam
+“favour, charm, thanks” ([according to Merriam
 Webster](https://www.merriam-webster.com/dictionary/grace)).
 
-The chair that Grace Wabha currently holds is named after [Isaac J
+The chair that Grace Wahba currently holds is named after [Isaac J
 Schoenberg](https://en.wikipedia.org/wiki/Isaac_Jacob_Schoenberg), a
 former University Madison-Wisconsin Professor of Mathematics, who in a
 1946 paper provided the first mathematical reference to “splines”.

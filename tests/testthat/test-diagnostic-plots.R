@@ -145,3 +145,52 @@ test_that("appraise can use the worm plot", {
   # skip_on_ci() # testing without as moved to mac os x
   expect_doppelganger("appraise worm plot", plt)
 })
+
+test_that("appraise handles mvn models", {
+  skip_on_cran()
+  expect_silent(
+    plt <- withr::with_seed(1, appraise(m_mvn, method = "simulate"))
+  )
+
+  expect_doppelganger(
+    "appraise for mvn model", plt
+  )
+})
+
+test_that("appraise handles twlss models", {
+  skip_on_ci()
+  skip_on_cran()
+  expect_silent(
+    plt <- withr::with_seed(1, appraise(m_twlss, method = "simulate"))
+  )
+
+  expect_doppelganger(
+    "appraise for twlss model", plt
+  )
+})
+
+test_that("residuals linpred plot works with pit residuals", {
+  skip_on_ci()
+  skip_on_cran()
+
+  expect_silent(
+    plt <- residuals_linpred_plot(b_pois, type = "pit", seed = 2)
+  )
+
+  expect_doppelganger(
+    "r linpred plot pit resids poisson model", plt
+  )
+})
+
+test_that("r hist plot works with qresids", {
+  skip_on_ci()
+  skip_on_cran()
+
+  expect_silent(
+    plt <- residuals_hist_plot(b_pois, type = "quantile", seed = 2)
+  )
+
+  expect_doppelganger(
+    "r hist plot qresids poisson model", plt
+  )
+})

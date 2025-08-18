@@ -6,13 +6,19 @@
 #' difference.
 #'
 #' @param model A fitted model.
-#' @param select character, logical, or numeric; which smooths to plot. If
-#'   `NULL`, the default, then all model smooths are drawn. Numeric `select`
-#'   indexes the smooths in the order they are specified in the formula and
-#'   stored in `object`. Character `select` matches the labels for smooths
-#'   as shown for example in the output from `summary(object)`. Logical
-#'   `select` operates as per numeric `select` in the order that smooths are
-#'   stored.
+#' @param select character, logical, or numeric; which smooths to compare. If
+#'   `NULL`, the default, then all model smooths are factor-smooth interactions
+#'   are compared. Numeric `select` indexes the smooths in the order they are
+#'   specified in the formula and stored in `object`. Character `select` matches
+#'   the labels for smooths as shown for example in the output from
+#'   `summary(object)`. Logical `select` operates as per numeric `select` in the
+#'   order that smooths are stored. Careful selection is needed because it is
+#'   not allowed to compare smooths of different covariates or of different
+#'   factor-by variables.
+#'
+#'   For character `select`, specific named smooths cane be provided, in which
+#'   case, the exact names of the smooths (as given by [smooths()], for example,
+#'   can be specified, and `partial_match` must be set to `FALSE`.
 #' @param smooth `r lifecycle::badge("deprecated")` Use `select` instead.
 #' @param n numeric; the number of points at which to evaluate the difference
 #'   between pairs of smooths.
@@ -48,6 +54,11 @@
 #' # include the groups means for `fac` in the difference
 #' sm_dif2 <- difference_smooths(m, select = "s(x2)", group_means = TRUE)
 #' draw(sm_dif2)
+#'
+#' # compare specific smooths
+#' sm_dif3 <- difference_smooths(m,
+#'   select = c("s(x2):fac1", "s(x2):fac2"), partial_match = FALSE
+#' )
 #' \dontshow{
 #' options(op)
 #' }
@@ -63,19 +74,21 @@
 #' @importFrom stats qnorm coef
 #' @importFrom utils combn
 #' @importFrom lifecycle deprecated is_present
+#' @importFrom stringr str_detect str_replace_all
 #'
 #' @rdname difference_smooths
 `difference_smooths.gam` <- function(model,
-    select = NULL,
-    smooth = deprecated(),
-    n = 100,
-    ci_level = 0.95,
-    data = NULL,
-    group_means = FALSE,
-    partial_match = TRUE,
-    unconditional = FALSE,
-    frequentist = FALSE,
-    ...) {
+  select = NULL,
+  smooth = deprecated(),
+  n = 100,
+  ci_level = 0.95,
+  data = NULL,
+  group_means = FALSE,
+  partial_match = TRUE,
+  unconditional = FALSE,
+  frequentist = FALSE,
+  ...
+) {
   if (lifecycle::is_present(smooth)) {
     lifecycle::deprecate_warn("0.8.9.9", "difference_smooths(smooth)",
       "difference_smooths(select)")
@@ -111,11 +124,52 @@
   } else {
     data <- as_tibble(data)
   }
-  by_var <- by_variable(smooths[[1L]])
-  smooth_var <- smooth_variable(smooths[[1L]])
-  pairs <- as_tibble(as.data.frame(t(combn(levels(data[[by_var]]), 2)),
-    stringsAsFactor = FALSE
-  ))
+  if (length(select) == 1L) {
+    by_var <- by_variable(smooths[[1L]])
+    smooth_var <- smooth_variable(smooths[[1L]])
+    pairs <- as_tibble(as.data.frame(t(combn(levels(data[[by_var]]), 2)),
+      stringsAsFactor = FALSE
+    ))
+  } else {
+    # check if the `select` are of the correct form
+    rg <- "^(s|[t][ei2])\\([\\w\\.\\_,]*\\)(?=:)([\\w\\.\\_]*)"
+    rg_test <- str_detect(select, rg)
+    if (!all(rg_test)) {
+      stop(
+        "If naming specific factor-by smooths, all smooths in `select` must be",
+        " for the same factor-by smooth"
+      )
+    }
+    # get the smooth variable part
+    smooth_var <- lapply(
+      smooths,
+      \(x) paste(smooth_variable(x), collapse = ",")
+    ) |> unique()
+    if (length(smooth_var) > 1L) {
+      stop("Can't currently compare across smooths of different variables.")
+    } else {
+      # now reset smooth_var so it can be found later
+      smooth_var <- smooth_variable(smooths[[1L]])
+    }
+    # get the by var part
+    by_var <- vapply(smooths, by_variable, character(1L)) |> unique()
+    if (length(unique(by_var)) > 1L) {
+      stop(
+        "Can't currently compare factor-by smooths with different `by`",
+        "variables.")
+    }
+
+    # now reuse the regexp to grab the bit after the :,
+    # and then remove the :,
+    # and then remove the name of the factor by bit
+    lvls <- str_replace_all(select, rg, "\\2") |>
+      str_replace_all(":", "") |>
+      str_replace_all(by_var, "")
+    # finally compute the pairs
+    pairs <- as_tibble(as.data.frame(t(combn(lvls, 2)),
+      stringsAsFactor = FALSE
+    ))
+  }
   names(pairs) <- paste0("f", 1:2)
 
   Xp <- predict(model, newdata = data, type = "lpmatrix")
@@ -160,6 +214,7 @@
 
 #' @importFrom tibble new_tibble
 #' @importFrom dplyr bind_cols
+#' @importFrom stringr str_extract
 `calc_difference` <- function(f1, f2, select, by_var, smooth_var, data, Xp, V,
                               coefs, group_means = FALSE) {
   ## make sure f1 and f2 are characters
@@ -169,21 +224,39 @@
 
   # what are we keeping?
   keep <- if (isTRUE(group_means)) {
-    # columns of Xp associated with pair of smooths, including parametric
-    # terms for the group means
-    c1 <- grepl(paste0(by_var, f1), cnames, fixed = TRUE)
-    c2 <- grepl(paste0(by_var, f2), cnames, fixed = TRUE)
-    # set the intercept to be included
-    c0 <- grepl("(Intercept)", cnames, fixed = TRUE)
-    (c0 | c1 | c2)
+    # still need to fix this to accept length(select) > 1L - Done, but not clean
+    if (length(select) > 1L) {
+      rg1 <- select[str_detect(select, paste0(":", by_var, f1))]
+      rg2 <- select[str_detect(select, paste0(":", by_var, f2))]
+    } else {
+      # columns of Xp associated with pair of smooths, including parametric
+      # terms for the group means
+      rg1 <- paste0(by_var, f1)
+      rg2 <- paste0(by_var, f2)
+    }
+    # coefs for smooths to be included
+    c1 <- str_detect(cnames, fixed(rg1))
+    c2 <- str_detect(cnames, fixed(rg2))
+    # group means could also be added via a random effect smooth
+    # check for s(by_var).1 in colnames of Xp
+    cg <- str_detect(
+      cnames,
+      paste0("^(s|[t][ei2])\\(", by_var, "\\)\\.{1}\\d+$")
+    )
+    # set the intercept to be included also
+    c0 <- str_detect(cnames, fixed("(Intercept)"))
+    (c0 | c1 | c2 | cg)
   } else {
-    # columns of Xp associated with pair of smooths, but not
-    c1 <- grepl(mgcv_by_smooth_labels(select, by_var, f1), cnames,
-      fixed = TRUE
-    )
-    c2 <- grepl(mgcv_by_smooth_labels(select, by_var, f2), cnames,
-      fixed = TRUE
-    )
+    # columns of Xp associated with the pair of smooths, but not group means
+    if (length(select) > 1L) {
+      rg1 <- select[str_detect(select, paste0(":", by_var, f1))]
+      rg2 <- select[str_detect(select, paste0(":", by_var, f2))]
+    } else {
+      rg1 <- mgcv_by_smooth_labels(select, by_var, f1)
+      rg2 <- mgcv_by_smooth_labels(select, by_var, f2)
+    }
+    c1 <- str_detect(cnames, fixed(rg1))
+    c2 <- str_detect(cnames, fixed(rg2))
     (c1 | c2)
   }
 
@@ -202,7 +275,13 @@
   se <- sqrt(rowSums((X %*% V) * X))
   nr <- NROW(X)
   out <- list(
-    .smooth = rep(select, nr), .by = rep(by_var, nr),
+    .smooth = if(length(select) >1L) {
+      str_extract(select[[1]], "^(s|[t][ei2])\\([\\w\\.\\_,]*\\)") |>
+        rep(nr)
+    } else {
+      rep(select, nr)
+    },
+    .by = rep(by_var, nr),
     .level_1 = rep(f1, nr),
     .level_2 = rep(f2, nr),
     .diff = sm_diff, .se = se

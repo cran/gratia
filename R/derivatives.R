@@ -30,7 +30,7 @@
 
 #' @param select character; select which smooth's posterior to draw from.
 #'   The default (`NULL`) means the posteriors of all smooths in `model`
-#'   wil be sampled from. If supplied, a character vector of requested terms.
+#'   will be sampled from. If supplied, a character vector of requested terms.
 #'   Can be a partial match to a smooth term; see argument `partial_match`
 #'   below.
 #' @param term `r lifecycle::badge("deprecated")` Use `select` instead.
@@ -70,6 +70,7 @@
 #' @importFrom dplyr filter relocate
 #' @importFrom tidyselect last_col
 #' @importFrom lifecycle deprecated is_present
+#' @importFrom vctrs vec_slice
 #'
 #' @rdname derivatives
 #'
@@ -195,7 +196,7 @@
       ## ...but we need to handle factor by
       sm <- get_smooths_by_id(object, id = smooth_ids[[i]])[[1]]
       if (is_factor_by_smooth(sm)) {
-        newd <- filter(newd, data[[by_variable(sm)]] == by_level(sm))
+        newd <- vec_slice(newd, data[[by_variable(sm)]] == by_level(sm))
       }
     }
 
@@ -731,6 +732,7 @@
 #' @importFrom dplyr filter relocate
 #' @importFrom tidyselect last_col
 #' @importFrom lifecycle deprecated is_present
+#' @importFrom vctrs vec_slice
 #'
 #' @rdname partial_derivatives
 #'
@@ -927,7 +929,7 @@
       ## ...but we need to handle factor by
       sm <- get_smooths_by_id(object, id = smooth_ids[[i]])[[1]]
       if (is_factor_by_smooth(sm)) {
-        newd <- filter(newd, data[[by_variable(sm)]] == by_level(sm))
+        newd <- vec_slice(newd, data[[by_variable(sm)]] == by_level(sm))
       }
       # and we need to identify which variable is the focal one
       n_unique <- vapply(
@@ -1141,18 +1143,75 @@
 #' options(op)
 #' }
 `response_derivatives.gam` <- function(
-    object,
-    focal = NULL,
-    data = NULL,
-    order = 1L,
-    type = c("forward", "backward", "central"),
-    scale = c("response", "linear_predictor"),
-    method = c("gaussian", "mh", "inla", "user"),
-    n = 100, eps = 1e-7,
-    n_sim = 10000, level = 0.95,
-    seed = NULL,
-    mvn_method = c("mvnfast", "mgcv"),
-    ...) {
+  object,
+  focal = NULL,
+  data = NULL,
+  order = 1L,
+  type = c("forward", "backward", "central"),
+  scale = c("response", "linear_predictor"),
+  method = c("gaussian", "mh", "inla", "user"),
+  n = 100, eps = 1e-7,
+  n_sim = 10000, level = 0.95,
+  seed = NULL,
+  mvn_method = c("mvnfast", "mgcv"),
+  ...
+) {
+
+  do_response_derivatives(
+    object = object,
+    focal = focal,
+    data = data,
+    order = order,
+    type = type,
+    scale = scale,
+    method = method,
+    n = n,
+    eps = eps,
+    n_sim = n_sim,
+    level = level,
+    seed = seed,
+    mvn_method = mvn_method,
+    ...
+  )
+}
+
+#' @export
+#' @rdname response_derivatives
+`response_derivatives.scam` <- function(
+  object,
+  focal = NULL,
+  data = NULL,
+  order = 1L,
+  type = c("forward", "backward", "central"),
+  scale = c("response", "linear_predictor"),
+  method = c("gaussian", "mh", "inla", "user"),
+  n = 100, eps = 1e-7,
+  n_sim = 10000, level = 0.95,
+  seed = NULL,
+  mvn_method = c("mvnfast", "mgcv"),
+  ...
+) {
+  do_response_derivatives(
+    object = object, focal = focal, data = data, order = order, type = type,
+    scale = scale, method = method, n = n, eps = eps, n_sim = n_sim,
+    level = level, seed = seed, mvn_method = mvn_method, ...
+  )
+}
+
+`do_response_derivatives`  <- function(
+  object,
+  focal = NULL,
+  data = NULL,
+  order = 1L,
+  type = c("forward", "backward", "central"),
+  scale = c("response", "linear_predictor"),
+  method = c("gaussian", "mh", "inla", "user"),
+  n = 100, eps = 1e-7,
+  n_sim = 10000, level = 0.95,
+  seed = NULL,
+  mvn_method = c("mvnfast", "mgcv"),
+  ...
+) {
   method <- match.arg(method)
   type <- match.arg(type)
   mvn_method <- match.arg(mvn_method)

@@ -6,7 +6,7 @@
 #' distribution used when fitting the model.
 #'
 #' For `simulate.gam()` to function, the `family` component of the fitted
-#' model must contain, or be updateable to contain, the required random
+#' model must contain, or be updatable to contain, the required random
 #' number generator. See [mgcv::fix.family.rd()].
 #'
 #' @param object a fitted GAM, typically the result of a call to [mgcv::gam]`
@@ -25,7 +25,7 @@
 #'   for excluding the effects of random effect terms.
 #' @param newdata Deprecated. Use `data` instead.
 #'
-#' @return (Currently) A matrix with `nsim` columns.
+#' @return (Currently) A data frame with `nsim` columns.
 #'
 #' @author Gavin L. Simpson
 #'
@@ -57,7 +57,7 @@
     on.exit(assign(".Random.seed", R.seed, envir = .GlobalEnv))
   }
   ## rd function if available
-  rd_fun <- get_family_rd(object)
+  rd_fun <- choose_rd_fun(object)
 
   ## dispersion or scale variable for simulation
   scale <- object[["sig2"]]
@@ -78,10 +78,57 @@
     }
   }
 
-  mu <- predict(object, newdata = data, type = "response", ...)
-  sims <- replicate(nsim, rd_fun(mu = mu, wt = weights, scale = scale))
+  # some families need link scale predictions
+  # this duplicates code from fitted_values, and is perhaps overkill, but I'll
+  # leave it in case I need something more complex for other families I haven't
+  # looked at yet
+  fam_type <- family_type(object)
+  fam <- case_when(
+    grepl(
+      "^ordered_categorical",
+      fam_type, ignore.case = TRUE
+    ) == TRUE ~ "ocat",
+    .default = "default"
+  )
+  mu <- if (identical(fam, "default")) {
+    predict(object, newdata = data, type = "response", ...)
+  } else {
+    predict(object, newdata = data, type = "link", ...)
+  }
+
+  # call RNG function
+  sims <- replicate(
+    nsim,
+    rd_fun(mu = mu, wt = weights, scale = scale),
+    simplify = FALSE
+  )
+
+  if (
+    is_multivariate_y(object) &&
+      identical(fam_type, "multivariate_normal")
+  ) {
+    n_lp <- n_eta(object)
+    sims <- sims |>
+      lapply(FUN = c) |>
+      data.frame() |>
+      setNames(nm = paste("sim", seq_len(nsim), sep = "_")) |>
+      add_column(
+        .yvar = rep(
+          paste0("response", seq_len(n_lp)),
+          each = nrow(data)
+        ),
+        .before = 1L
+      )
+    #rownames(sims) <- NULL
+  } else {
+    sims <- sims |>
+      as.data.frame() |>
+      setNames(nm = paste("sim", seq_len(nsim), sep = "_"))
+  }
 
   attr(sims, "seed") <- RNGstate
+  class(sims) <- append(class(sims), "simulate_gratia", after = 0L)
+
   sims
 }
 
@@ -144,5 +191,15 @@
   sims <- replicate(nsim, rd_fun(mu = mu, wt = weights, scale = scale))
 
   attr(sims, "seed") <- RNGstate
+  class(sims) <- append(class(sims), "simulate_gratia", after = 0L)
   sims
+}
+
+#' @export
+`print.simulate_gratia` <- function(x, ...) {
+  orig <- x
+  attr(x, "seed") <- NULL
+  class(x) <- class(x)[-1]
+  NextMethod()
+  invisible(orig)
 }

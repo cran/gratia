@@ -323,7 +323,7 @@ stop_if_not_mgcv_smooth <- function(smooth) {
 #'
 #' @param object a fitted GAM model object.
 #' @param term character; the name of a smooth term to extract.
-#' @param level character; which level of the factor to exrtact the smooth
+#' @param level character; which level of the factor to extract the smooth
 #'   for.
 #'
 #' @return A single smooth object, or a list of smooths if several match the
@@ -774,7 +774,7 @@ stop_if_not_mgcv_smooth <- function(smooth) {
 #' @param h numeric; the amount to shift values in `df` by.
 #' @param i logical; a vector indexing columns of `df` that should not be
 #'   included in the shift.
-#' @param FUN function; a function to applut the shift. Typically `+` or `-`.
+#' @param FUN function; a function to apply the shift. Typically `+` or `-`.
 #' @param focal character; the focal variable when computing partial
 #'   derivatives. This allows shifting only the focal variable by `eps`.
 `shift_values` <- function(df, h, i, FUN = `+`, focal = NULL) {
@@ -816,7 +816,7 @@ stop_if_not_mgcv_smooth <- function(smooth) {
     fam <- object[["family"]]
   }
   ## mgcv stores data simulation funs in `rd`
-  fam <- fix.family.rd(fam)
+  fam <- fix_family_rd(fam)
   if (is.null(fam[["rd"]])) {
     stop("Don't yet know how to simulate from family <",
       fam[["family"]], ">",
@@ -1903,7 +1903,10 @@ reclass_scam_smooth <- function(smooth) {
 #' @rdname boundary
 `boundary.soap.film` <- function(x, ...) {
   stop_if_not_mgcv_smooth(x)
-  x[["xt"]][["bnd"]]
+  ## extract the boundary
+  out <- x[["xt"]][["bnd"]]
+  ## need to return only the boundary, not anythign else
+  lapply(out, `[`, smooth_variable(x))
 }
 
 #' @export
@@ -1975,4 +1978,97 @@ reclass_scam_smooth <- function(smooth) {
     }
   }
   disp
+}
+
+#### helper functions for Tweedie
+# this converts from theta to power parameter `p`` given `a` and `b`
+theta_2_power <- function(theta, a, b) {
+  i <- theta > 0
+  exp_theta_pos <- exp(-theta[i])
+  exp_theta_neg <- exp(theta[!i])
+  theta[i] <- (b + a * exp_theta_pos) / (1 + exp_theta_pos)
+  theta[!i] <- (b * exp_theta_neg + a) / (1 + exp_theta_neg)
+  theta
+}
+
+# extracts the `a` and `b` parameters of the model search over which the power
+# parameter is searched for
+get_tw_ab <- function(family) {
+  if (family_name(family) != "twlss") {
+    stop("'model' wasn't fitted with 'twlss()' family.", call. = FALSE)
+  }
+  rfun <- family$residuals
+  a <- get(".a", envir = environment(rfun))
+  b <- get(".b", envir = environment(rfun))
+  c(a, b)
+}
+
+# helper for models that are truly multivariate
+# simply returns a vector of models known to be multivariate
+multivariate_y <- function() {
+  c("Multivariate normal", "multinom")
+}
+
+#' Is a model multivariate?
+#'
+#' Determines whether a fitted model (GAM) is truly multivariate or not.
+#'
+#' @param model a fitted model object; currently only for `"gam"` objects
+#'
+#' @return A logical vector of length 1, indicating if `model` is multivariate
+#'   (`TRUE`), or otherwise (`FALSE`).
+#' @export
+`is_multivariate_y` <- function(model) {
+  allowed <- multivariate_y()
+  fam_nam <- family_name(model)
+  out <- vapply(
+    allowed,
+    FUN = \(x, family) grepl(x, family),
+    FUN.VALUE = logical(1L),
+    family = fam_nam
+  )
+  any(out)
+}
+
+#' Is an object one of mgcv's family objects?
+#'
+#' Checks to determine if `object` is a family object of one of the three or so
+#' types that *mgcv* produces.
+#'
+#' @param object the object to test.
+#'
+#' @return A logical vector of length 1, indicating if `object` is one of
+#'   *mgcv*'s (`TRUE`), or otherwise (`FALSE`).
+#' @export
+`is_mgcv_family` <- function(object) {
+  inherits(
+    object,
+    c("family", "extended.family", "general.family")
+  )
+}
+
+# Until Simon modifies `mgcv::inSide()` to be more programmer-friendly, this is
+# a wrapper that calls it in a way that does work
+# #' @importFrom geometry convhulln inhulln
+#' @importFrom mgcv inSide
+`inside` <- function(..data, bnd, x_var, y_var) {
+  # bnd_mat <- as.data.frame(bnd) |> as.matrix()
+  # ch <- geometry::convhulln(bnd_mat)
+  # ins <- geometry::inhulln(ch, data |> as.matrix())
+  # ins
+
+  # force eerything to have the same coord names `x` and `y`
+  bnd <- lapply(bnd, `names<-`, value = c("x", "y"))
+  ..data <- ..data[c(x_var, y_var)] |> setNames(c("x", "y"))
+  x <- ..data[["x"]]
+  y <- ..data[["y"]]
+  # call mgcv::inSide in a way that doesn't fall foul of the
+  # deparse(substitute()) shenanigans
+  mgcv::inSide(bnd = bnd, x = x, y = y)
+}
+
+# is a smooth a soap film
+`is_soap_film` <- function(object) {
+  check_is_mgcv_smooth(object)
+  inherits(object, "soap.film")
 }

@@ -10,7 +10,7 @@
 #' @param method character; which algorithm to use to sample from the posterior.
 #'   Currently implemented methods are: `"gaussian"` and `"mh"`. `"gaussian"`
 #'   calls `gaussian_draws()` which uses a Gaussian approximation to the
-#'   posterior distribution. `"mh"` uses a simple Metropolis Hasting sampler
+#'   posterior distribution. `"mh"` uses a simple Metropolis Hastings sampler
 #'   which alternates static proposals based on a Gaussian approximation to the
 #'   posterior, with random walk proposals. Note, setting `t_df` to a low value
 #'   will result in heavier-tailed statistic proposals. See `mgcv::gam.mh()`
@@ -142,7 +142,7 @@
 `gaussian_draws.gam` <- function(
     model, n, n_cores = 1L, index = NULL,
     frequentist = FALSE, unconditional = FALSE, mvn_method = "mvnfast", ...) {
-  mu <- coef(model)
+  mu <- coef(model) |> as.vector() # drop the empty dim if present
   sigma <- get_vcov(model,
     frequentist = frequentist,
     unconditional = unconditional
@@ -212,6 +212,10 @@
   rw_acceptance <- attr(betas, "rw_acceptance")
   fixed_acceptance <- attr(betas, "fixed_acceptance")
   betas <- betas[["bs"]]
+  # mgcv::gam.mh returns a vector instead of a matrix in the n = 1 case #328
+  if (!is.matrix(betas)) {
+    betas <- t(as.matrix(betas))
+  }
   if (!is.null(index)) {
     betas <- betas[, index, drop = FALSE]
   }

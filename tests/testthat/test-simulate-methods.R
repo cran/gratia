@@ -74,26 +74,30 @@ test_that("simulate() works with out a seed", {
 
 test_that("simulate() fails if we don't have an rd function", {
   skip_on_cran()
-  ## Example from ?twlss
-  n <- 400
-  ## Simulate data...
-  dat <- data_sim("eg1", n = n, dist = "poisson", scale = 0.2, seed = 3)
-  dat <- withr::with_seed(3, {
-    transform(dat, y = rTweedie(exp(f), p = 1.3, phi = 0.5)) ## Tweedie y
-  })
 
-  ## Fit a fixed p Tweedie, with wrong link ...
-  m <- gam(
-    list(
-      y ~ s(x0) + s(x1) + s(x2) + s(x3),
-      ~1,
-      ~1
-    ),
-    family = twlss(), data = dat
-  )
-
-  expect_error(simulate(m),
-    "Don't yet know how to simulate from family <twlss>",
+  expect_error(simulate(m_censor),
+    "Don't yet know how to simulate from family <cnorm(2.42)>",
     fixed = TRUE
   )
+})
+
+test_that("simulate() works for a mvn GAM, 1 simulation", {
+  skip_on_cran()
+
+  sims <- simulate(m_mvn, nsim = 1)
+  expect_identical(nrow(sims), 600L) # 300 data * 2 responses
+  expect_identical(ncol(sims), 2L) # .yvar + 1 simulation
+  expect_s3_class(sims, "simulate_gratia")
+  expect_s3_class(sims, "data.frame")
+})
+
+test_that("simulate() works for a mvn GAM, 5 simulations", {
+  skip_on_cran()
+
+  n_sims <- 5L
+  sims <- simulate(m_mvn, nsim = n_sims)
+  expect_identical(nrow(sims), 600L) # 300 data * 2 responses
+  expect_identical(ncol(sims), n_sims + 1L) # .yvar + 5 simulation
+  expect_s3_class(sims, "simulate_gratia")
+  expect_s3_class(sims, "data.frame")
 })

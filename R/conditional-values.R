@@ -155,7 +155,7 @@
   used_vars <- names(cond_list)
   not_used <- dplyr::setdiff(m_vars, used_vars)
   tv <- typical_values(model, data = data)
-  tv <- tv |> select(all_of(not_used))
+  tv <- tv[not_used] # |> select(all_of(not_used))
   cond_list <- c(cond_list, tv)
 
   # return the data for testing
@@ -351,7 +351,7 @@ characters")
 
   # check if x is a function - need to skip all this if x is a name of a model
   # term
-  if (identical(length(x), 1L) || any(!x %in% variables)) {
+  if (any(!x %in% variables) && identical(length(x), 1L)) {
     is_fun <- try(match.fun(x), silent = TRUE)
     is_fun <- if (inherits(is_fun, "try-error")) {
       FALSE

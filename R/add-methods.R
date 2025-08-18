@@ -476,7 +476,7 @@
 
 #' @rdname add_confint
 #' @importFrom rlang .data
-#' @importFrom dplyr %>% mutate relocate
+#' @importFrom dplyr mutate relocate
 #'
 #' @export
 `add_confint.default` <- function(object, coverage = 0.95, ...) {
@@ -496,7 +496,7 @@
   object <- mutate(object,
     .lower_ci = .data$.estimate - (crit * .data$.se),
     .upper_ci = .data$.estimate + (crit * .data$.se)
-  ) %>%
+  ) |>
     relocate(all_of(c(".lower_ci", ".upper_ci")),
       .after = all_of(".se")
     )
@@ -511,7 +511,7 @@
 #'   `"derivatives"`.
 #' @param type character; `"change"` adds a single variable to `object`
 #'   indicating where the credible interval on the derivative excludes 0.
-#'   `"sizer"` adds two variables indicating whether the derivative is postive
+#'   `"sizer"` adds two variables indicating whether the derivative is positive
 #'   or negative.
 #' @param ... arguments passed to other methods
 #'
@@ -646,7 +646,7 @@
 #' @param n integer; the number of posterior draws to add.
 #' @param seed numeric; a value to seed the random number generator.
 #' @param select character; select which smooth's posterior to draw from. The
-#'   default, `NULL`, means the posteriors of all smooths in model wil be
+#'   default, `NULL`, means the posteriors of all smooths in model will be
 #'   sampled from individually. If supplied, a character vector of requested
 #'   smooth terms.
 #' @param ... arguments are passed to the posterior draw function, currently one
@@ -718,12 +718,19 @@
 #' @export
 #' @importFrom dplyr mutate row_number left_join join_by
 #' @rdname add_fitted_samples
-`add_smooth_samples` <- function(object, model, n = 1, seed = NULL, select = NULL,
-    ...) {
+`add_smooth_samples` <- function(
+  object,
+  model,
+  n = 1,
+  seed = NULL,
+  select = NULL,
+  ...
+) {
   # compute posterior samples
-  ss <- smooth_samples(model, data = object, n = n, seed = seed, select = select,
-    ...) |>
-    select(all_of(c(".smooth", ".term", ".row", ".draw", ".value")))
+  ss <- smooth_samples(
+    model, data = object, n = n, seed = seed, select = select, ...
+  )
+  ss <- ss[c(".smooth", ".term", ".row", ".draw", ".value")]
   # need to have .row in object so we can join with the fitted samples
   object <- object |>
     mutate(.row = row_number())
