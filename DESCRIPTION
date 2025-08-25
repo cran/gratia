@@ -1,5 +1,5 @@
 Package: gratia
-Version: 0.11.0
+Version: 0.11.1
 Title: Graceful 'ggplot'-Based Graphics and Other Functions for GAMs
         Fitted Using 'mgcv'
 Authors@R: c(person(given = "Gavin L.", family = "Simpson",
@@ -15,7 +15,7 @@ Imports: mgcv (>= 1.9-0), ggplot2 (>= 3.5.0), tibble (>= 3.0.0), dplyr
         (>= 1.1.0), tidyr, rlang, patchwork (>= 1.2.0), vctrs, grid,
         mvnfast, purrr (>= 1.1.0), stats, tools, grDevices, stringr,
         tidyselect (>= 1.2.0), lifecycle, pillar, cli, nlme,
-        ggokabeito, withr, scales, mirai
+        ggokabeito, withr, scales, mirai, tweedie (>= 2.3.5)
 Suggests: gamm4, lme4, testthat, vdiffr, MASS, scam, datasets, knitr,
         rmarkdown, forcats, GJRM, readr, glmmTMB, ggdist,
         distributional, hexbin, gamair, sf (>= 0.7-3), svglite (>=
@@ -32,9 +32,9 @@ Config/testthat/edition: 3
 Config/Needs/website: rmarkdown, ggdist
 Language: en-GB
 NeedsCompilation: no
-Packaged: 2025-08-18 09:33:42 UTC; gavin
+Packaged: 2025-08-25 10:39:53 UTC; gavin
 Author: Gavin L. Simpson [aut, cre, cph] (ORCID:
     <https://orcid.org/0000-0002-9084-8413>),
   Henrik Singmann [ctb] (ORCID: <https://orcid.org/0000-0002-4842-3657>)
 Repository: CRAN
-Date/Publication: 2025-08-18 10:40:02 UTC
+Date/Publication: 2025-08-25 11:10:02 UTC
