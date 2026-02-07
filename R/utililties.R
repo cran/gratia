@@ -127,6 +127,14 @@
 #' @export
 #' @rdname smooths
 `smooths.gamm` <- function(object) {
+  stopifnot(is_gamm(object))
+  smooths(object$gam)
+}
+
+#' @export
+#' @rdname smooths
+`smooths.gamm4` <- function(object) {
+  stopifnot(is_gamm4(object))
   smooths(object$gam)
 }
 
@@ -135,6 +143,7 @@
   smooth[["term"]]
 }
 
+# this is for fs smooths; could do with a better name
 `smooth_factor_variable` <- function(smooth) {
   check_is_mgcv_smooth(smooth)
   smooth[["fterm"]]
@@ -551,6 +560,11 @@ stop_if_not_mgcv_smooth <- function(smooth) {
 `is_fs_smooth` <- function(smooth) {
   check_is_mgcv_smooth(smooth)
   inherits(smooth, "fs.interaction")
+}
+
+`is_sz_smooth` <- function(smooth) {
+  check_is_mgcv_smooth(smooth)
+  inherits(smooth, "sz.interaction")
 }
 
 #' Fix the names of a data frame containing an offset variable.
@@ -1461,97 +1475,6 @@ vars_from_label <- function(label) {
   out
 }
 
-#' List the variables involved in a model fitted with a formula
-#'
-#' @param model a fitted model object with a `$pred.formula`, `$terms`
-#'   component or a `"terms"` attribute
-#' @param ... Arguments passed to other methods. Currently ignored.
-#'
-#' @export
-#'
-#' @examples
-#' load_mgcv()
-#'
-#' # simulate some Gaussian data
-#' df <- data_sim("eg1", n = 50, seed = 2)
-#'
-#' # fit a GAM with 1 smooth and 1 linear term
-#' m1 <- gam(y ~ s(x2, k = 7) + x1, data = df, method = "REML")
-#' model_vars(m1)
-#'
-#' # fit a lm with two linear terms
-#' m2 <- lm(y ~ x2 + x1, data = df)
-#' model_vars(m2)
-`model_vars` <- function(model, ...) {
-  UseMethod("model_vars")
-}
-
-#' @export
-#' @rdname model_vars
-`model_vars.gam` <- function(model, ...) {
-  # want a vector of variables involved in the model formula.
-  # Don't want this `attr(terms(model), "term.labels")` ! as this returns
-  # model terms not variable names. Use all.vars() on `pred.formula` for
-  # a GAM(M) model
-  all.vars(model$pred.formula)
-}
-
-#' @export
-#' @rdname model_vars
-`model_vars.default` <- function(model, ...) {
-  # want a vector of variables involved in the model formula
-  tt <- terms(model)
-  if (is.null(tt)) {
-    stop("`terms()` not available for `model`.")
-  }
-  tt <- delete.response(tt)
-  all.vars(attr(tt, "variables"))
-}
-
-#' @export
-#' @rdname model_vars
-`model_vars.bam` <- function(model, ...) {
-  # want a vector of variables involved in the model formula.
-  # Don't want this `attr(terms(model), "term.labels")` ! as this returns
-  # model terms not variable names. Use all.vars() on `pred.formula` for
-  # a GAM(M) model
-  all.vars(model$pred.formula)
-}
-
-#' @export
-#' @rdname model_vars
-`model_vars.gamm` <- function(model, ...) {
-  # want a vector of variables involved in the model formula.
-  # Don't want this `attr(terms(model), "term.labels")` ! as this returns
-  # model terms not variable names. Use all.vars() on `pred.formula` for
-  # a GAM(M) model
-  model_vars(model[["gam"]]$pred.formula)
-}
-
-#' @export
-#' @rdname model_vars
-`model_vars.gamm4` <- function(model, ...) {
-  # this is here for when Simon actually classes gamm4 objects
-  # want a vector of variables involved in the model formula.
-  # Don't want this `attr(terms(model), "term.labels")` ! as this returns
-  # model terms not variable names. Use all.vars() on `pred.formula` for
-  # a GAM(M) model
-  model_vars(model[["gam"]]$pred.formula)
-}
-
-#' @export
-#' @rdname model_vars
-`model_vars.list` <- function(model, ...) {
-  # want a vector of variables involved in the model formula.
-  # Don't want this `attr(terms(model), "term.labels")` ! as this returns
-  # model terms not variable names. Use all.vars() on `pred.formula` for
-  # a GAM(M) model
-  if (!is_gamm4(model)) {
-    stop("Don't know how to handle generic list objects.")
-  }
-  model_vars(model[["gam"]]$pred.formula)
-}
-
 `newdata_deprecated` <- function() {
   message(
     "Use of the `newdata` argument is deprecated.\n",
@@ -1594,10 +1517,10 @@ vars_from_label <- function(label) {
 }
 
 # function to return the vector of boundary points for power parameter
-get_tw_bounds <- function(model) {
-  fam <- family_name(model)
+get_twlss_bounds <- function(model) {
+  fam <- family_type(model)
   if (fam != "twlss") {
-    stop("'model' wasn't fitted with 'twlss()' family.",
+    stop("'model' wasn't fitted with the 'twlss()' family.",
       call. = FALSE
     )
   }
@@ -1706,10 +1629,15 @@ reclass_scam_smooth <- function(smooth) {
 
 #' @export
 `scam_beta_se.univariate_scam_smooth` <- function(
-    smooth, X, beta, ndata, V,
-    ...) {
+  smooth,
+  X,
+  beta,
+  ndata,
+  V,
+  ...
+) {
   # extending betas with a 0 - will zero out constant column in Xp
-  beta <- c(0, beta)
+  # beta <- c(0, beta) # --- doesn't seem needed in scam 1.2-21 
 
   fv_c <- X %*% beta
 
@@ -1721,13 +1649,16 @@ reclass_scam_smooth <- function(smooth) {
   qrA <- qr(t(A))
   R <- R[-1, ]
   RZa <- t(qr.qty(qrA, t(R)))[, seq(2, ncol(X))]
-  RZa_inv <- solve(RZa) # FIXME? can we do this & next line better, without inverting?
+  # FIXME? can we do this & next line better, without inverting?
+  RZa_inv <- solve(RZa)
   RZaR <- RZa_inv %*% R
   beta <- qr.qy(qrA, c(0, RZaR %*% beta))
   idx <- c(1, smooth_coef_indices(smooth))
+  #idx <- smooth_coef_indices(smooth)
   vc <- vv <- V[idx, idx, drop = FALSE]
-  vc[, 1] <- rep(0, nrow(vv))
-  vc[1, ] <- rep(0, ncol(vv))
+  # vc[, 1] <- rep(0, nrow(vv))
+  # vc[1, ] <- rep(0, ncol(vv))
+  vc <- vc[-1, -1, drop = FALSE] # drop intercept
 
   XZa <- t(qr.qty(qrA, t(X)))[, seq(2, ncol(X))]
   Ga <- XZa %*% RZaR
@@ -1736,10 +1667,14 @@ reclass_scam_smooth <- function(smooth) {
   list(betas = beta, se = se)
 }
 
-# p for sw [1] 113.00627  43.09450  54.19013 103.56536 149.15428
-
 #' @export
-`scam_beta_se.univariate_by_scam_smooth` <- function(smooth, X, beta, V, ...) {
+`scam_beta_se.univariate_by_scam_smooth` <- function(
+  smooth,
+  X,
+  beta,
+  V,
+  ...
+) {
   # return the coefs unmodified, so just compute se
   idx <- c(1, smooth_coef_indices(smooth))
   V <- V[idx, idx, drop = FALSE]
@@ -1823,69 +1758,6 @@ reclass_scam_smooth <- function(smooth) {
   }
 
   sm_vars
-}
-
-#' Extract the model constant term
-#'
-#' `r lifecycle::badge("experimental")` Extracts the model constant term(s),
-#' the model intercept, from a fitted model object.
-#'
-#' @param model a fitted model for which a `coef()` method exists.
-#' @param lp numeric; which linear predictors to extract constant terms for.
-#' @param ... arguments passed to other methods.
-#'
-#' @export
-#' @importFrom stats coef
-#' @examples
-#' \dontshow{
-#' op <- options(digits = 4)
-#' }
-#' load_mgcv()
-#'
-#' # simulate a small example
-#' df <- data_sim("eg1", seed = 42)
-#'
-#' # fit the GAM
-#' m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df, method = "REML")
-#'
-#' # extract the estimate of the constant term
-#' model_constant(m)
-#' # same as coef(m)[1L]
-#' coef(m)[1L]
-#'
-#' \dontshow{
-#' options(op)
-#' }
-#' @export
-`model_constant` <- function(model, ...) {
-  UseMethod("model_constant")
-}
-
-#' @export
-#' @rdname model_constant
-`model_constant.gam` <- function(model, lp = NULL, ...) {
-  lss_idx <- lss_eta_index(model)
-  n_lp <- n_eta(model)
-  if (!is.null(lp)) {
-    if (any(lp > n_lp)) {
-      stop("invalid linear predictor")
-    }
-    lp <- lp[lp %in% seq_len(n_lp)]
-  } else {
-    lp <- seq_len(n_lp)
-  }
-  lss_idx <- lss_idx[lp]
-  idx <- vapply(lss_idx, FUN = `[`, FUN.VALUE = numeric(1), 1)
-  b <- coef(model)[idx] |>
-    unname()
-  attr(b, "par_names") <- lss_parameters(model)
-  b
-}
-
-#' @export
-#' @rdname model_constant
-`model_constant.gamlss` <- function(model, ...) {
-  .NotYetImplemented()
 }
 
 #' Extract the boundary of a soap film smooth
@@ -2097,4 +1969,23 @@ multivariate_y <- function() {
     is_ranef <- any(sm_typ == "Random effect")
   }
   is_ranef
+}
+
+# Do strings in a character vector start with a smoother?
+`match_smoother` <- function(x) {
+  # what constitutes a smoother in a formula?
+  # will match currently what *mgcv* uses, but can be expanded as we
+  # add more models to gratia
+  smoothers <- c("s(", "ti(", "te(", "t2(")
+  # some people (!) prefix everything with the namespace, so match those too
+  smoothers <- c(smoothers, paste0("mgcv::", smoothers))
+
+  # need to apply startsWith(..., smoothers) to each element of x
+  vapply(
+    smoothers,
+    FUN = \(prefix, x) startsWith(x, prefix),
+    FUN.VALUE = logical(length(x)),
+    x = x
+  ) |> # an array is returned with 1 row per element of x
+    apply(MARGIN = 1, FUN = any) # do elements of x match any of the prefixes?
 }

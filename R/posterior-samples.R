@@ -1292,7 +1292,7 @@
   do_derivative_samples(
     object = object, focal = focal, data = data, order = order, type = type,
     scale = scale, method = method, n = n, eps = eps, n_sim = n_sim,
-    seed = seed, envir = envir, draws = draws, mnv_method = mvn_method
+    seed = seed, envir = envir, draws = draws, mvn_method = mvn_method, ...
   )
 }
 
@@ -1318,7 +1318,8 @@
   do_derivative_samples(
     object = object, focal = focal, data = data, order = order, type = type,
     scale = scale, method = method, n = n, eps = eps, n_sim = n_sim,
-    seed = seed, envir = envir, draws = draws, mnv_method = mvn_method
+    seed = seed, envir = envir, draws = draws, mvn_method = mvn_method,
+    ...
   )
 }
 
@@ -1371,7 +1372,12 @@
       vars = !matches(focal), data = data,
       envir = envir
     )
-    data <- expand_grid(.x = x, tv)
+    # if model only contains a single var, tv is empty
+    data <- if (ncol(tv) > 0L) {
+      expand_grid(.x = x, tv)
+    } else {
+      expand_grid(.x = x)
+    }
   } else {
     data <- data |>
       select(all_of(model_vars(object))) |>

@@ -1,3 +1,47 @@
+# gratia 0.11.2
+
+## User visible changes
+
+* *gratia* now only handles shape constrained models fitted using *scam*
+  version 1.2-21 or later. This is due to breaking changes in *scam*, and new
+  functionality in that package, which simplifies *gratia*.
+
+* *gratia* also now depends on *dplyr* version 1.2.0 or later.
+
+* Histogram bars drawn by `residuals_hist_plot()` and points in `qq_plot()`,
+  `residuals_linpred_plot()`, `observed_fitted_plot()`, and `worm_plot()`, and
+  hence `appraise()`, are now filled with a dark shade of grey and use a light
+  colour for the border of the bars.
+
+##  New features
+
+* `derivatives()` now works for constrained factor smooths (`bs = "sz"`),
+  treating them in the same way as random factor smooths (`bs = "fs"`).
+  Lack of support reported by @vrest-png #362
+
+  Also handles higher order `bs = "sz"` terms.
+
+* `draw.derivatives()` can now differentiate random and constrained factor
+  smooths through the colour aesthetic via new argument 
+  `differentiate_factor_smooths`.
+
+* `model_terms()` returns the names of all terms in a model. #388
+
+## Bug fixes
+
+* `conditional_values()` would fail if supplied a numeric vector of data to 
+  condition on via the `condition` argument. #366
+
+* *gratia* worked inconsistently with tensor product smooths containing a
+  random effect `bs = "re"` marginal. Reported #358 and fixed by
+  @asgersvenning #360, with additional changes by Gavin Simpson.
+
+* Argument `mvn_method` was not being passed on to the lower workhorse functions
+  that did the sampling. #381 
+
+* `response_derivatives()` would fail if there were no other terms in the model 
+  but the focal term.
+
 # gratia 0.11.1
 
 ## User visible changes

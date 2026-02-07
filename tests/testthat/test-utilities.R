@@ -15,6 +15,11 @@ test_that("smooth_terms() methods work", {
   expect_type(st, "character")
   expect_length(st, 1L)
   expect_identical(st, "x0")
+
+  st <- smooth_terms(m_fs[["smooth"]][[2]])
+  expect_type(st, "character")
+  expect_length(st, 2L)
+  expect_identical(st, c("x1", "fac"))
 })
 
 test_that("smooth_dim() methods work", {
@@ -516,15 +521,6 @@ test_that("norm_minus_one_to_one works with NA", {
   expect_identical(range(x, na.rm = TRUE), c(-1, 1))
 })
 
-test_that("model_constant returns the intercept estimate", {
-  expect_silent(b <- model_constant(m_gam))
-  expect_type(b, "double")
-  ref <- unname(coef(m_gam)[1L])
-  attr(ref, "par_names") <- "location"
-  expect_identical(b, ref)
-  expect_named(b, expected = NULL)
-})
-
 test_that("is bam identifies a BAM vs GAM or GAMMs", {
   expect_true(is.bam(m_bam))
   expect_false(is.bam(m_gam))
@@ -588,17 +584,6 @@ test_that("is isotropic smooth works", {
   expect_false(is_isotropic_smooth(get_smooths_by_id(m_gam)[[1]]))
 })
 
-test_that("model vars works for various GAMs", {
-  expect_silent(mvars <- model_vars(m_gam))
-  expect_identical(mvars, paste0("x", 0:3))
-  expect_silent(mvars <- model_vars(m_bam))
-  expect_identical(mvars, paste0("x", 0:3))
-  expect_silent(mvars <- model_vars(m_gamm))
-  expect_identical(mvars, paste0("x", 0:3))
-  expect_silent(mvars <- model_vars(m_gamm4))
-  expect_identical(mvars, paste0("x", 0:3))
-})
-
 test_that("dispersion works for a GAM", {
   expect_identical(dispersion(m_gam), m_gam$sig2)
 })
@@ -612,16 +597,11 @@ test_that("n_eta work", {
   expect_identical(n_eta(m_accel), 2L)
 })
 
-test_that("model_constant works for a GAMLSS", {
-  expect_length(model_constant(m_accel), 2L)
-  expect_length(model_constant(m_gam), 1L)
-})
-
 test_that("rtw works for twlss model", {
   skip_on_cran()
   skip_on_ci()
   fit <- fitted(m_twlss)
-  tw_pars <- get_tw_bounds(m_twlss)
+  tw_pars <- get_twlss_bounds(m_twlss)
   expect_snapshot(
     with_seed(
       123,
@@ -667,4 +647,76 @@ test_that("is_mgcv_family works", {
 
   expect_false(is_mgcv_family(1L))
   expect_false(is_mgcv_family(m_gam))
+})
+
+test_that("smooths() works", {
+  expect_silent(sm <- smooths(m_gam))
+  expect_equal(sm, c("s(x0)", "s(x1)", "s(x2)", "s(x3)"))
+  expect_silent(sm <- smooths(m_gamm))
+  expect_equal(sm, c("s(x0)", "s(x1)", "s(x2)", "s(x3)"))
+  expect_silent(sm <- smooths(m_gamm4))
+  expect_equal(sm, c("s(x0)", "s(x1)", "s(x2)", "s(x3)"))
+  expect_silent(sm <- smooths(m_bam))
+  expect_equal(sm, c("s(x0)", "s(x1)", "s(x2)", "s(x3)"))
+  expect_silent(sm <- smooths(m_scam))
+  expect_equal(sm, c("s(x1)", "s(x2)"))
+})
+
+test_that("smooth_factor_variable() works", {
+  expect_silent(sm <- get_smooth(m_fs, term = "s(x1,fac)"))
+  expect_silent(f_var <- smooth_factor_variable(sm))
+  expect_identical(f_var, "fac")
+})
+
+test_that("stop_if_not_mgcv_smooth() works", {
+  expect_error(
+    stop_if_not_mgcv_smooth(1L),
+    regexp = "'smooth' is not an 'mgcv.smooth'.",
+    fixed = TRUE
+  )
+})
+
+test_that("old_get_smooth() works", {
+  expect_silent(
+    sm <- old_get_smooth(m_gamm, "s(x1)")
+  )
+  expect_s3_class(sm, "tprs.smooth")
+  expect_s3_class(sm, "mgcv.smooth")
+})
+
+test_that("get_twlss_bounds() works", {
+  expect_silent(
+    bnd <- get_twlss_bounds(m_twlss)
+  )
+  expect_equal(bnd, c(1.01, 1.99))
+
+  expect_error(
+    get_twlss_bounds(m_tw),
+    regexp = "'model' wasn't fitted with the 'twlss()' family.",
+    fixed = TRUE
+  )
+})
+
+test_that("prefix_label_both works", {
+  labels <- list(var1 = letters[1:2], var2 = letters[3:4])
+  expect_identical(
+    prefix_label_both(labels),
+    list(c("var1: a", "var1: b"), c("var2: c", "var2: d"))
+  )
+  expect_identical(
+    prefix_label_both(labels, multi_line = FALSE),
+    list(c("var1, var2: a, c", "var1, var2: b, d"))
+  )
+})
+
+test_that("prefix_label_both works", {
+  labels <- list(var1 = letters[1:2], var2 = letters[3:4])
+  expect_identical(
+    label_var(labels),
+    list(c("var1", "var1"), c("var2", "var2"))
+  )
+  expect_identical(
+    label_var(labels, multi_line = FALSE),
+    list(c("var1, var2", "var1, var2"))
+  )
 })

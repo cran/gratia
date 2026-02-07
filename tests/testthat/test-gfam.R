@@ -45,5 +45,3 @@ test_that("gratia can handle a two species negbin model with gfam", {
     theta(two_sp_gfam)
   )
 })
-
-# needs more tests
