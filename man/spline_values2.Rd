@@ -10,7 +10,8 @@ spline_values2(
   model,
   unconditional,
   overall_uncertainty = TRUE,
-  frequentist = FALSE
+  frequentist = FALSE,
+  envir = NULL
 )
 }
 \arguments{
@@ -21,21 +22,27 @@ spline_values2(
 \item{model}{a fitted model; currently only \code{\link[mgcv:gam]{mgcv::gam()}} and \code{\link[mgcv:bam]{mgcv::bam()}}
 models are supported.}
 
-\item{unconditional}{logical; should confidence intervals include the
-uncertainty due to smoothness selection? If \code{TRUE}, the corrected Bayesian
-covariance matrix will be used.}
+\item{unconditional}{logical; if \code{TRUE} (and only if \code{frequentist == FALSE})
+then the bayesian smoothing parameter uncertainty-corrected covariance
+matrix is returned, if available. Whether it is available depends on which
+smoothness selection method was used to fit the model.}
 
 \item{overall_uncertainty}{logical; should the uncertainty in the model
 constant term be included in the standard error of the evaluate values of
 the smooth?}
 
-\item{frequentist}{logical; use the frequentist covariance matrix?}
+\item{frequentist}{logical; if \code{FALSE}, the default, the bayesian covariance
+matrix is returned, otherwise the frequentist covariance matrix.}
+
+\item{envir}{an optional environment supplying functions and constants used
+in model expressions. The available model formula environment is used when
+\code{NULL}. Covariate observations should be supplied in \code{data}.}
 }
 \description{
 \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}}
 
 The function \code{spline_values2()} has been renamed to \code{spline_values()} as of
-version 0.9.0. This was allowed following the removal of \code{evaluate_smooth()},
+version 0.9.0. This was allowed following the removal of \code{\link[=evaluate_smooth]{evaluate_smooth()}},
 which was the only function using \code{spline_values()}. So \code{spline_values2()}
 has been renamed to \code{spline_values()}.
 }

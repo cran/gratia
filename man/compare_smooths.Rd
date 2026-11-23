@@ -10,10 +10,13 @@ compare_smooths(
   select = NULL,
   smooths = deprecated(),
   n = 100,
+  n_2d = 50,
   data = NULL,
   unconditional = FALSE,
   overall_uncertainty = TRUE,
-  partial_match = FALSE
+  partial_match = FALSE,
+  envir = NULL,
+  dist = NULL
 )
 }
 \arguments{
@@ -32,14 +35,21 @@ stored.}
 \item{smooths}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{select} instead.}
 
 \item{n}{numeric; the number of points over the range of the covariate at
-which to evaluate the smooth.}
+which to evaluate a univariate smooth.}
+
+\item{n_2d}{numeric; the number of points along each of the first two axes
+of a smooth surface, including surface panels of higher-dimensional smooths.
+The default is 50 in plotting and plot-preparation functions. If \code{NULL},
+use \code{n} instead. Ignored when evaluation \code{data} are supplied. Factor levels
+are retained, and curves with only one continuous covariate use \code{n}.}
 
 \item{data}{a data frame of covariate values at which to evaluate the
 smooth.}
 
-\item{unconditional}{logical; should confidence intervals include the
-uncertainty due to smoothness selection? If \code{TRUE}, the corrected Bayesian
-covariance matrix will be used.}
+\item{unconditional}{logical; if \code{TRUE} (and only if \code{frequentist == FALSE})
+then the bayesian smoothing parameter uncertainty-corrected covariance
+matrix is returned, if available. Whether it is available depends on which
+smoothness selection method was used to fit the model.}
 
 \item{overall_uncertainty}{logical; should the uncertainty in the model
 constant term be included in the standard error of the evaluate values of
@@ -48,30 +58,56 @@ the smooth?}
 \item{partial_match}{logical; should smooths be selected by partial matches
 with \code{select}? If \code{TRUE}, \code{select} can only be a single string to match
 against.}
+
+\item{envir}{an optional environment supplying functions and constants used
+in model expressions. The available model formula environment is used when
+\code{NULL}. Covariate observations should be supplied in \code{data}.}
+
+\item{dist}{numeric; if greater than 0, this is used to determine when
+a location is too far from data to be plotted when plotting 2-D smooths.
+The data are scaled into the unit square before deciding what to exclude,
+and \code{dist} is a distance within the unit square. See
+\code{\link[mgcv:exclude.too.far]{mgcv::exclude.too.far()}} for further details.}
 }
 \description{
 Compare smooths across models
+}
+\details{
+Two-variable smooths are evaluated at common locations. Automatic grids span
+the intersection of the models' observed covariate ranges; factor levels must
+overlap. Supplied \code{data} are evaluated as given, without filling gaps.
+Each selected smooth label must occur exactly once in every model and use
+the same covariates, including any \code{by} variable. Numeric and logical \code{select}
+refer to the primary model; matching labels are then used in every model.
+
+Estimates are contributions of individual smooths to the linear predictor,
+on its link scale, with the centring constraints used in each fitted model.
+They exclude the intercept and other model terms. Different fitting data can
+change the centring, so a surface difference can include a constant shift.
+It is the difference between these fitted smooth contributions, rather than
+a difference between fitted responses.
+
+The result retains one row per model and smooth, with estimates in the \code{data}
+list column. For distributional models, \code{.parameter} retains the label for
+the linear predictor, while \code{.model} identifies the input model. Use
+\code{\link[=draw.compare_smooths]{draw.compare_smooths()}} for faceted surface comparisons or
+estimated surface differences. Smooths with more than two covariates can be
+evaluated but cannot be drawn by this method.
 }
 \examples{
 \dontshow{
 op <- options(cli.unicode = FALSE, pillar.sigfig = 5)
 }
 load_mgcv()
-dat <- data_sim("eg1", seed = 2)
+# Simulate a noisy curve and fit two smooths with different basis sizes.
+dat <- data_sim("gwf2", n = 100, seed = 2)
+coarse <- gam(y ~ s(x, k = 5), data = dat, method = "REML")
+fine <- gam(y ~ s(x, k = 10), data = dat, method = "REML")
 
-## models to compare smooths across - artificially create differences
-m1 <- gam(y ~ s(x0, k = 5) + s(x1, k = 5) + s(x2, k = 5) + s(x3, k = 5),
-  data = dat, method = "REML"
-)
-m2 <- gam(y ~ s(x0, bs = "ts") + s(x1, bs = "ts") + s(x2, bs = "ts") +
-  s(x3, bs = "ts"), data = dat, method = "REML")
-
-## build comparisons
-comp <- compare_smooths(m1, m2)
-comp
-## notice that the result is a nested tibble
-
-draw(comp)
+# Compare the two smooths on the same grid and plot them together.
+comparison <- compare_smooths(coarse, fine, n = 40)
+comparison
+draw(comparison)
 \dontshow{
 options(op)
 }

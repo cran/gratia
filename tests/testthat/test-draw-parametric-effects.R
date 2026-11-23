@@ -1,13 +1,7 @@
 # Test draw.parametric_effects() method
 
 test_that("draw.parametric_effects works for m_2_fac", {
-  expect_message(
-    peff <- parametric_effects(m_2_fac,
-      data = df_2_fac,
-      envir = teardown_env()
-    ),
-    "Interaction terms are not currently supported."
-  )
+  expect_silent(peff <- parametric_effects(m_2_fac))
   expect_silent(plt <- draw(peff))
 
   # skip_on_ci() # testing without as moved to mac os x
@@ -15,13 +9,7 @@ test_that("draw.parametric_effects works for m_2_fac", {
 })
 
 test_that("draw.parametric_effects works for m_para_sm", {
-  expect_message(
-    peff <- parametric_effects(m_para_sm,
-      data = df_2_fac,
-      envir = teardown_env()
-    ),
-    "Interaction terms are not currently supported."
-  )
+  expect_silent(peff <- parametric_effects(m_para_sm))
   expect_silent(plt <- draw(peff, rug = FALSE))
 
   # skip_on_ci() # testing without as moved to mac os x
@@ -30,8 +18,7 @@ test_that("draw.parametric_effects works for m_para_sm", {
 
 test_that("draw.parametric_effects works for m_2_fac select term", {
   expect_silent(peff <- parametric_effects(m_2_fac,
-    term = "fac", data = df_2_fac,
-    envir = teardown_env()
+    term = "fac"
   ))
   expect_silent(plt <- draw(peff))
 
@@ -41,8 +28,7 @@ test_that("draw.parametric_effects works for m_2_fac select term", {
 
 test_that("draw.parametric_effects works for m_para_sm select term", {
   expect_silent(peff <- parametric_effects(m_para_sm,
-    term = "fac", data = df_2_fac,
-    envir = teardown_env()
+    term = "fac"
   ))
   expect_silent(plt <- draw(peff, rug = FALSE))
 
@@ -51,13 +37,7 @@ test_that("draw.parametric_effects works for m_para_sm select term", {
 })
 
 test_that("draw.parametric_effects works with only parametric terms", {
-  expect_message(
-    peff <- parametric_effects(m_only_para,
-      data = df_2_fac,
-      envir = teardown_env()
-    ),
-    "Interaction terms are not currently supported."
-  )
+  expect_silent(peff <- parametric_effects(m_only_para))
   expect_silent(plt <- draw(peff, rug = FALSE))
 
   # skip_on_ci() # testing without as moved to mac os x
@@ -114,11 +94,11 @@ test_that("issue 45 parametric effects for lss models remains fixed", {
     data = data_45
   )
 
-  expect_silent(plt1 <- draw(b, rug = FALSE))
+  expect_silent(plt1 <- draw(b, parametric = FALSE, rug = FALSE))
 
   expect_silent(plt2 <- draw(b,
     parametric = TRUE, rug = FALSE,
-    data = data_45, envir = teardown_env()
+    data = data_45
   ))
 
   # ZIP model with a categorical predictor
@@ -127,11 +107,11 @@ test_that("issue 45 parametric effects for lss models remains fixed", {
     data = data_45
   )
 
-  expect_silent(plt3 <- draw(b0, rug = FALSE))
+  expect_silent(plt3 <- draw(b0, parametric = FALSE, rug = FALSE))
 
   expect_silent(plt4 <- draw(b0,
     parametric = TRUE, rug = FALSE,
-    data = data_45, envir = teardown_env()
+    data = data_45
   ))
 
   # ZIP model with linear and categorical predictor
@@ -140,11 +120,11 @@ test_that("issue 45 parametric effects for lss models remains fixed", {
     data = data_45
   )
 
-  expect_silent(plt5 <- draw(b1, rug = FALSE))
+  expect_silent(plt5 <- draw(b1, parametric = FALSE, rug = FALSE))
 
   expect_silent(plt6 <- draw(b1,
     parametric = TRUE, rug = FALSE,
-    data = data_45, envir = teardown_env()
+    data = data_45
   ))
 
   # skip_on_ci() # testing without as moved to mac os x
@@ -157,15 +137,14 @@ test_that("issue 45 parametric effects for lss models remains fixed", {
 })
 
 # test #219
-test_that("parametric effects works with messing data in model fit", {
+test_that("parametric effects works with missing data in model fit", {
   skip_on_cran()
   # skip_on_ci() # testing without as moved to mac os x
-  skip_if_offline()
   skip_if_not_installed("forcats")
   skip_if_not_installed("readr")
 
-  rats_url <- "https://bit.ly/rat-hormone"
-  expect_warning(rats <- readr::read_table(rats_url,
+  rats_file <- testthat::test_path("fixtures", "rats.txt")
+  expect_warning(rats <- readr::read_table(rats_file,
     col_types = "dddddddddddd-"
   ))
   # ignore the warning - it"s due to trailing white space at the ends of each
@@ -197,8 +176,8 @@ test_that("parametric effects works with messing data in model fit", {
 
   expect_silent(plt <- draw(m_rat,
     residuals = TRUE, rug = FALSE,
-    grouped_by = TRUE, parametric = TRUE,
-    data = rats, envir = teardown_env()
+    grouped = c("factor-by", "sz", "fs"), parametric = TRUE,
+    data = rats
   ))
 
   # skip_on_ci() # testing without as moved to mac os x
@@ -207,8 +186,7 @@ test_that("parametric effects works with messing data in model fit", {
 })
 
 test_that("factor parametric effects preserve levels when plotting #284", {
-  expect_silent(pe <- parametric_effects(m_284, data = df_284,
-    envir = teardown_env()))
+  expect_silent(pe <- parametric_effects(m_284))
 
   skip_on_cran()
   expect_silent(plt <- draw(pe))

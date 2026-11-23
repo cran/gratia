@@ -2,7 +2,7 @@
 % Please edit documentation in R/draw-methods.R
 \name{draw.penalty_df}
 \alias{draw.penalty_df}
-\title{Display penalty matrices of smooths using \code{ggplot}}
+\title{Display penalty matrices of smooths using \code{\link[ggplot2:ggplot]{ggplot2::ggplot()}}}
 \usage{
 \method{draw}{penalty_df}(
   object,
@@ -17,13 +17,14 @@
   ncol = NULL,
   nrow = NULL,
   guides = "keep",
+  geom = c("raster", "tile"),
   ...
 )
 }
 \arguments{
 \item{object}{a fitted GAM, the result of a call to \code{\link[mgcv:gam]{mgcv::gam()}}.}
 
-\item{normalize}{logical; normalize the penalty to the range -1, 1?}
+\item{normalize}{logical; normalise the penalty to the range -1, 1?}
 
 \item{as_matrix}{logical; how should the plotted penalty matrix be oriented?
 If \code{TRUE} row 1, column 1 of the penalty matrix is draw in the upper left,
@@ -53,21 +54,30 @@ spread the plots.}
 \item{guides}{character; one of \code{"keep"} (the default), \code{"collect"}, or
 \code{"auto"}. Passed to \code{\link[patchwork:plot_layout]{patchwork::plot_layout()}}}
 
+\item{geom}{character; either \code{"raster"} (the default) or \code{"tile"}.
+Raster rendering uses an image for the matrix, which can keep large PDF
+plots compact. Tile rendering uses individual rectangles, providing vector
+cells in PDF and SVG output, but can increase file size for large matrices.}
+
 \item{...}{additional arguments passed to \code{\link[patchwork:wrap_plots]{patchwork::wrap_plots()}}.}
 }
 \description{
-Displays the penalty matrices of smooths as a heatmap using \code{ggplot}
+Displays the penalty matrices of smooths as a heatmap using \code{\link[ggplot2:ggplot]{ggplot2::ggplot()}}
 }
+\section{Label layout}{
+
+Pass \code{label_control = draw_label_control(...)} to \code{draw()} to wrap discrete
+axis labels and legend text, stagger discrete tick labels, or adjust legend
+and colour-bar layout. Settings apply to each panel, including unwrapped
+plot lists. See \code{\link[=draw_label_control]{draw_label_control()}} for the available settings.
+}
+
 \examples{
 load_mgcv()
-dat <- data_sim("eg4", n = 400, seed = 42)
-m <- gam(y ~ s(x0) + s(x1, bs = "cr") + s(x2, bs = "bs", by = fac),
-  data = dat, method = "REML"
-)
+# Fit a cubic regression spline to simulated data.
+dat <- data_sim("eg1", n = 80, seed = 42)
+model <- gam(y ~ s(x0, bs = "cr", k = 6), data = dat, method = "REML")
 
-## produce a multi-panel plot of all penalties
-draw(penalty(m))
-
-# for a specific smooth
-draw(penalty(m, select = "s(x2):fac1"))
+# Plot the smooth's penalty matrix.
+draw(penalty(model))
 }

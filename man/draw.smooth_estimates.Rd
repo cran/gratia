@@ -9,7 +9,7 @@
   constant = NULL,
   fun = NULL,
   contour = TRUE,
-  grouped_by = FALSE,
+  grouped_by = deprecated(),
   contour_col = "black",
   n_contour = NULL,
   ci_alpha = 0.2,
@@ -28,9 +28,23 @@
   ylim = NULL,
   crs = NULL,
   default_crs = NULL,
-  lims_method = "cross",
+  lims_method = "geometry_bbox",
   caption = TRUE,
-  ...
+  surface = c("raster", "tile", "3d"),
+  surface_3d = list(),
+  ci_3d = FALSE,
+  ci_3d_alpha = 0.15,
+  ci_3d_col = "grey60",
+  back_transform = FALSE,
+  re_levels = NULL,
+  mrf_plot = c("effects", "qq"),
+  interval = NULL,
+  ...,
+  variables = NULL,
+  cyclic = c("cartesian", "polar"),
+  polar_args = list(),
+  grouped = c("sz", "fs"),
+  show_ci = c("factor-by", "sz")
 )
 }
 \arguments{
@@ -42,38 +56,46 @@ before the confidence band is computed.}
 
 \item{fun}{function; a function that will be applied to the estimated values
 and confidence interval before plotting. Can be a function or the name of a
-function. Function \code{fun} will be applied after adding any \code{constant}, if
+function. For simultaneous bands it must be monotone over the entire band;
+endpoint transformation alone does not preserve non-monotone band coverage.
+Function \code{fun} will be applied after adding any \code{constant}, if
 provided.}
 
 \item{contour}{logical; should contours be draw on the plot using
 \code{\link[ggplot2:geom_contour]{ggplot2::geom_contour()}}.}
 
-\item{grouped_by}{logical; should factor by smooths be drawn as one panel
-per level of the factor (\code{FALSE}, the default), or should the individual
-smooths be combined into a single panel containing all levels (\code{TRUE})?}
+\item{grouped_by}{Deprecated; use \code{grouped}. Explicit \code{TRUE} adds
+\code{"factor-by"} to \code{grouped}; \code{FALSE} removes it, retaining the other types.}
 
-\item{contour_col}{colour specification for contour lines.}
+\item{contour_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specification for contour lines.}
 
 \item{n_contour}{numeric; the number of contour bins. Will result in
 \code{n_contour - 1} contour lines being drawn. See \code{\link[ggplot2:geom_contour]{ggplot2::geom_contour()}}.}
 
-\item{ci_alpha}{numeric; alpha transparency for confidence or simultaneous
+\item{ci_alpha}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Numeric; alpha transparency for confidence or simultaneous
 interval.}
 
-\item{ci_col}{colour specification for the confidence/credible intervals
+\item{ci_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specification for the confidence/credible intervals
 band. Affects the fill of the interval.}
 
-\item{smooth_col}{colour specification for the smooth line.}
+\item{smooth_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specification for the smooth line.}
 
-\item{resid_col}{colour specification for the partial residuals.}
+\item{resid_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specification for the partial residuals.}
 
-\item{decrease_col, increase_col}{colour specifications to use for
+\item{decrease_col, increase_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specifications to use for
 indicating periods of change. \code{col_change} is used when
 \code{change_type = "change"}, while \code{col_decrease} and \code{col_increase} are used
 when `change_type = "sizer"``.}
 
-\item{change_lwd}{numeric; the value to set the \code{linewidth} to in
-\code{\link[ggplot2:geom_path]{ggplot2::geom_line()}}, used to represent the periods of change.}
+\item{change_lwd}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Numeric; the value to set the \code{linewidth} to in
+\code{\link[ggplot2:geom_line]{ggplot2::geom_line()}}, used to represent the periods of change.}
 
 \item{partial_match}{logical; should smooths be selected by partial matches
 with \code{select}? If \code{TRUE}, \code{select} can only be a single string to match
@@ -97,55 +119,177 @@ drawn passed to the \code{angle} argument of \code{\link[ggplot2:guide_axis]{ggp
 \item{ylim}{numeric; vector of y axis limits to use all \emph{all} panels drawn.}
 
 \item{crs}{the coordinate reference system (CRS) to use for the plot. All
-data will be projected into this CRS. See \code{\link[ggplot2:ggsf]{ggplot2::coord_sf()}} for
+data will be projected into this CRS. See \code{\link[ggplot2:coord_sf]{ggplot2::coord_sf()}} for
 details.}
 
-\item{default_crs}{the coordinate reference system (CRS) to use for the
-non-sf layers in the plot. If left at the default \code{NULL}, the CRS used is
-4326 (WGS84), which is appropriate for spline-on-the-sphere smooths, which
-are parameterized in terms of latitude and longitude as coordinates. See
-\code{\link[ggplot2:ggsf]{ggplot2::coord_sf()}} for more details.}
+\item{default_crs}{the coordinate reference system (CRS) to use for non-sf
+layers added to spherical plots. The default, \code{NULL}, uses 4326 (WGS84).
+Internally generated surface cells, contours and observation points have
+their own geographic CRS, with longitude on the horizontal axis and
+latitude on the vertical axis. See \code{\link[ggplot2:coord_sf]{ggplot2::coord_sf()}} for more details.}
 
-\item{lims_method}{character; affects how the axis limits are determined. See
-\code{\link[ggplot2:ggsf]{ggplot2::coord_sf()}}. Be careful; in testing of some examples, changing
-this to \code{"orthogonal"} for example with the chlorophyll-a example from
-Simon Wood's GAM book quickly used up all the RAM in my test system and the
-OS killed R. This could be incorrect usage on my part; right now the grid
-of points at which SOS smooths are evaluated (if not supplied by the user)
-can produce invalid coordinates for the corners of tiles as the grid is
-generated for tile centres without respect to the spacing of those tiles.}
+\item{lims_method}{character; affects how spherical plot axis limits are
+determined. The default, \code{"geometry_bbox"}, uses the rendered geometry.
+Passed to \code{\link[ggplot2:coord_sf]{ggplot2::coord_sf()}}. Spherical surfaces use explicit
+geographic cells with valid polar and date-line boundaries. Orthographic
+plots clip cells, contours and observation points to the visible hemisphere
+before projection. Explicit prediction data on a rectilinear grid retain
+their actual spacing; scattered or singleton coordinates are drawn as
+points, with a message, because they do not define surface cells. Incomplete
+observation rug coordinates are omitted. Grouped factor-by spherical
+surfaces use separate facets for each factor level.}
 
 \item{caption}{logical; show the smooth type in the caption of each plot?}
 
+\item{surface}{character; one of \code{"raster"} (the default), \code{"tile"}, or
+\code{"3d"}. Raster surfaces keep large PDF plots compact; tiles are borderless
+vector rectangles. Three-dimensional surfaces use the optional \code{ggcube}
+package, with the displayed partial effect as height and fill. Numeric
+smooth and parametric surfaces, including conditioning facets and soap
+films, are supported. Curves and factor estimates keep their usual display;
+spherical smooths retain their geographic rendering.
+Covariate scale changes that produce irregular spacing use rectangles
+bounded by adjacent coordinate midpoints for flat surfaces.}
+
+\item{surface_3d}{named list of view options passed to \code{\link[ggcube:coord_3d]{ggcube::coord_3d()}},
+for example \code{list(yaw = 45, persp = FALSE)}. The default \code{\link[base:list]{base::list()}} uses the
+default view with \code{ggcube::light(backface_scale = 1)}, preserving equal
+horizontal units for isotropic smooths. Supply \code{light = ggcube::light(...)}
+in this list to override lighting; \code{ggcube::light(method = "none")} disables
+it. An explicitly supplied \code{light} replaces the entire default light.
+Only the coordinate system is used; ggcube's theme settings are not applied.
+These options affect all 3D panels in a call. For different views per term,
+modify individual plots returned by \code{\link[=assemble]{assemble()}}. The \code{dist} entry here
+controls perspective; the top-level \code{dist} argument controls masking.}
+
+\item{ci_3d}{logical; add lower and upper interval surfaces to numeric
+smooth and parametric effect panels when \code{surface = "3d"}? Defaults to
+\code{FALSE}. Applies across supported model classes and conditioning facets.
+Other panel types, including standard errors, retain their usual display.
+Smooth bounds follow \code{interval}; parametric bounds remain pointwise.}
+
+\item{ci_3d_alpha}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Numeric between 0 and 1; opacity of both interval
+surfaces, independent of \code{ci_alpha}. Defaults to \code{0.15}.}
+
+\item{ci_3d_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. One R colour; fill of both interval surfaces, independent
+of \code{ci_col} and the estimate's continuous fill scale. Defaults to \code{"grey60"}.}
+
+\item{back_transform}{logical; plot covariates on their original scale?
+Defaults to \code{FALSE}, using model coordinates such as \code{log(x)} for a term
+containing \code{log(x)}. With \code{TRUE}, recover the raw covariates, generate a
+grid on their original scale and evaluate the model expressions forwards.
+Applies to axes, rugs, partial-residual locations and conditioning facets,
+including tensor products and parametric interactions. Each smooth axis
+must depend on one distinct original model covariate. Functions such as
+\code{foo(x)} are supported when their raw inputs and functions can be recovered;
+no inverse function is needed. Missing raw data or unavailable functions
+produce an error; supply \code{data} or \code{envir} as appropriate.
+With supplied prediction \code{data}, unavailable raw fitting observations
+omit rugs and partial residuals; prediction rows are never used as observations.
+For precomputed smooth estimates, prepare raw grids with
+\code{smooth_estimates(model, back_transform = TRUE)} before drawing with
+\code{back_transform = TRUE}. Raw inputs supplied through \code{data} also retain
+their coordinates. Transformed-only estimates cannot be relabelled on the
+raw scale, including grids carrying typical values from \code{include_all = TRUE}.
+Transformed soap-film boundaries lack retained raw coordinates and must
+be drawn with \code{back_transform = FALSE}.
+Parametric estimates retain both scales; multi-column basis
+expansions retain raw axes on either setting. Does not transform estimated
+effects or their intervals; use \code{fun} for that.}
+
+\item{re_levels}{named list of factor level labels to retain in tensor products
+with random-effect margins, for example \code{list(species = c("a", "b"))}.
+Fitted factor order and ordered status are retained.}
+
+\item{mrf_plot}{character; display Markov random field smooths as area-labelled
+estimates and intervals (\code{"effects"}, the default), or a descriptive Gaussian
+quantile plot (\code{"qq"}). MRF effects are correlated and need not have equal
+marginal variances; the QQ display is not a test of independent normal effects.
+Specialist maps and graph plots are outside the scope of this display.}
+
+\item{interval}{character or \code{NULL}; the default draws stored interval bounds
+unchanged, adding pointwise bounds if absent. An explicit choice validates
+stored interval metadata; \code{"credible"} aliases \code{"confidence"}. Simultaneous
+bands must first be computed from the fitted model by \code{\link[=smooth_estimates]{smooth_estimates()}}.
+Method and uncertainty controls such as \code{interval_method}, \code{shape_source},
+\code{frequentist}, and \code{unconditional} also require the fitted model; they
+cannot change intervals when drawing saved estimates.}
+
 \item{...}{additional arguments passed to \code{\link[patchwork:wrap_plots]{patchwork::wrap_plots()}}.}
+
+\item{variables}{Character vector giving every covariate of the selected
+smooths exactly once, in plotting order: x, y, then the conditioning
+covariate for 3D smooths, or facet rows and columns for 4D smooths.
+When supplied, selected smooths must use the same covariates. Use fitted coordinate names,
+such as \code{"log(x)"} for a transformed covariate. The default, \code{NULL}, favours
+a two-variable tensor margin for x and y, otherwise retaining fitted order.
+Grid resolution follows this order. Supplied \code{data} are evaluated unchanged.
+Drawing saved estimates can change the order but uses only points already
+evaluated; evaluate again to change grid resolution or conditioning values.
+Continuous covariates must precede factors. Spherical smooths retain their
+latitude/longitude convention and do not support reordering.}
+
+\item{cyclic}{character; use Cartesian coordinates (\code{"cartesian"}, the
+default) or polar coordinates (\code{"polar"}) for one-dimensional cyclic
+smooths. Other smooths and parametric terms keep their usual displays.}
+
+\item{polar_args}{named list of options passed to \code{\link[ggplot2:coord_radial]{ggplot2::coord_radial()}}.
+Accepts \code{start}, \code{reverse}, \code{inner.radius}, \code{r.axis.inside},
+\code{rotate.angle} and \code{clip}. The radial axis is inside the circle by
+default (\code{r.axis.inside = TRUE}); supplied values override this default.
+Other options use their ggplot2 defaults. Requires
+\code{cyclic = "polar"} when nonempty. The angular variable, fitted cycle
+boundaries, full-circle extent and angular expansion are set by gratia.}
+
+\item{grouped}{character or \code{FALSE}; factor smooth types whose curves share
+a panel. Choose any of \code{"factor-by"}, \code{"sz"}, and \code{"fs"}, or \code{FALSE} to
+separate all their curves. The default, \code{c("sz", "fs")}, overlays \code{sz}
+and \code{fs} curves and separates factor-by curves. \code{"factor-by"} includes
+ordered factors. In reference-plus-deviation models the reference smooth
+remains separate; only fitted nonreference deviations are grouped.
+For \code{sz} terms with several factors, separate plots show each evaluated
+combination of levels. Applies to curves with one continuous covariate;
+existing surface displays are unchanged. Separate curves use the usual
+univariate styling: a black line and a translucent black interval by
+default, with colours and opacity controlled by the smooth theme settings.}
+
+\item{show_ci}{character or \code{FALSE}; factor smooth types whose curves show
+intervals. Choose any of \code{"factor-by"}, \code{"sz"}, and \code{"fs"}, or \code{FALSE} to
+hide all their ribbons. The default, \code{c("factor-by", "sz")}, retains
+existing interval visibility; including \code{"fs"} enables its intervals.
+Controls display only, independently of \code{interval} and \code{grouped}.
+Ordinary smooths and parametric effects retain their intervals.}
 }
 \description{
 Plot the result of a call to \code{smooth_estimates()}
 }
+\details{
+\code{cyclic = "polar"} uses fitted cycle boundaries stored in the
+\code{cyclic_info} attribute. Evaluation points are unchanged: estimates
+covering only part of a cycle leave a gap. To draw a complete cycle,
+supply both fitted boundary values when computing estimates, or use
+\code{draw(model, cyclic = "polar")} to generate the full-cycle grid.
+Recompute older saved estimates with \code{\link[=smooth_estimates]{smooth_estimates()}} if their
+fitted cycle boundaries are unavailable. See \code{\link[=draw.gam]{draw.gam()}} for supported
+smooths and coordinate options.
+}
+\section{Label layout}{
+
+Pass \code{label_control = draw_label_control(...)} to \code{draw()} to wrap discrete
+axis labels and legend text, stagger discrete tick labels, or adjust legend
+and colour-bar layout. Settings apply to each panel, including unwrapped
+plot lists. See \code{\link[=draw_label_control]{draw_label_control()}} for the available settings.
+}
+
 \examples{
 load_mgcv()
-# example data
-df <- data_sim("eg1", seed = 21)
-# fit GAM
+# Simulate an additive Gaussian response and fit a GAM
+df <- data_sim("eg1", n = 200, seed = 21)
 m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df, method = "REML")
-# plot all of the estimated smooths
-sm <- smooth_estimates(m)
-draw(sm)
-# evaluate smooth of `x2`
+
+# Evaluate one smooth and plot its estimates and interval
 sm <- smooth_estimates(m, select = "s(x2)")
-# plot it
 draw(sm)
-
-# customising some plot elements
-draw(sm, ci_col = "steelblue", smooth_col = "forestgreen", ci_alpha = 0.3)
-
-# Add a constant to the plotted smooth
-draw(sm, constant = coef(m)[1])
-
-# Adding change indicators to smooths based on derivatives of the smooth
-d <- derivatives(m, n = 100) # n to match smooth_estimates()
-
-smooth_estimates(m) |>
-  add_sizer(derivatives = d, type = "sizer") |>
-  draw()
 }

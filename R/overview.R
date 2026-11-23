@@ -10,7 +10,7 @@
 
 #' @param parametric logical; include the model parametric terms in the
 #'   overview?
-#' @param random_effects tests of fully penalized smooth terms (those with a
+#' @param random_effects tests of fully penalised smooth terms (those with a
 #'   zero-dimensional null space, e.g. random effects) are computationally
 #'   expensive and for large data sets producing these p values can take a
 #'   very long time. If `random_effects = FALSE`, the tests of the expensive
@@ -63,14 +63,21 @@
   nms <- c("term", "type", "k", "edf", "ref.edf", "statistic", "p.value")
 
   # smooth terms
-  types <- vapply(model$smooth, smooth_type, character(1))
-  dfs <- vapply(model$smooth, basis_size, double(1))
-  out <- as.data.frame(smry$s.table) |>
-    rownames_to_column() |>
-    as_tibble() |>
-    # select(!matches("Ref.df")) |>
-    add_column(type = types, k = dfs, .after = 1L) |>
-    set_names(nms)
+  out <- if (is.null(smry$s.table)) {
+    tibble(
+      term = character(), type = character(), k = double(),
+      edf = double(), ref.edf = double(), statistic = double(),
+      p.value = double()
+    )
+  } else {
+    types <- vapply(model$smooth, smooth_type, character(1))
+    dfs <- vapply(model$smooth, basis_size, double(1))
+    as.data.frame(smry$s.table) |>
+      rownames_to_column() |>
+      as_tibble() |>
+      add_column(type = types, k = dfs, .after = 1L) |>
+      set_names(nms)
+  }
 
   # parametric terms
   para <- NULL
@@ -81,8 +88,8 @@
       term = para_nms,
       type = rep("parametric", nr),
       k    = rep(NA_real_, nr),
-      edf  = c(1, smry$pTerms.df),
-      ref.edf = c(1, smry$pTerms.df),
+      edf  = rep(1, nr),
+      ref.edf = rep(1, nr),
       statistic = smry$p.t,
       p.value = smry$p.pv
     ) |>
@@ -117,7 +124,7 @@
 
 #' @export
 `overview.gamm` <- function(model, ...) {
-  out <- overview(model$gam)
+  out <- overview(model$gam, ...)
   class(out) <- append(class(out), values = "overview_gamm", after = 0)
   out
 }

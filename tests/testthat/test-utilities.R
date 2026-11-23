@@ -424,13 +424,7 @@ test_that("term_variables works for a terms", {
 test_that("transform_fun works for parametric_effects", {
   skip_if_not_installed("withr")
   withr::local_options(lifecycle_verbosity = "quiet")
-  expect_message(
-    pe <- parametric_effects(m_para_sm,
-      data = df_2_fac,
-      envir = teardown_env()
-    ),
-    "Interaction terms are not currently supported."
-  )
+  expect_silent(pe <- parametric_effects(m_para_sm))
   expect_silent(pe <- transform_fun(pe, fun = abs))
   expect_true(all(!pe$.partial < 0L))
 })
@@ -450,7 +444,7 @@ test_that("transform_fun works for smooth_estimates with constant", {
 })
 
 test_that("transform_fun works for smooth_samples with constant", {
-  expect_silent(sm <- smooth_samples(m_gam, select = "s(x1)", n = 5))
+  expect_silent(sm <- smooth_samples(m_gam, select = "s(x1)", n_draws = 5))
   expect_silent(sm <- transform_fun(sm, fun = exp, constant = coef(m_gam)[1]))
 })
 
@@ -534,7 +528,7 @@ test_that("get smooths by id works for gamm4", {
   expect_identical(sm[[1]], m_gamm4$gam$smooth[[1]])
 
   expect_error(get_smooths_by_id(list(a = 10), 1),
-    "Not a gamm4 model fit.")
+    "no applicable method")
 })
 
 test_that("by smooth failure throws the right error", {
@@ -594,23 +588,21 @@ test_that("dispersion works for a GLM", {
 
 test_that("n_eta work", {
   expect_identical(n_eta(m_gam), 1L)
-  expect_identical(n_eta(m_accel), 2L)
+  expect_identical(n_eta(m_gaulss), 2L)
 })
 
-test_that("rtw works for twlss model", {
-  skip_on_cran()
-  skip_on_ci()
+test_that("rtw() matches native simulation for fitted twlss() parameters", {
   fit <- fitted(m_twlss)
   tw_pars <- get_twlss_bounds(m_twlss)
-  expect_snapshot(
-    with_seed(
-      123,
-      rtw(
-        fit[, 1],
-        theta_2_power(fit[, 2], a = tw_pars[1], b = tw_pars[2]),
-        exp(fit[, 3]))
-    )
-  )
+  power <- theta_2_power(fit[, 2], a = tw_pars[1], b = tw_pars[2])
+  dispersion <- exp(fit[, 3])
+  # This shared fit has intercept-only power and dispersion predictors.
+  expect_equal(power, rep(power[[1L]], nrow(fit)), ignore_attr = TRUE)
+  expect_equal(dispersion, rep(dispersion[[1L]], nrow(fit)), ignore_attr = TRUE)
+  expected <- with_seed(123, mgcv::rTweedie(fit[, 1],
+    p = power[[1L]], phi = dispersion[[1L]]))
+  actual <- with_seed(123, rtw(fit[, 1], power, dispersion))
+  expect_equal(actual, expected, tolerance = 1e-12)
 })
 
 test_that("if a multivariate model is identified correctly", {

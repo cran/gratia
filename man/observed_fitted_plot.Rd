@@ -12,16 +12,19 @@ observed_fitted_plot(
   subtitle = NULL,
   caption = NULL,
   point_col = "grey20",
-  point_alpha = 1
+  point_alpha = 1,
+  by_family = NULL,
+  conditioning = NULL,
+  ...
 )
 }
 \arguments{
-\item{model}{a fitted model. Currently only class \code{"gam"}.}
+\item{model}{a fitted model supported by \link{diagnostic_support}.}
 
 \item{ylab}{character or expression; the label for the y axis. If not
 supplied, a suitable label will be generated.}
 
-\item{xlab}{character or expression; the label for the y axis. If not
+\item{xlab}{character or expression; the label for the x axis. If not
 supplied, a suitable label will be generated.}
 
 \item{title}{character or expression; the title for the plot. See
@@ -33,12 +36,29 @@ supplied, a suitable label will be generated.}
 \item{caption}{character or expression; the plot caption. See
 \code{\link[ggplot2:labs]{ggplot2::labs()}}.}
 
-\item{point_col}{colour used to draw points in the plots. See
-\code{\link[graphics:par]{graphics::par()}} section \strong{Color Specification}. This is passed to
-the individual plotting functions, and therefore affects the points of
-all plots.}
+\item{point_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Constant point colour when components are not mapped to
+colour. Pooled grouped diagnostics instead colour points by component.}
 
-\item{point_alpha}{numeric; alpha transparency for points in plots.}
+\item{point_alpha}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Numeric; alpha transparency for points in plots.}
+
+\item{by_family}{logical or \code{NULL}; separate indexed grouped-family components
+into facets. The default pools quantile residuals with component colours
+and facets traditional residuals. \code{TRUE} and \code{FALSE} explicitly select the
+layout. In \code{\link[=appraise]{appraise()}}, observed-versus-fitted values always use component
+facets. Standalone \code{observed_fitted_plot()} facets by default and permits
+explicit pooling. Ignored for ordinary models.}
+
+\item{conditioning}{character or \code{NULL}; \code{"conditional"} holds fitted random
+effects fixed, \code{"marginal"} averages over new effects, and \code{"gam_component"}
+uses the extracted GAM. Availability and defaults depend on the model; see
+\link{diagnostic_support}.}
+
+\item{...}{optional arguments passed to model preparation, such as the
+sdmTMB \code{field_method}. For grouped-family GAMs and joint GJRM models,
+\code{response = NULL} uses every response and an integer selects one; see
+\code{\link[=appraise]{appraise()}}. Selection leaves \code{by_family} independent.}
 }
 \description{
 Plot of fitted against observed response values

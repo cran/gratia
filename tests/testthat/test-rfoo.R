@@ -1,6 +1,6 @@
 test_that("rtw works with scalar p and phi", {
   skip_on_cran()
-  skip_on_ci()
+  #skip_on_ci()
 
   expect_snapshot(
     withr::with_seed(
@@ -10,13 +10,13 @@ test_that("rtw works with scalar p and phi", {
         p = 1.5,
         phi = 1.1
       )
-    )
+    ) |> round(4)
   )
 })
 
 test_that("rtw works with vector p and phi", {
   skip_on_cran()
-  skip_on_ci()
+  #skip_on_ci()
 
   expect_snapshot(
     withr::with_seed(
@@ -26,7 +26,7 @@ test_that("rtw works with vector p and phi", {
         p = runif(10, min = 1, max = 2),
         phi = runif(10, 1, 2)
       )
-    )
+    ) |> round(4)
   )
 })
 

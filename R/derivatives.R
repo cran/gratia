@@ -40,10 +40,26 @@
 #' @param type character; the type of finite difference used. One of
 #'   `"forward"`, `"backward"`, or `"central"`.
 #' @param n numeric; the number of points to evaluate the derivative at.
-#' @param eps numeric; the finite difference.
+#' @param eps a positive finite number giving the absolute finite-difference
+#'   step, or `NULL` (the default) to choose it automatically. The automatic
+#'   step is the fitted range of the differentiation coordinate multiplied by
+#'   `.Machine$double.eps^(1 / (order + p))`, where `p = 2` for central
+#'   differences and `p = 1` for forward or backward differences. A constant
+#'   coordinate uses its absolute value (or one if zero) instead of its range.
+#'   The step is rounded upwards and bounded below so that adding it to the
+#'   coordinates produces a representable change. Stored transformed values
+#'   or raw covariate summaries supply the range; supplied `data` are used if
+#'   neither is available. This is a scale-aware heuristic, not an error bound;
+#'   unusual function scales or domain boundaries may require explicit `eps`.
+#'   For first central differences the two points are separated by `eps`;
+#'   for second central differences they are each `eps` from the target.
 #' @param interval character; the type of interval to compute. One of
 #'   `"confidence"` for point-wise intervals, or `"simultaneous"` for
 #'   simultaneous intervals.
+#' @inheritParams smooth_estimates
+#' @param interval_method character; use stored [mgcv::scasm()] bootstrap draws for
+#'   pointwise intervals with `"auto"` (the default), or explicitly select
+#'   `"gaussian"` or `"bootstrap"`. Bootstrap simultaneous bands are unavailable.
 #' @param n_sim integer; the number of simulations used in computing the
 #'   simultaneous intervals.
 #' @param level numeric; `0 < level < 1`; the confidence level of the
@@ -55,7 +71,7 @@
 #' @param offset numeric; a value to use for any offset term
 #' @param ncores number of cores for generating random variables from a
 #'   multivariate normal distribution. Passed to [mvnfast::rmvn()].
-#'   Parallelization will take place only if OpenMP is supported (but appears
+#'   Parallelisation will take place only if OpenMP is supported (but appears
 #'   to work on Windows with current `R`).
 #' @param partial_match logical; should smooths be selected by partial matches
 #'   with `term`? If `TRUE`, `term` can only be a single string to match
@@ -71,6 +87,7 @@
 #' @importFrom tidyselect last_col
 #' @importFrom lifecycle deprecated is_present
 #' @importFrom vctrs vec_slice
+#' @importFrom cli cli_abort cli_alert_info
 #'
 #' @rdname derivatives
 #'
@@ -80,13 +97,55 @@
 #' * `.fs`: the name of any random factor variable involved in the smooth,
 #' * `.derivative`: the estimated derivative,
 #' * `.se`: the standard error of the estimated derivative,
-#' * `.crit`: the critical value such that `derivative` ± `(crit * se)` gives
+#' * `.crit`: the critical value such that `.derivative` ± `(.crit * .se)` gives
 #'   the upper and lower bounds of the requested confidence or simultaneous
-#'   interval (given `level`),
+#'   interval (given `level`); `NA` for bootstrap limits,
 #' * `.lower_ci`: the lower bound of the confidence or simultaneous interval,
 #' * `.upper_ci`: the upper bound of the confidence or simultaneous interval.
 #' * plus one or more columns of data containing the values of covariates at
 #'   which the derivative was evaluated.
+#'
+#' @param envir optional environment for functions and constants in model
+#'   expressions; see [smooth_estimates()].
+#' @param wrt differentiation coordinate: `"smooth"` (the default) uses the
+#'   smooth expression, such as `log(x)`; `"covariate"` uses a raw covariate,
+#'   such as `x`, and reevaluates expressions at each finite-difference point.
+#' @param focal name of the differentiation coordinate, or a vector with one
+#'   name per selected smooth. For raw-covariate derivatives it must be supplied
+#'   when a smooth depends on multiple raw inputs. A single name can be used
+#'   for all selected univariate smooths.
+#'
+#' @seealso [difference_smooths()] to compute derivatives of differences
+#'   between factor-by smooths with `order = 1` or `order = 2`.
+#'
+#' @section Parallel calculation:
+#' With mirai and carrier installed, configure workers with
+#' [mirai::daemons()] to distribute calculations across selected smooths.
+#' [difference_smooths()] distributes factor-level comparisons instead.
+#' Without configured workers, or with only one calculation, evaluation is
+#' serial. These functions leave the caller's worker pool running.
+#'
+#' Model selection, evaluation of model expressions and random draws are
+#' prepared in the caller. Workers receive the coordinates and coefficient
+#' columns needed for their calculation. Custom prediction methods are evaluated
+#' in the caller, including custom tensor margins and factor-smooth bases;
+#' workers receive their prediction matrices. Simultaneous intervals use successive
+#' draws in selection order, so [base::set.seed()] gives the same results with or
+#' without workers, independently of their number or completion order.
+#' `derivatives()` uses [base::set.seed()]; the other functions also accept `seed`,
+#' which restores the caller's random number state on exit.
+#'
+#' [smooth_samples()] draws coefficients jointly once, then reuses those draws
+#' for every smooth, preserving dependence and chain identities. Sampling
+#' finishes before smooth calculations start, so MH chains and smooth workers
+#' are not nested. Sampling thread controls keep their existing meanings.
+#' Workers use their configured BLAS thread settings; when using a threaded
+#' BLAS, limit its threads before starting daemons to avoid competing threads.
+#'
+#' Parallel work is most useful for expensive bases or interval calculations.
+#' Small grids can be slower because of transfer and scheduling costs. Large
+#' grids and many draws also require memory for worker inputs and returned
+#' results, in addition to the final output.
 #'
 #' @examples
 #'
@@ -100,6 +159,19 @@
 #' ## first derivatives of all smooths using central finite differences
 #' derivatives(mod, type = "central")
 #'
+#' \donttest{
+#' if (requireNamespace("mirai", quietly = TRUE) &&
+#'     requireNamespace("carrier", quietly = TRUE)) {
+#'   library("mirai")
+#'   library("gratia")
+#'   local({
+#'     mirai::daemons(2)
+#'     on.exit(mirai::daemons(0))
+#'     derivatives(mod, type = "central")
+#'   })
+#' }
+#' }
+#'
 #' ## derivatives for a selected smooth
 #' derivatives(mod, type = "central", select = "s(x1)")
 #' ## or via a partial match
@@ -107,23 +179,32 @@
 #' \dontshow{
 #' options(op)
 #' }
-`derivatives.gam` <- function(object,
-    select = NULL,
-    term = deprecated(),
-    data = newdata,
-    order = 1L,
-    type = c("forward", "backward", "central"),
-    n = 100,
-    eps = 1e-7,
-    interval = c("confidence", "simultaneous"),
-    n_sim = 10000,
-    level = 0.95,
-    unconditional = FALSE,
-    frequentist = FALSE,
-    offset = NULL,
-    ncores = 1,
-    partial_match = FALSE,
-    ..., newdata = NULL) {
+`derivatives.gam` <- function(
+  object,
+  select = NULL,
+  term = deprecated(),
+  data = newdata,
+  order = 1L,
+  type = c("forward", "backward", "central"),
+  n = 100,
+  eps = NULL,
+  interval = c("confidence", "simultaneous"),
+  n_sim = 10000,
+  level = 0.95,
+  unconditional = FALSE,
+  frequentist = FALSE,
+  offset = NULL,
+  ncores = 1,
+  partial_match = FALSE,
+  ...,
+  newdata = NULL, envir = NULL, wrt = c("smooth", "covariate"),
+  focal = NULL, interval_method = c("auto", "gaussian", "bootstrap"),
+  simultaneous_method = c('simulation', 'tube'),
+  simultaneous_domain = NULL, tube_control = list()
+) {
+  object_name <- deparse(substitute(object))
+  object <- with_model_envir(object, envir)
+  wrt <- match.arg(wrt)
   if (lifecycle::is_present(term)) {
     lifecycle::deprecate_warn("0.8.9.9", "derivatives(term)",
       "derivativess(select)")
@@ -138,7 +219,7 @@
     ## need to skip random effect smooths
     take <- vapply(object$smooth[sms], smooth_type, character(1)) %in%
       "Random effect"
-    sms[take] <- FALSE
+    sms[which(sms)[take]] <- FALSE
     which(sms)
   } else {
     s <- seq_len(n_smooths(object))
@@ -170,6 +251,52 @@
 
   ## handle interval
   interval <- match.arg(interval)
+  interval_method <- scasm_interval_method(object, interval_method, interval)
+  simultaneous_method <- resolve_simultaneous_method(simultaneous_method, interval,
+    simultaneous_domain, tube_control)
+  if (simultaneous_method == 'tube') tube_check_model(object, interval_method)
+
+  # we only do derivatives with this function for univariate smooths
+  # check the dimensionality here, drop any sm with dim > 1,
+  # display a message if we drop any, throw error if we can't do anything
+  sm_dims <- vapply(
+    get_smooths_by_id(object, smooth_ids),
+    FUN = smooth_dim,
+    FUN.VALUE = numeric(1L)
+  )
+  not_multivar <- c("sz.interaction")
+  sm_class <- vapply(
+    get_smooths_by_id(object, smooth_ids),
+    FUN = \(x) inherits(x, not_multivar),
+    FUN.VALUE = logical(1L)
+  )
+  chk_multivar <- (sm_dims > 1L) & (!sm_class)
+  if (any(chk_multivar)) {
+    if (all(chk_multivar)) {
+      cli_abort(
+        c(
+          "Can't compute derivatives for any smooths in {.var {object_name}}.",
+          "x" = "All smooths are either random effects or multivariate",
+          "!" = "See {.fun partial_derivatives} for one solution for multivariate smooths."
+        )
+      )
+    } else {
+      sm_labs <- vapply(
+        get_smooths_by_id(object, smooth_ids),
+        FUN = smooth_label,
+        FUN.VALUE = character(1L)
+      )
+      sm_labs <- sm_labs[chk_multivar]
+      cli_alert_info("Can't compute derivatives of multivariate smooths")
+      cli_alert_info("Ignoring: {.val {sm_labs}}")
+      cli_alert_info(
+        "See {.fun partial_derivatives} for a solution."
+      )
+    }
+  }
+
+  # filter out more smooths that we can't handle
+  smooth_ids <- smooth_ids[!chk_multivar]
 
   ## get the required covariance matrix
   Vb <- get_vcov(object,
@@ -181,56 +308,38 @@
 
   ## how many smooths need working on
   ns <- length(smooth_ids)
-  result <- vector(mode = "list", length = ns)
+  tasks <- vector(mode = "list", length = ns)
 
-  ## loop over the smooths and compute derivatives from finite differences
+  ## Prepare coordinates and random draws in term order before dispatch.
   for (i in seq_along(smooth_ids)) {
-    ## generate data if not supplied
-    if (need_data) {
-      newd <- derivative_data(object,
-        id = smooth_ids[[i]], n = n,
-        offset = offset, order = order,
-        type = type, eps = eps
-      )
-    } else {
-      ## assume the data are OK - mgcv::predict will catch issues
-      newd <- data
-      ## ...but we need to handle factor by
-      sm <- get_smooths_by_id(object, id = smooth_ids[[i]])[[1]]
-      if (is_factor_by_smooth(sm)) {
-        newd <- vec_slice(newd, data[[by_variable(sm)]] == by_level(sm))
-      }
+    sm <- get_smooths_by_id(object, id = smooth_ids[[i]])[[1]]
+    focal_i <- derivative_focal(object, sm,
+      if (is.null(focal)) NULL else focal[[if (length(focal) == 1L) 1L else i]], wrt)
+    if (simultaneous_method == 'tube' && !identical(focal_i, sm$term)) {
+      cli::cli_abort("Tube derivative bands currently differentiate on the smooth coordinate; use wrt = 'smooth' or simulation.")
     }
-
-    # generate list of finite difference predictions for the first or second
-    #   derivatives or the required type
-    fd <- finite_diff_lpmatrix(object,
-      type = type, order = order,
-      data = newd, h = eps
-    )
-
-    ## compute the finite differences
-    X <- finite_difference(fd, order, type, eps)
-
-    ## compute derivatives
-    d <- compute_derivative(smooth_ids[[i]],
-      lpmatrix = X, betas = betas,
-      Vb = Vb, model = object, data = newd
-    )
-
-    ## compute intervals
-    if (identical(interval, "confidence")) {
-      result[[i]] <- derivative_pointwise_int(d[["deriv"]],
-        level = level,
-        distrib = "normal"
-      )
-    } else {
-      result[[i]] <- derivative_simultaneous_int(d[["deriv"]], d[["Xi"]],
-        level = level, Vb = Vb,
-        n_sim = n_sim,
-        ncores = ncores
-      )
+    h <- derivative_step(object, focal_i, data, eps, order, type)
+    # Prepare coordinates once, then recompute raw transformations per step.
+    newd <- if (need_data) {
+      smooth_derivative_data(object, sm, n, focal_i, wrt, order, type, h)
+    } else data
+    newd <- prepare_smooth_data(object, sm, newd)
+    if (is_factor_by_smooth(sm)) {
+      newd <- vec_slice(newd, is.na(newd[[sm$by]]) | newd[[sm$by]] == by_level(sm))
     }
+    tasks[[i]] <- prepare_derivative_task(object, sm, newd, focal_i,
+      wrt, type, order, h, betas, Vb, interval, interval_method, level,
+      n_sim, ncores, simultaneous_method = simultaneous_method)
+  }
+  result <- smooth_task_map(tasks, "calculate_smooth_derivative")
+  tube_records <- NULL
+  if (interval == 'simultaneous' && simultaneous_method == 'tube') {
+    result <- tube_derivative_intervals(result, tasks, object, level,
+      simultaneous_domain, tube_control)
+    tube_records <- attr(result, 'tube_records')
+  } else if (interval == "simultaneous") {
+    result <- smooth_interval_map(result, lapply(tasks, function(x) smooth_coef_indices(x$sm)),
+      Vb, level, n_sim, ncores, estimate = ".derivative", critical = TRUE)
   }
 
   ## results in a list of tibbles that we need to bind row-wise
@@ -245,6 +354,12 @@
   # relocate(all_of(c(".derivative", ".se", ".crit", ".lower_ci",
   #    ".upper_ci")), .after = last_col())
 
+  attr(result, "wrt") <- wrt
+  attr(result, "interval_info") <- scasm_interval_info(object, interval_method, interval, level)
+  if (simultaneous_method == 'tube') {
+    attr(result, 'interval_info') <- c(attr(result, 'interval_info'),
+      tube_info(tube_records, 'smooth', unconditional, frequentist))
+  }
   class(result) <- c("derivatives", class(result)) # add class
   result # return
 }
@@ -271,24 +386,17 @@
 #' @importFrom stats quantile
 #' @importFrom mvnfast rmvn
 `derivative_simultaneous_int` <- function(x, Xi, level, Vb, n_sim, ncores) {
-  ## simulate un-biased deviations given bayesian covariance matrix
-  buDiff <- mvnfast::rmvn(
-    n = n_sim, mu = rep(0, nrow(Vb)), sigma = Vb,
-    ncores = ncores
+  intervals <- simultaneous_intervals(
+    estimate = x[[".derivative"]], se = x[[".se"]], X = Xi, V = Vb,
+    level = level, n_sim = n_sim, n_cores = ncores
   )
-  # simulate deviations from expected
-  simDev <- tcrossprod(Xi, buDiff) # Xi %*% t(bu)
-  absDev <- abs(sweep(simDev, 1L, x[[".se"]], FUN = "/")) # absolute deviations
-  masd <- apply(absDev, 2L, max) # & max abs deviation per sim
-  ## simultaneous interval critical value
-  crit <- quantile(masd, prob = level, type = 8)
-  adj <- (crit * x[[".se"]])
-  derivative <- add_column(x,
-    .crit = rep(crit, nrow(x)),
-    .lower_ci = x[[".derivative"]] - adj,
-    .upper_ci = x[[".derivative"]] + adj
+  crit <- rep(intervals$critical, nrow(x))
+  crit[is.na(intervals$lower)] <- NA_real_
+  add_column(x,
+    .crit = crit,
+    .lower_ci = intervals$lower,
+    .upper_ci = intervals$upper
   )
-  derivative
 }
 
 ## fd is a list of predicted values returned by the various foo_finite_diffX
@@ -315,19 +423,18 @@
 #' @importFrom rlang eval_tidy parse_expr
 #' @importFrom tibble tibble
 `compute_derivative` <- function(
-    id, lpmatrix, betas, Vb, model, data,
+    sm, lpmatrix, betas, Vb, data,
     focal = NULL) {
-  sm <- get_smooths_by_id(model, id)[[1L]]
   sm_var <- smooth_variable(sm)
   if (!is.null(focal)) {
     # fix the focal variable
-    sm_var <- sm_var[sm_var == focal]
+    sm_var <- focal
   }
   by_var <- by_variable(sm)
   ## handle fs smooths
   fs_var <- NULL
   if (is_fs_smooth(sm)) {
-    fs_var <- sm_var[-1L]
+    fs_var <- smooth_variable(sm)[-1L]
     sm_var <- sm_var[1L]
   }
   ## handle sz smooths
@@ -340,12 +447,16 @@
   Xi <- lpmatrix * 0 # zero out the Xp matrix
   Xi[, want] <- lpmatrix[, want] # copy bits of Xp we need
   d <- drop(Xi %*% betas) # estimate derivative
+  # Known soap-film boundary values contribute to the estimate, but have no
+  # fitted coefficients and therefore add no coefficient uncertainty.
+  offset <- attr(lpmatrix, "offset", exact = TRUE)
+  if (!is.null(offset)) d <- d + offset
   se <- rowSums(Xi %*% Vb * Xi)^0.5 # standard errors
   ## build return tibble
   deriv <- tibble(
     .smooth = rep(sm_lab, length(d)),
     # .var = rep(sm_var, length(d)),
-    {{ sm_var }} := eval_tidy(parse_expr(sm_var), data = data),
+    {{ sm_var }} := data[[sm_var]],
     # .data = eval_tidy(parse_expr(sm_var), data = data),
     .derivative = d,
     .se = se
@@ -711,10 +822,12 @@
 #' @param type character; the type of finite difference used. One of
 #'   `"forward"`, `"backward"`, or `"central"`.
 #' @param n numeric; the number of points to evaluate the derivative at.
-#' @param eps numeric; the finite difference.
 #' @param interval character; the type of interval to compute. One of
 #'   `"confidence"` for point-wise intervals, or `"simultaneous"` for
 #'   simultaneous intervals.
+#' @param interval_method character; use stored [mgcv::scasm()] bootstrap draws for
+#'   pointwise intervals with `"auto"` (the default), or explicitly select
+#'   `"gaussian"` or `"bootstrap"`. Bootstrap simultaneous bands are unavailable.
 #' @param n_sim integer; the number of simulations used in computing the
 #'   simultaneous intervals.
 #' @param level numeric; `0 < level < 1`; the confidence level of the
@@ -726,7 +839,7 @@
 #' @param offset numeric; a value to use for any offset term
 #' @param ncores number of cores for generating random variables from a
 #'   multivariate normal distribution. Passed to [mvnfast::rmvn()].
-#'   Parallelization will take place only if OpenMP is supported (but appears
+#'   Parallelisation will take place only if OpenMP is supported (but appears
 #'   to work on Windows with current `R`).
 #' @param partial_match logical; should smooths be selected by partial matches
 #'   with `term`? If `TRUE`, `term` can only be a single string to match
@@ -736,6 +849,12 @@
 #'
 #' @note `partial_derivatives()` will ignore any random effect smooths it
 #'   encounters in `object`.
+#'   For soap-film smooths with known boundary values, derivatives include the
+#'   fixed boundary contribution. This shifts the estimates and interval limits
+#'   without adding uncertainty from fitted coefficients.
+#'
+#' @seealso [difference_smooths()] with `order > 0` and `focal` to compute
+#'   partial derivatives of differences across full smooth surfaces.
 #'
 #' @export
 #'
@@ -753,61 +872,24 @@
 #' * `.se`: the standard error of the estimated partial derivative,
 #' * `.crit`: the critical value such that `derivative` ± `(crit * se)` gives
 #'   the upper and lower bounds of the requested confidence or simultaneous
-#'   interval (given `level`),
+#'   interval (given `level`); `NA` for bootstrap limits,
 #' * `.lower_ci`: the lower bound of the confidence or simultaneous interval,
 #' * `.upper_ci`: the upper bound of the confidence or simultaneous interval.
 #'
+#' @inheritParams derivatives
+#' @inheritSection derivatives Parallel calculation
+#'
 #' @examples
-#'
-#' library("ggplot2")
-#' library("patchwork")
 #' load_mgcv()
-#' \dontshow{
-#' op <- options(pillar.sigfig = 3, cli.unicode = FALSE)
-#' }
-#' df <- data_sim("eg2", n = 2000, dist = "normal", scale = 0.5, seed = 42)
+#' # Simulate a smooth surface with Gaussian noise and fit a tensor-product smooth
+#' df <- data_sim("eg2", n = 400, scale = 0.1, seed = 42)
+#' m <- gam(y ~ te(x, z, k = c(7, 7)), data = df, method = "REML")
 #'
-#' # fit the GAM (note: for execution time reasons, k is set articifially low)
-#' m <- gam(y ~ te(x, z, k = c(5, 5)), data = df, method = "REML")
-#'
-#' # data slice through te(x,z) holding z == 0.4
+#' # Estimate change along x while holding z at 0.4
 #' ds <- data_slice(m, x = evenly(x, n = 100), z = 0.4)
-#'
-#' # evaluate te(x,z) at values of x & z
-#' sm <- smooth_estimates(m, select = "te(x,z)", data = ds) |>
-#'   add_confint()
-#'
-#' # partial derivatives
 #' pd_x <- partial_derivatives(m, data = ds, type = "central", focal = "x")
-#'
-#' # draw te(x,z)
-#' p1 <- draw(m, rug = FALSE) &
-#'   geom_hline(yintercept = 0.4, linewidth = 1)
-#' p1
-#'
-#' # draw te(x,z) along slice
-#' cap <- expression(z == 0.4)
-#' p2 <- sm |>
-#'   ggplot(aes(x = x, y = .estimate)) +
-#'   geom_ribbon(aes(ymin = .lower_ci, ymax = .upper_ci), alpha = 0.2) +
-#'   geom_line() +
-#'   labs(
-#'     x = "x", y = "Partial effect", title = "te(x,z)",
-#'     caption = cap
-#'   )
-#' p2
-#'
-#' # draw partial derivs
-#' p3 <- pd_x |>
-#'   draw() +
-#'   labs(caption = cap)
-#' p3
-#'
-#' # draw all three panels
-#' p1 + p2 + p3 + plot_layout(ncol = 3)
-#' \dontshow{
-#' options(op)
-#' }
+#' pd_x
+#' draw(pd_x)
 `partial_derivatives.gam` <- function(
     object,
     select = NULL,
@@ -816,28 +898,34 @@
     data = newdata,
     order = 1L,
     type = c("forward", "backward", "central"),
-    n = 100, eps = 1e-7,
+    n = 100, eps = NULL,
     interval = c("confidence", "simultaneous"),
     n_sim = 10000, level = 0.95,
     unconditional = FALSE, frequentist = FALSE,
     offset = NULL, ncores = 1,
-    partial_match = FALSE, seed = NULL, ..., newdata = NULL) {
+    partial_match = FALSE, seed = NULL, ..., newdata = NULL,
+    envir = NULL, wrt = c("smooth", "covariate"),
+    interval_method = c("auto", "gaussian", "bootstrap"),
+    simultaneous_method = c("simulation", "tube"),
+    simultaneous_domain = NULL, tube_control = list()) {
+  simultaneous_method <- match.arg(simultaneous_method)
+  if (simultaneous_method != "simulation" || !is.null(simultaneous_domain) || length(tube_control)) {
+    cli::cli_abort("Tube bands are supported by derivatives() for one-dimensional smooths; use simulation for partial derivatives.")
+  }
+  object <- with_model_envir(object, envir)
+  wrt <- match.arg(wrt)
   if (lifecycle::is_present(term)) {
     lifecycle::deprecate_warn("0.8.9.9", "partial_derivatives(term)",
       "partial_derivatives(select)")
     select <- term
   }
   ## handle seed
-  if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
-    runif(1)
-  }
   if (is.null(seed)) {
+    if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) runif(1)
     RNGstate <- get(".Random.seed", envir = .GlobalEnv)
   } else {
-    R.seed <- get(".Random.seed", envir = .GlobalEnv)
-    set.seed(seed)
+    withr::local_seed(seed)
     RNGstate <- structure(seed, kind = as.list(RNGkind()))
-    on.exit(assign(".Random.seed", R.seed, envir = .GlobalEnv))
   }
 
   ## handle term
@@ -851,7 +939,7 @@
       "Random effect"
     # need to check that the selected smooths are multivariate
     mv_sm <- vapply(object$smooth[sms], smooth_dim, integer(1)) < 2L
-    sms[take | mv_sm] <- FALSE
+    sms[which(sms)[take | mv_sm]] <- FALSE
     which(sms)
   } else {
     seq_len(n_smooths(object))
@@ -863,41 +951,75 @@
     logical(1)
   )
   # need to check that the selected smooths are multivariate
-  mv_sm <- vapply(object$smooth[smooth_ids], smooth_dim, integer(1)) < 2L
+  uv_sm <- vapply(object$smooth[smooth_ids], smooth_dim, integer(1)) < 2L
   # report of ignoring any smooths
-  if (any(take, mv_sm)) {
-    cat("\n")
+  if (any(take | uv_sm)) {
+    #cat("\n")
+    #cli_alert_warning(
+    #  "Ignoring univariate smooths & those involving random effects.\n\n",
+    #  wrap = TRUE
+    #)
+    #cat("\n")
+    uv_re_warn_msg <- "Ignoring univariate smooths & those involving random effects."
+  }
+  smooth_ids <- smooth_ids[!(take | uv_sm)]
+  n_sm <- length(smooth_ids)
+
+  # are there any smooths left? If not, throw and error and abort
+  if (n_sm < 1L) {
+    cli_abort(
+      c(
+        "x" = "No suitable smooths available for partial derivatives.",
+        "!" = uv_re_warn_msg,
+        "i" = "{.fun partial_derivatives} is only suitable for multivariate smooths",
+        "i" = "Only smooths of forms {.code s(x,z)} or {.code te(x,z,w)} (incl. {.fun ti} or {.fun t2})",
+        " " = "for two or more continuous variables are supported."
+      )
+    )
+  } else if (any(take | uv_sm)) {
     cli_alert_warning(
-      "Ignoring univariate smooths & those involving random effects.\n\n",
+      "Ignoring univariate smooths & those involving random effects.",
       wrap = TRUE
     )
-    cat("\n")
   }
-  smooth_ids <- smooth_ids[!(take | mv_sm)]
 
   # handle focal - it should be a vector as long as the number of smooths
   # we are handling. If it is NULL, then we loop over the smooths, extract
   # the names of the variables and set the first to be the focal variable
   if (is.null(focal)) {
     focal <- vapply(
-      object[["smooth"]],
+      object[["smooth"]][smooth_ids],
       function(s) {
-        smooth_variable(s)[1L]
+        derivative_focal(object, s, wrt = wrt)
       }, character(1L)
     )
   } else {
     # if not NULL then we should check that it is of the same length as the
     # smooths we are evaluating
     n_focal <- length(focal)
-    n_sm <- length(smooth_ids)
     if (isFALSE(identical(n_focal, n_sm))) {
       sm_names <- smooths(object)[smooth_ids]
       msg <- paste(sm_names, collapse = ", ")
-      cli_abort(c(
-        "!" = "{.var focal} must have same length as number of chosen smooths",
-        "i" = "The relevant smooths are: {sm_names}",
-        "i" = "The supplied {.var focal} should be length: {.strong {n_sm}}",
-        "x" = "Your supplied {.var focal} was length: {.strong {length(focal)}}"
+      cli_abort(
+        c(
+          "!" = "{.var focal} must have same length as number of chosen smooths",
+          "i" = "The relevant smooths are: {sm_names}",
+          "i" = "The supplied {.var focal} should be length: {.strong {n_sm}}",
+          "x" = "Your supplied {.var focal} was length: {.strong {length(focal)}}"
+        )
+      )
+    }
+  }
+
+  if (!is.character(focal) || anyNA(focal)) {
+    cli_abort("{.arg focal} must be a character vector without missing values.")
+  }
+  for (i in seq_along(smooth_ids)) {
+    sm <- object[["smooth"]][[smooth_ids[[i]]]]
+    if (!identical(focal[[i]], derivative_focal(object, sm, focal[[i]], wrt))) {
+      cli_abort(paste0(
+        "Focal variable {.val {focal[[i]]}} is not in smooth ",
+        "{.val {smooths(object)[smooth_ids[[i]]]}}."
       ))
     }
   }
@@ -922,6 +1044,7 @@
 
   ## handle interval
   interval <- match.arg(interval)
+  interval_method <- scasm_interval_method(object, interval_method, interval)
 
   ## get the required covariance matrix
   Vb <- get_vcov(object,
@@ -933,75 +1056,43 @@
 
   ## how many smooths need working on
   ns <- length(smooth_ids)
-  result <- vector(mode = "list", length = ns)
+  tasks <- vector(mode = "list", length = ns)
 
-  ## loop over the smooths and compute derivatives from finite differences
+  ## Prepare coordinates and random draws in term order before dispatch.
   for (i in seq_along(smooth_ids)) {
-    ## generate data if not supplied
-    if (need_data) {
-      newd <- derivative_data(object,
-        id = smooth_ids[[i]], n = n,
-        offset = offset, order = order,
-        type = type, eps = eps, focal = focal
-      )
-    } else {
-      ## assume the data are OK - mgcv::predict will catch issues
-      newd <- data
-      ## ...but we need to handle factor by
-      sm <- get_smooths_by_id(object, id = smooth_ids[[i]])[[1]]
-      if (is_factor_by_smooth(sm)) {
-        newd <- vec_slice(newd, data[[by_variable(sm)]] == by_level(sm))
-      }
-      # and we need to identify which variable is the focal one
-      n_unique <- vapply(
-        newd, function(x) length(unique(x)),
-        integer(1L)
-      )
-      if (is.null(focal)) {
-        focal <- names(newd)[which(n_unique > 1L)]
-      } else {
-        # and that the others are not varying
-        bad <- n_unique[setdiff(names(newd), focal)] > 1L
-        if (any(bad)) {
-          stop(
-            "For partial derivatives only 'focal' can be varying ",
-            "in 'data'. Problematic variables:",
-            paste(n_unique[bad], collapse = ", ")
-          )
-        }
-      }
+    focal_i <- focal[[i]]
+    sm <- get_smooths_by_id(object, id = smooth_ids[[i]])[[1L]]
+    h <- derivative_step(object, focal_i, data, eps, order, type)
+    newd <- if (need_data) {
+      smooth_derivative_data(object, sm, n, focal_i, wrt, order, type, h)
+    } else data
+    # For partial derivatives, all other independent coordinates are fixed.
+    check <- prepare_smooth_data(object, sm, newd)
+    # Transformed columns derived from the focal input may vary with it;
+    # other user-supplied numeric columns must remain fixed on a slice.
+    exempt <- focal_i
+    if (wrt == "smooth") exempt <- union(exempt, all.vars(term_expression(focal_i, object)))
+    bad <- setdiff(names(newd), exempt)
+    if (wrt == "covariate") bad <- setdiff(bad, smooth_variable(sm)[smooth_variable(sm) != focal_i])
+    bad <- bad[vapply(newd[bad], function(x) length(unique(x)) > 1L && !is.factor(x), logical(1))]
+    if (!need_data && length(bad)) {
+      stop("For partial derivatives only 'focal' can be varying in 'data'. Problematic variables: ", paste(bad, collapse = ", "))
     }
-
-    # generate list of finite difference predictions for the first or second
-    #   derivatives or the required type
-    fd <- finite_diff_lpmatrix(object,
-      type = type, order = order,
-      data = newd, h = eps, focal = focal
-    )
-
-    ## compute the finite differences
-    X <- finite_difference(fd, order, type, eps)
-
-    ## compute derivatives
-    d <- compute_derivative(smooth_ids[[i]],
-      lpmatrix = X, betas = betas,
-      Vb = Vb, model = object, data = newd, focal = focal
-    )
-
-    ## compute intervals
-    if (identical(interval, "confidence")) {
-      result[[i]] <- derivative_pointwise_int(d[["deriv"]],
-        level = level,
-        distrib = "normal"
-      )
-    } else {
-      result[[i]] <- derivative_simultaneous_int(d[["deriv"]], d[["Xi"]],
-        level = level, Vb = Vb,
-        n_sim = n_sim,
-        ncores = ncores
-      )
+    newd <- check
+    if (is_factor_by_smooth(sm)) {
+      newd <- vec_slice(newd, is.na(newd[[sm$by]]) | newd[[sm$by]] == by_level(sm))
     }
+    tasks[[i]] <- prepare_derivative_task(object, sm, newd, focal_i,
+      wrt, type, order, h, betas, Vb, interval, interval_method, level,
+      n_sim, ncores)
   }
+  result <- smooth_task_map(tasks, "calculate_smooth_derivative")
+  if (interval == "simultaneous") {
+    result <- smooth_interval_map(result, lapply(tasks, function(x) smooth_coef_indices(x$sm)),
+      Vb, level, n_sim, ncores, estimate = ".derivative", critical = TRUE)
+  }
+  result <- Map(function(x, focal_i) add_column(x, .focal = focal_i, .after = 1L),
+    result, focal)
 
   ## results in a list of tibbles that we need to bind row-wise
   result <- bind_rows(result)
@@ -1011,16 +1102,14 @@
     rename(.partial_deriv = ".derivative") |>
     relocate(
       any_of(c(
-        ".smooth", ".by", ".fs",
+        ".smooth", ".focal", ".by", ".fs",
         ".partial_deriv", ".se", ".crit", ".lower_ci", ".upper_ci"
       )),
       .before = 1
-    ) |>
-    add_column(
-      .focal = rep(focal, nrow(result) / n_sm),
-      .after = 1L
     )
 
+  attr(result, "wrt") <- wrt
+  attr(result, "interval_info") <- scasm_interval_info(object, interval_method, interval, level)
   class(result) <- c(
     "partial_derivatives", "derivatives",
     class(result)
@@ -1031,7 +1120,6 @@
 #' @title Derivatives on the response scale from an estimated GAM
 #'
 #' @param object an R object to compute derivatives for.
-#' @param ... arguments passed to other methods and on to `fitted_samples()`
 #'
 #' @author Gavin L. Simpson
 #'
@@ -1061,10 +1149,9 @@
 #' @param focal character; name of the focal variable. The response derivative
 #'   of the response with respect to this variable will be returned.
 #'   All other variables involved in the model will be held at constant values.
-#'   This can be missing if supplying `data`, in which case, the focal variable
-#'   will be identified as the one variable that is not constant.
+#'   This must be supplied.
 #' @param data a data frame containing the values of the model covariates
-#'   at which to evaluate the first derivatives of the smooths. If supplied,
+#'   at which to evaluate derivatives of fitted values. If supplied,
 #'   all but one variable must be held at a constant value.
 #' @param order numeric; the order of derivative.
 #' @param type character; the type of finite difference used. One of
@@ -1076,21 +1163,34 @@
 #'   the posterior covariance matrix. `"inla"` uses a variant of Integrated
 #'   Nested Laplace Approximation due to Wood (2019), (currently not
 #'   implemented). `"user"` allows for user-supplied posterior draws
-#'   (currently not implemented).
+#'   via `draws` in `...`.
 #' @param scale character; should the derivative be estimated on the response
 #'   or the linear predictor (link) scale? One of `"response"` (the default),
-#'   or `"linear predictor"`.
+#'   or `"linear_predictor"`.
 #' @param n numeric; the number of points to evaluate the derivative at (if
 #'   `data` is not supplied).
-#' @param eps numeric; the finite difference.
-#' @param n_sim integer; the number of simulations used in computing the
-#'   simultaneous intervals.
+#' @inheritParams derivatives eps
+#' @param n_sim integer; number of posterior draws. Ignored when using
+#'   user-supplied draws.
+#' @param uncertainty character; `"simulation"` (default) uses posterior draws
+#'   and equal-tailed intervals; `"delta"` uses the delta method and normal
+#'   intervals. Both methods return pointwise intervals. Sampler controls,
+#'   including `n_sim`, `method`, and `seed`, are ignored for delta uncertainty.
+#' @param unconditional logical; include smoothing-parameter uncertainty in the
+#'   Bayesian covariance, if available, for delta intervals and Gaussian draws.
+#'   This does not modify MH or user-supplied draws.
+#' @param ... arguments passed to posterior sampling or prediction, such as
+#'   `draws`, `envir`, and `exclude`. `freq = TRUE` selects frequentist coefficient
+#'   covariance for delta uncertainty or Gaussian draws. For delta uncertainty,
+#'   `newdata`, `se.fit`, and `terms` are not supported; use `data` and `exclude`.
 #' @param level numeric; `0 < level < 1`; the coverage level of the
 #'   credible interval. The default is `0.95` for a 95% interval.
+#'   Supply one finite numeric value. Use `level` for both uncertainty methods;
+#'   `ci_level` and `coverage` are not accepted, even when `level` is also supplied.
 #' @param seed numeric; a random seed for the simulations.
 #' @param mvn_method character; one of `"mvnfast"` or `"mgcv"`. The default is
-#'   uses `mvnfast::rmvn()`, which can be considerably faster at generate large
-#'   numbers of MVN random values than `mgcv::rmvn()`, but which might not work
+#'   uses [mvnfast::rmvn()], which can be considerably faster at generate large
+#'   numbers of MVN random values than [mgcv::rmvn()], but which might not work
 #'   for some marginal fits, such as those where the covariance matrix is close
 #'   to singular.
 #'
@@ -1105,67 +1205,73 @@
 #'   represents
 #' * `.focal`: the name of the variable for which the partial derivative was
 #'   evaluated,
-#' * `.derivative`: the estimated partial derivative,
-#' * `.lower_ci`: the lower bound of the confidence or interval,
-#' * `.upper_ci`: the upper bound of the confidence or interval,
+#' * `.derivative`: the posterior median for simulation uncertainty, or the
+#'   finite difference of fitted predictions for delta uncertainty,
+#' * `.se`: posterior standard deviation for simulation uncertainty (`NA` with
+#'   only one draw), or the delta-method standard error,
+#' * `.lower_ci`: the lower bound of the pointwise interval,
+#' * `.upper_ci`: the upper bound of the pointwise interval,
 #' * additional columns containing the covariate values at which the derivative
 #'   was evaluated.
+#'
+#' @details
+#' Delta uncertainty uses the same shifted prediction rows and finite-difference
+#' formulas as simulation, for both first and second derivatives. It applies
+#' those formulas to the coefficient gradients of fitted means and propagates
+#' their full joint covariance. Formula offsets are included in predictions.
+#' Intervals concern derivatives of the conditional mean, not future observations.
+#' With Bayesian coefficient covariance, delta intervals have an approximate
+#' posterior interpretation. They are symmetric and may differ from simulation
+#' intervals when posterior transformations are strongly nonlinear; the two
+#' methods' point estimates can also differ.
+#'
+#' Delta uncertainty supports single-linear-predictor `gam` and `bam` models
+#' with an ordinary scalar inverse-link mean (including negative binomial,
+#' Tweedie, beta regression, and scaled t families), and `gamm` via its GAM
+#' component. SCAM models use transformed-coefficient covariance conditional on
+#' the fitted smoothing parameters. General multi-predictor families do not
+#' support delta uncertainty; their existing simulation support is unchanged.
+#' The `uncertainty` attribute records the selected method.
+#'
+#' By default, all supplied prediction rows are returned in their original
+#' order. Rows with missing or non-finite required covariates have `NA`
+#' derivatives, standard errors and interval limits. Category, response and
+#' family identifiers are retained. An explicit `na.action` follows the
+#' prediction convention: [stats::na.omit()] drops unavailable rows with missing
+#' covariates, [stats::na.exclude()] and [stats::na.pass()] retain them, and [stats::na.fail()] reports
+#' missing covariates as an error. Undefined calculations at available rows,
+#' including in only some coefficient draws, raise an error; draws are never
+#' removed to form a summary.
+#'
+#' Response-scale derivatives require the expected response to exist. For a
+#' scaled t family, fitted degrees of freedom must exceed one, whether fixed
+#' or estimated. A finite response variance is not required. Linear-predictor
+#' derivatives remain available when the response mean does not exist.
 #'
 #' @examples
 #'
 #' library("ggplot2")
-#' library("patchwork")
 #' load_mgcv()
-#' \dontshow{
-#' op <- options(pillar.sigfig = 3, cli.unicode = FALSE)
-#' }
-#' df <- data_sim("eg1", dist = "negbin", scale = 0.25, seed = 42)
 #'
-#' # fit the GAM (note: for execution time reasons using bam())
-#' m <- bam(y ~ s(x0) + s(x1) + s(x2) + s(x3),
-#'   data = df, family = nb(), method = "fREML"
+#' # Simulate counts whose mean varies smoothly with four covariates.
+#' dat <- data_sim("eg1", n = 120, dist = "negbin", scale = 0.25, seed = 42)
+#' m <- gam(y ~ s(x0, k = 5) + s(x1, k = 5) + s(x2, k = 5) + s(x3, k = 5),
+#'   data = dat, family = nb(), method = "REML"
 #' )
 #'
-#' # data slice through data along x2 - all other covariates will be set to
-#' # typical values (value closest to median)
-#' ds <- data_slice(m, x2 = evenly(x2, n = 100))
-#'
-#' # fitted values along x2
-#' fv <- fitted_values(m, data = ds)
-#'
-#' # response derivatives - ideally n_sim = >10000
-#' y_d <- response_derivatives(m,
-#'   data = ds, type = "central", focal = "x2",
-#'   eps = 0.01, seed = 21, n_sim = 1000
+#' # Estimate how the expected count changes with x2 at typical values
+#' # of the other covariates.
+#' slice <- data_slice(m, x2 = evenly(x2, n = 30))
+#' derivatives <- response_derivatives(m,
+#'   data = slice, type = "central", focal = "x2",
+#'   eps = 0.01, seed = 21, n_sim = 200
 #' )
 #'
-#' # draw fitted values along x2
-#' p1 <- fv |>
-#'   ggplot(aes(x = x2, y = .fitted)) +
-#'   geom_ribbon(aes(ymin = .lower_ci, ymax = .upper_ci, y = NULL),
-#'     alpha = 0.2
-#'   ) +
-#'   geom_line() +
-#'   labs(
-#'     title = "Estimated count as a function of x2",
-#'     y = "Estimated count"
-#'   )
-#'
-#' # draw response derivatives
-#' p2 <- y_d |>
-#'   ggplot(aes(x = x2, y = .derivative)) +
+#' # Plot the derivative and its pointwise credible interval.
+#' ggplot(derivatives, aes(x = x2, y = .derivative)) +
 #'   geom_ribbon(aes(ymin = .lower_ci, ymax = .upper_ci), alpha = 0.2) +
 #'   geom_line() +
-#'   labs(
-#'     title = "Estimated 1st derivative of estimated count",
-#'     y = "First derivative"
-#'   )
-#'
-#' # draw both panels
-#' p1 + p2 + plot_layout(nrow = 2)
-#' \dontshow{
-#' options(op)
-#' }
+#'   labs(y = "First derivative of the expected count")
 `response_derivatives.gam` <- function(
   object,
   focal = NULL,
@@ -1174,11 +1280,13 @@
   type = c("forward", "backward", "central"),
   scale = c("response", "linear_predictor"),
   method = c("gaussian", "mh", "inla", "user"),
-  n = 100, eps = 1e-7,
+  n = 100, eps = NULL,
   n_sim = 10000, level = 0.95,
   seed = NULL,
   mvn_method = c("mvnfast", "mgcv"),
-  ...
+  ...,
+  uncertainty = c("simulation", "delta"),
+  unconditional = FALSE
 ) {
 
   do_response_derivatives(
@@ -1195,6 +1303,7 @@
     level = level,
     seed = seed,
     mvn_method = mvn_method,
+    uncertainty = uncertainty, unconditional = unconditional,
     ...
   )
 }
@@ -1209,16 +1318,20 @@
   type = c("forward", "backward", "central"),
   scale = c("response", "linear_predictor"),
   method = c("gaussian", "mh", "inla", "user"),
-  n = 100, eps = 1e-7,
+  n = 100, eps = NULL,
   n_sim = 10000, level = 0.95,
   seed = NULL,
   mvn_method = c("mvnfast", "mgcv"),
-  ...
+  ...,
+  uncertainty = c("simulation", "delta"),
+  unconditional = FALSE
 ) {
+  check_scam_unconditional(object, unconditional)
   do_response_derivatives(
     object = object, focal = focal, data = data, order = order, type = type,
     scale = scale, method = method, n = n, eps = eps, n_sim = n_sim,
-    level = level, seed = seed, mvn_method = mvn_method, ...
+    level = level, seed = seed, mvn_method = mvn_method,
+    uncertainty = uncertainty, unconditional = unconditional, ...
   )
 }
 
@@ -1230,43 +1343,64 @@
   type = c("forward", "backward", "central"),
   scale = c("response", "linear_predictor"),
   method = c("gaussian", "mh", "inla", "user"),
-  n = 100, eps = 1e-7,
+  n = 100, eps = NULL,
   n_sim = 10000, level = 0.95,
   seed = NULL,
   mvn_method = c("mvnfast", "mgcv"),
-  ...
+  ...,
+  uncertainty = c("simulation", "delta"),
+  unconditional = FALSE
 ) {
-  method <- match.arg(method)
+  check_interval_level(level, "level", ...names())
+  uncertainty <- match.arg(uncertainty)
   type <- match.arg(type)
+  scale <- match.arg(scale)
+  if (!is.logical(unconditional) || length(unconditional) != 1L ||
+      is.na(unconditional)) {
+    cli::cli_abort("{.arg unconditional} must be {.val TRUE} or {.val FALSE}.")
+  }
+  if (uncertainty == "delta") {
+    return(response_derivatives_delta(object, focal, data, order, type,
+      scale, n, eps, level, unconditional, ...))
+  }
+  method <- match.arg(method)
   mvn_method <- match.arg(mvn_method)
-  yd <- derivative_samples(object,
+  yd <- sampling_call(derivative_samples, list(object,
     focal = focal, data = data, order = order,
-    type = type, scale = scale, method = method, n = n, eps = eps,
-    n_sim = n_sim, seed = seed, mvn_method = mvn_method, ...
-  )
+    type = type, scale = scale, method = method, n_grid = n, eps = eps,
+    n_draws = if (method == "user") NULL else n_sim, seed = seed, mvn_method = mvn_method,
+    unconditional = unconditional, ...
+  ))
 
   qq <- (1 - level) / 2
+  quantity_id <- intersect(
+    c(".row", ".focal", ".category", ".y", ".family"), names(yd)
+  )
 
+  # derivative_samples() rejects non-finite calculations at available rows;
+  # an all-missing group therefore represents unavailable predictions.
   yd <- yd |>
-    group_by(pick(matches(".row"))) |>
+    group_by(pick(all_of(quantity_id))) |>
     mutate(
-      .lower_ci = quantile(.data[[".derivative"]], probs = qq),
-      .upper_ci = quantile(.data[[".derivative"]], probs = 1 - qq),
+      .se = stats::sd(.data[[".derivative"]]),
+      .lower_ci = if (all(is.na(.data[[".derivative"]]))) NA_real_ else
+        quantile(.data[[".derivative"]], probs = qq),
+      .upper_ci = if (all(is.na(.data[[".derivative"]]))) NA_real_ else
+        quantile(.data[[".derivative"]], probs = 1 - qq),
       .derivative = median(.data[[".derivative"]])
     ) |>
-    distinct(pick(all_of(c(
-      ".focal", ".row", ".derivative", ".lower_ci",
-      ".upper_ci"
-    ))), .keep_all = TRUE) |>
-    select(!all_of(c(".draw"))) |>
+    distinct(pick(all_of(quantity_id)), .keep_all = TRUE) |>
+    ungroup() |>
+    select(!any_of(c(".draw", ".chain", ".iteration"))) |>
+    arrange(.data[[".row"]]) |>
     relocate(all_of(c(
-      ".row", ".focal", ".derivative", ".lower_ci",
+      ".row", ".focal", ".derivative", ".se", ".lower_ci",
       ".upper_ci"
     )))
 
-  cls <- class(yd)
-  cls[1] <- "response_derivatives"
-  class(yd) <- cls
+  class(yd) <- c("response_derivatives", class(yd))
+  attr(yd, "sampling") <- NULL
+  attr(yd, "uncertainty") <- uncertainty
   yd
 }
 
@@ -1352,6 +1486,11 @@
 }
 
 `compute_y_fdiff` <- function(samples, order, type, eps = 1e-7) {
+  if (!nrow(samples)) {
+    return(samples |>
+      select(any_of(c("..orig", ".draw", ".category", ".y", ".family"))) |>
+      mutate(..fd = numeric()))
+  }
   y_fd <- if (isTRUE(identical(as.integer(order), 1L))) {
     compute_y_fdiff_1(samples = samples, eps = eps, type = type)
   } else {
@@ -1366,15 +1505,11 @@
 `compute_y_fdiff_1` <- function(samples, type, eps = 1e-7) {
   samples <- samples |>
     pivot_wider(
-      id_cols = matches(c("..orig", ".draw", "..type")),
+      id_cols = any_of(c("..orig", ".draw", ".category", ".y", ".family")),
       names_from = "..type", values_from = ".fitted",
       names_prefix = ".."
     )
-  fun <- switch(type,
-    "forward" = y_forward_diff_1,
-    "backward" = y_backward_diff_1,
-    "central" = y_central_diff_1
-  )
+  fun <- response_fdiff_function(1L, type)
   samples |>
     mutate(..fd = fun(.data, eps = eps))
 }
@@ -1385,15 +1520,11 @@
 `compute_y_fdiff_2` <- function(samples, type, eps = 1e-7) {
   samples <- samples |>
     pivot_wider(
-      id_cols = matches(c("..orig", ".draw", "..type")),
+      id_cols = any_of(c("..orig", ".draw", ".category", ".y", ".family")),
       names_from = "..type", values_from = ".fitted",
       names_prefix = ".."
     )
-  fun <- switch(type,
-    "forward" = y_forward_diff_2,
-    "backward" = y_backward_diff_2,
-    "central" = y_central_diff_2
-  )
+  fun <- response_fdiff_function(2L, type)
   samples |>
     mutate(..fd = fun(.data, eps = eps))
 }

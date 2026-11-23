@@ -13,7 +13,9 @@ smooth_data(
   n_4d = NULL,
   offset = NULL,
   include_all = FALSE,
-  var_order = NULL
+  var_order = NULL,
+  envir = NULL,
+  back_transform = FALSE
 )
 }
 \arguments{
@@ -23,16 +25,20 @@ smooth_data(
 
 \item{n}{numeric; the number of new observations to generate.}
 
-\item{n_2d}{numeric; the number of new observations to generate for the
-second dimension of a 2D smooth. \emph{Currently ignored}.}
+\item{n_2d}{numeric; the number of points along each of the first two axes
+of a smooth surface, including surface panels of higher-dimensional smooths.
+The default, \code{NULL}, uses \code{n} instead. Factor levels
+are retained, and curves with only one continuous covariate use \code{n}.}
 
 \item{n_3d}{numeric; the number of new observations to generate for the third
-dimension of a 3D smooth.}
+dimension of a 3D smooth. For factor conditioning dimensions, retain at most
+this many levels, taking the first in fitted order.}
 
 \item{n_4d}{numeric; the number of new observations to generate for the
 dimensions higher than 2 (!) of a \emph{k}D smooth (\emph{k} >= 4). For example, if
 the smooth is a 4D smooth, each of dimensions 3 and 4 will get \code{n_4d}
-new observations.}
+new observations. For factor conditioning dimensions, retain at most this
+many levels per dimension, taking the first in fitted order.}
 
 \item{offset}{numeric; value of the model offset to use.}
 
@@ -41,14 +47,37 @@ if \code{FALSE}, only the covariates involved in the smooth will be included in
 the returned data frame. If \code{TRUE}, a representative value will be included
 for all other covariates in the model that aren't actually used in the
 smooth. This can be useful if you want to pass the returned data frame on
-to \code{\link[mgcv:smoothCon]{mgcv::PredictMat()}}.}
+to \code{\link[mgcv:PredictMat]{mgcv::PredictMat()}}.}
 
 \item{var_order}{character; the order in which the terms in the smooth
 should be processed. Only useful for tensor products with at least one
 2d marginal smooth.}
+
+\item{envir}{an optional environment supplying functions and constants used
+in model expressions. The available model formula environment is used when
+\code{NULL}. Covariate observations should be supplied in \code{data}.}
+
+\item{back_transform}{logical; generate the grid on original covariate
+scales? The default, \code{FALSE}, uses evenly spaced model coordinates. With
+\code{TRUE}, recover raw fitting rows and generate original-scale coordinates,
+then evaluate the model expressions forwards. Each axis must depend on one
+distinct original model covariate. Both raw and evaluated columns are
+returned, with auxiliary \verb{.gratia_raw_*} columns for transformed axes.
+Missing raw inputs or unavailable functions produce an error.
+Numeric \code{by} multipliers are one on automatic grids, including when a
+multiplier shares an original axis name; raw axis coordinates are retained
+separately. If the multiplier is itself an untransformed grid axis, supply
+prediction \code{data} to \code{\link[=smooth_estimates]{smooth_estimates()}} instead. Typical values added by
+\code{include_all = TRUE} to model-scale
+grids do not provide raw coordinates for transformed axes.}
 }
 \description{
 Generate regular data over the covariates of a smooth
+}
+\details{
+Spline-on-the-sphere grids use evenly spaced observed-range latitude and
+longitude values. Plotting constructs geographic cell edges separately,
+without moving these evaluation coordinates.
 }
 \examples{
 \dontshow{

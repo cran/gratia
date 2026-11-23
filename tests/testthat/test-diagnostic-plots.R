@@ -1,6 +1,7 @@
 ## Test qq_plot() methods
 
 test_that("appraise() works", {
+  withr::local_options(lifecycle_verbosity = "quiet")
   plt <- with_seed(
     3476, # seed
     appraise(m_tiny_eg1, method = "simulate",
@@ -161,7 +162,6 @@ test_that("appraise handles mvn models", {
 })
 
 test_that("appraise handles twlss models", {
-  skip_on_ci()
   skip_on_cran()
   expect_silent(
     plt <- withr::with_seed(1, appraise(m_twlss, method = "simulate"))
@@ -173,7 +173,6 @@ test_that("appraise handles twlss models", {
 })
 
 test_that("residuals linpred plot works with pit residuals", {
-  skip_on_ci()
   skip_on_cran()
 
   expect_silent(
@@ -186,7 +185,6 @@ test_that("residuals linpred plot works with pit residuals", {
 })
 
 test_that("r hist plot works with qresids", {
-  skip_on_ci()
   skip_on_cran()
 
   expect_silent(

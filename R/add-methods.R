@@ -9,18 +9,23 @@
 #' @param ... additional arguments passed to methods.
 #'
 #' @return A data frame (tibble) formed from `data` and fitted values from
-#'   `model`.
+#'   `model`, stored in `".fitted"` by default.
 #'
 #' @export
-`add_fitted` <- function(data, model, value = ".value", ...) {
+`add_fitted` <- function(data, model, value = ".fitted", ...) {
   UseMethod("add_fitted", model)
 }
 
 #' Add fitted values from a GAM to a data frame
 #'
+#' @inheritParams fitted_samples marginalise integration n_quad n_integrate
+#' @inheritParams random_effect_samples seed
 #' @param type character; the type of predictions to return. See
 #'   [mgcv::predict.gam()] for options.
 #' @param ... additional arguments passed to [mgcv::predict.gam()].
+#' @param envir environment or `NULL`; functions and constants needed to
+#'   evaluate model expressions in prediction data. With `NULL`, use the
+#'   model's formula environment. Supply raw covariates in `data`.
 #'
 #' @return A data frame (tibble) formed from `data` and predictions from
 #'   `model`.
@@ -52,12 +57,26 @@
 #' options(op)
 #' }
 `add_fitted.gam` <- function(data, model, value = ".fitted", type = "response",
-                             ...) {
+                             ..., envir = NULL, marginalise = NULL,
+                             integration = c("quadrature", "monte_carlo"),
+                             n_quad = 40L, n_integrate = 5000L, seed = NULL) {
+  model <- with_model_envir(model, envir)
+  if (!is.null(marginalise)) {
+    if (type != "response") stop("Marginal add_fitted() requires type = 'response'.", call. = FALSE)
+    fit <- fitted_values(model, data = data, marginalise = marginalise,
+      integration = integration, n_quad = n_quad, n_integrate = n_integrate,
+      seed = seed, ...)
+    out <- tibble::as_tibble(data[fit$.row, , drop = FALSE])
+    out[[value]] <- fit$.fitted
+    attr(out, "integration_info") <- attr(fit, "integration_info")
+    return(out)
+  }
   ## coerce to tibble
-  data <- as_tibble(data)
+  layout <- prediction_layout(model, data, na.action = list(...)$na.action %||% stats::na.pass)
+  data <- as_tibble(layout$data)
 
   ## predict using the predict method
-  pred_vals <- predict(model, newdata = data, type = type, ...)
+  pred_vals <- predict_model(model, newdata = layout$data, type = type, ...)
 
   ## check if pred_vals is a list
   if (is.list(pred_vals)) {
@@ -66,11 +85,15 @@
 
   ## having pruned off any standard errors, process the result
   if (is.array(pred_vals) && length(dim(pred_vals)) > 1L) {
+    constant <- attr(pred_vals, "constant", exact = TRUE) %||% 0
+    if (is.null(colnames(pred_vals))) {
+      colnames(pred_vals) <- paste0("V", seq_len(ncol(pred_vals)))
+    }
     pred_vals <- as_tibble(pred_vals)
     if (type %in% c("terms", "iterms")) {
       pred_vals <-
         add_column(pred_vals,
-          !!(".constant") := coef(model)[1],
+          !!(".constant") := unname(constant),
           .before = 1L
         )
     }
@@ -81,13 +104,19 @@
     )
   }
 
+  data$.row <- seq_len(NROW(data))
+  data <- restore_prediction_table(data, layout, include_data = TRUE)
+  if (!".row" %in% names(layout$output_data)) data$.row <- NULL
+
   data
 }
 
 #' Add residuals from a model to a data frame
 #'
 #' @param data a data frame containing values for the variables used to fit the
-#'   model. Passed to [stats::residuals()] as `newdata`.
+#'   model, in fitting order. Supply either the retained fitting rows or, for
+#'   [stats::na.exclude()], the original fitting rows after any `subset`. This does not
+#'   compute residuals for new or reordered observations.
 #' @param model a fitted model for which a [stats::residuals()] method is
 #'   available. S3 method dispatch is performed on the `model` argument.
 #' @param value character; the name of the variable in which model residuals
@@ -104,8 +133,11 @@
 #' Add residuals from a GAM to a data frame
 #'
 #' @param type character; the type of residuals to return. See
-#'   [mgcv::residuals.gam()] for options.
-#' @param ... additional arguments passed to [mgcv::residuals.gam()].
+#'   [mgcv::residuals.gam()] for options, or use `"surrogate"` for models fitted
+#'   with [mgcv::ocat()] or [mgcv::multinom()]. Nominal surrogate residuals
+#'   form a matrix column retaining all category labels, including category 0.
+#' @param ... additional arguments passed to [mgcv::residuals.gam()] or, for
+#'   `type = "surrogate"`, to [surrogate_residuals()], including `seed`.
 #'
 #' @return A data frame (tibble) formed from `data` and residuals from `model`.
 #'
@@ -138,16 +170,13 @@
   data <- as_tibble(data)
 
   ## predict using the predict method
-  resid_vals <- residuals(model, type = type, ...)
+  used <- model_used_rows(model)
+  resid_vals <- if (identical(type, "surrogate")) surrogate_residuals(used, ...) else
+    residuals(used, type = type, ...)
+  resid_vals <- residual_rows(resid_vals, model, data)
 
-  ## check that the number of data rows equals length of residuals
-  if (nrow(data) != length(resid_vals)) {
-    stop("Length of model residuals does not equal number of rows in 'data'",
-      call. = FALSE
-    )
-  }
-
-  data <- add_column(data, !!value := drop(resid_vals), .after = ncol(data))
+  values <- if (identical(type, "surrogate") && is.matrix(resid_vals)) resid_vals else drop(resid_vals)
+  data <- add_column(data, !!value := values, .after = ncol(data))
 
   data
 }
@@ -155,10 +184,17 @@
 #' Add partial residuals
 #'
 #' @param data a data frame containing values for the variables used to fit the
-#'   model. Passed to [stats::residuals()] as `newdata`.
+#'   model, in fitting order. Supply either the retained fitting rows or, for
+#'   [stats::na.exclude()], the original fitting rows after any `subset`. This does not
+#'   compute residuals for new or reordered observations.
 #' @param model a fitted model for which a [stats::residuals()] method is
 #'   available. S3 method dispatch is performed on the `model` argument.
 #' @param ... arguments passed to other methods.
+#'
+#' @details Partial residuals require working residuals and working weights from
+#'   the fitted model. Families that do not provide these, including the
+#'   location-scale families in `mgcv`, are not supported, even for terms in the
+#'   location predictor.
 #'
 #' @export
 `add_partial_residuals` <- function(data, model, ...) {
@@ -243,6 +279,7 @@
 #' @importFrom dplyr mutate across
 #' @importFrom tidyselect any_of
 `add_constant.smooth_estimates` <- function(object, constant = NULL, ...) {
+  check_shape_effect_transform(attr(object, "interval_info"), constant)
   ## If constant supplied, add it to `est`
   if (!is.null(constant)) {
     if (!is.numeric(constant)) {
@@ -337,7 +374,7 @@
       object,
       across(
         any_of(c(
-          "partial", "lower", "upper", ".estimate",
+          "partial", ".partial", "lower", "upper", ".estimate",
           ".lower_ci", ".upper_ci"
         )),
         .fns = ~ .x + constant
@@ -409,6 +446,12 @@
 #'   0 < `coverage` < 1.
 #' @param ... arguments passed to other methods.
 #'
+#' @details For smooth estimates, this function computes Gaussian pointwise
+#'   intervals from the saved estimates and standard errors. It replaces any
+#'   existing limits and updates their interval metadata. To retain stored
+#'   bootstrap, shape-enforced or simultaneous limits, draw the estimates directly with
+#'   [draw()] without calling `add_confint()`.
+#'
 #' @export
 `add_confint` <- function(object, coverage = 0.95, ...) {
   UseMethod("add_confint")
@@ -439,6 +482,18 @@
     .lower_ci = .data$.estimate - (crit * .data$.se),
     .upper_ci = .data$.estimate + (crit * .data$.se)
   )
+  if (".crit" %in% names(object)) object$.crit <- rep(crit, nrow(object))
+  info <- attr(object, "interval_info")
+  if (!is.null(info)) {
+    info$interval <- "confidence"
+    info$level <- coverage
+    info$method <- "gaussian"
+    info$correction <- "none"
+    info[c("source", "shape", "operator", "domain", "coordinate_scale",
+      "coverage", "pointwise_calibration", "interpretation", "unconditional",
+      "unconditional_requested")] <- NULL
+    attr(object, "interval_info") <- info
+  }
 
   ## return
   object
@@ -639,18 +694,19 @@
 #' using one of [fitted_samples()], [predicted_samples()], or
 #' [posterior_samples()].
 #'
-#' @param object a data frame or tibble to which the posterior draws will be
+#' @param data a data frame or tibble to which the posterior draws will be
 #'   added.
 #' @param model a fitted GAM (or GAM-like) object for which a posterior draw
 #'   method exists.
-#' @param n integer; the number of posterior draws to add.
+#' @inheritParams post_draws n_draws
+#' @inheritParams post_draws chains
 #' @param seed numeric; a value to seed the random number generator.
 #' @param select character; select which smooth's posterior to draw from. The
 #'   default, `NULL`, means the posteriors of all smooths in model will be
-#'   sampled from individually. If supplied, a character vector of requested
+#'   returned using the same joint coefficient draws. If supplied, a vector of
 #'   smooth terms.
 #' @param ... arguments are passed to the posterior draw function, currently one
-#'   of [fitted_samples()], [predicted_samples()], or [posterior_samples()]. `n`
+#'   of [fitted_samples()], [predicted_samples()], or [posterior_samples()]. `n_draws`
 #'   and `seed` are already specified here as arguments and are also passed on
 #'   to the posterior sampling function.
 #'
@@ -668,50 +724,123 @@
 #' m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df, method = "REML")
 #'
 #' # add fitted samples (posterior draws of the expected value of the response)
-#' # note that there are 800 rows in the output: 400 data by `n = 2` samples.
+#' # note that there are 800 rows in the output: 400 data by `n_draws = 2` samples.
 #' df |>
-#'   add_fitted_samples(m, n = 2, seed = 84)
+#'   add_fitted_samples(m, n_draws = 2, seed = 84)
 #'
 #' # add posterior draws from smooth s(x2)
 #' df |>
-#'   add_smooth_samples(m, n = 2, seed = 2, select= "s(x2)")
+#'   add_smooth_samples(m, n_draws = 2, seed = 2, select= "s(x2)")
 #' \dontshow{
 #'   options(op)
 #' }
-`add_fitted_samples` <- function(object, model, n = 1, seed = NULL, ...) {
+`add_fitted_samples` <- function(
+  data,
+  model,
+  ...,
+  n_draws = NULL,
+  seed = NULL,
+  chains = NULL
+) {
+  sampling_check_names(substitute(list(...)), derivative = FALSE)
+  if (!is.null(data) && !is.data.frame(data)) {
+    stop(
+      "'data' must be a data frame; name the draw count with n_draws = ... .",
+      call. = FALSE
+    )
+  }
+
   # compute fitted samples
-  fs <- fitted_samples(model, data = object, n = n, seed = seed, ...)
-  # need to have .row in object so we can join with the fitted samples
-  object <- object |>
+  fs <- fitted_samples(
+    model,
+    data = data,
+    n_draws = n_draws,
+    seed = seed,
+    chains = chains,
+    ...
+  )
+  # need to have .row in data so we can join with the fitted samples
+  data <- data |>
     mutate(.row = row_number())
-  object |>
-    left_join(fs, by = join_by(".row" == ".row"))
+  attach_sampling(
+    data |>
+      left_join(fs, by = join_by(".row" == ".row")),
+    fs
+  )
 }
 
 #' @export
 #' @importFrom dplyr mutate row_number left_join join_by
 #' @rdname add_fitted_samples
-`add_predicted_samples` <- function(object, model, n = 1, seed = NULL, ...) {
+`add_predicted_samples` <- function(
+  data,
+  model,
+  ...,
+  n_draws = NULL,
+  seed = NULL
+) {
+  sampling_check_names(substitute(list(...)), derivative = FALSE)
+  if (!is.null(data) && !is.data.frame(data)) {
+    stop(
+      "'data' must be a data frame; name the draw count with n_draws = ... .",
+      call. = FALSE
+    )
+  }
+
   # compute predicted samples
-  ps <- predicted_samples(model, data = object, n = n, seed = seed, ...)
-  # need to have .row in object so we can join with the fitted samples
-  object <- object |>
+  ps <- predicted_samples(
+    model,
+    data = data,
+    n_draws = n_draws,
+    seed = seed,
+    ...
+  )
+  # need to have .row in data so we can join with the fitted samples
+  data <- data |>
     mutate(.row = row_number())
-  object |>
-    left_join(ps, by = join_by(".row" == ".row"))
+  attach_sampling(
+    data |>
+      left_join(ps, by = join_by(".row" == ".row")),
+    ps
+  )
 }
 
 #' @export
 #' @importFrom dplyr mutate row_number left_join join_by
 #' @rdname add_fitted_samples
-`add_posterior_samples` <- function(object, model, n = 1, seed = NULL, ...) {
+`add_posterior_samples` <- function(
+  data,
+  model,
+  ...,
+  n_draws = NULL,
+  seed = NULL,
+  chains = NULL
+) {
+  sampling_check_names(substitute(list(...)), derivative = FALSE)
+  if (!is.null(data) && !is.data.frame(data)) {
+    stop(
+      "'data' must be a data frame; name the draw count with n_draws = ... .",
+      call. = FALSE
+    )
+  }
+
   # compute posterior samples
-  ps <- posterior_samples(model, data = object, n = n, seed = seed, ...)
-  # need to have .row in object so we can join with the fitted samples
-  object <- object |>
+  ps <- posterior_samples(
+    model,
+    data = data,
+    n_draws = n_draws,
+    seed = seed,
+    chains = chains,
+    ...
+  )
+  # need to have .row in data so we can join with the fitted samples
+  data <- data |>
     mutate(.row = row_number())
-  object |>
-    left_join(ps, by = join_by(".row" == ".row"))
+  attach_sampling(
+    data |>
+      left_join(ps, by = join_by(".row" == ".row")),
+    ps
+  )
 }
 
 
@@ -719,21 +848,44 @@
 #' @importFrom dplyr mutate row_number left_join join_by
 #' @rdname add_fitted_samples
 `add_smooth_samples` <- function(
-  object,
+  data,
   model,
-  n = 1,
+  ...,
+  n_draws = NULL,
   seed = NULL,
   select = NULL,
-  ...
+  chains = NULL
 ) {
+  sampling_check_names(substitute(list(...)), derivative = FALSE)
+  if (!is.null(data) && !is.data.frame(data)) {
+    stop(
+      "'data' must be a data frame; name the draw count with n_draws = ... .",
+      call. = FALSE
+    )
+  }
+
   # compute posterior samples
   ss <- smooth_samples(
-    model, data = object, n = n, seed = seed, select = select, ...
+    model,
+    data = data,
+    n_draws = n_draws,
+    seed = seed,
+    select = select,
+    chains = chains,
+    ...
   )
-  ss <- ss[c(".smooth", ".term", ".row", ".draw", ".value")]
-  # need to have .row in object so we can join with the fitted samples
-  object <- object |>
+  sampling <- attr(ss, "sampling")
+  ss <- ss[intersect(
+    c(".smooth", ".term", ".row", ".draw", ".value", ".chain", ".iteration"),
+    names(ss)
+  )]
+  attr(ss, "sampling") <- sampling
+  # need to have .row in data so we can join with the fitted samples
+  data <- data |>
     mutate(.row = row_number())
-  object |>
-    left_join(ss, by = join_by(".row" == ".row"))
+  attach_sampling(
+    data |>
+      left_join(ss, by = join_by(".row" == ".row")),
+    ss
+  )
 }

@@ -3,29 +3,94 @@
 #' Evaluate a smooth at a grid of evenly spaced value over the range of the
 #' covariate associated with the smooth. Alternatively, a set of points at which
 #' the smooth should be evaluated can be supplied. `smooth_estimates()` is a new
-#' implementation of `evaluate_smooth()`, and replaces that function, which has
+#' implementation of [evaluate_smooth()], and replaces that function, which has
 #' been removed from the package.
 #'
-#' @param object an object of class `"gam"` or `"gamm"`.
-#' @param select character; select which smooth's posterior to draw from.
-#'   The default (`NULL`) means the posteriors of all smooths in `model`
-#'   will be sampled from. If supplied, a character vector of requested terms.
+#' @param object a fitted model, including objects of class `"gam"`, `"gamm"`
+#'   or models fitted by [GJRM::gamlss()] or [GJRM::gjrm()].
+#' @param select character, numeric or logical; smooths to evaluate, using labels
+#'   from [smooths()] or indices in fitted smooth order. The default (`NULL`)
+#'   evaluates all smooths.
 #' @param smooth `r lifecycle::badge("deprecated")` Use `select` instead.
 #' @param n numeric; the number of points over the range of the covariate at
-#'   which to evaluate the smooth.
-#' @param n_3d,n_4d numeric; the number of points over the range of last
-#'   covariate in a 3D or 4D smooth. The default is `NULL` which achieves the
-#'   standard behaviour of using `n` points over the range of all covariate,
-#'   resulting in `n^d` evaluation points, where `d` is the dimension of the
-#'   smooth. For `d > 2` this can result in very many evaluation points and slow
-#'   performance. For smooths of `d > 4`, the value of `n_4d` will be used for
-#'   all dimensions `> 4`, unless this is `NULL`, in which case the default
-#'   behaviour (using `n` for all dimensions) will be observed.
+#'   which to evaluate a univariate smooth.
+#' @param n_2d numeric; the number of points along each of the first two axes
+#'   of a smooth surface, including surface panels of higher-dimensional smooths.
+#'   The default is 50 in plotting and plot-preparation functions. If `NULL`,
+#'   use `n` instead. Ignored when evaluation `data` are supplied. Factor levels
+#'   are retained, and curves with only one continuous covariate use `n`.
+#' @param n_3d,n_4d numeric; the number of points along the third axis of a
+#'   3D smooth (`n_3d`, default 16), or each axis after the first two for smooths
+#'   of dimension four or higher (`n_4d`, default 4). If `NULL`, use `n` for
+#'   those axes. For factor conditioning dimensions, retain at most that many
+#'   levels, taking the first in fitted order. The first two surface axes use
+#'   `n_2d`. Supplied `data` are unchanged.
 #' @param data a data frame of covariate values at which to evaluate the
 #'   smooth.
-#' @param unconditional logical; should confidence intervals include the
-#'   uncertainty due to smoothness selection? If `TRUE`, the corrected Bayesian
-#'   covariance matrix will be used.
+#' @param variables Character vector giving every covariate of the selected
+#'   smooths exactly once, in plotting order: x, y, then the conditioning
+#'   covariate for 3D smooths, or facet rows and columns for 4D smooths.
+#'   When supplied, selected smooths must use the same covariates. Use fitted coordinate names,
+#'   such as `"log(x)"` for a transformed covariate. The default, `NULL`, favours
+#'   a two-variable tensor margin for x and y, otherwise retaining fitted order.
+#'   Grid resolution follows this order. Supplied `data` are evaluated unchanged.
+#'   Drawing saved estimates can change the order but uses only points already
+#'   evaluated; evaluate again to change grid resolution or conditioning values.
+#'   Continuous covariates must precede factors. Spherical smooths retain their
+#'   latitude/longitude convention and do not support reordering.
+#' @param envir an optional environment supplying functions and constants used
+#'   in model expressions. The available model formula environment is used when
+#'   `NULL`. Covariate observations should be supplied in `data`.
+#' @param back_transform logical; generate automatic grids on the original
+#'   covariate scale? The default, `FALSE`, preserves evenly spaced model-scale
+#'   grids (e.g. in `log(x)`). With `TRUE`, recover raw fitting covariates and
+#'   generate grids on their original scale, then evaluate the model expressions
+#'   forwards. Each axis must depend on one distinct original model covariate.
+#'   Functions such as `foo(x)` require no inverse. Fitted prediction parameters
+#'   are retained where provided by the model, including for `scale(x)`.
+#'   When `data` are supplied, use those rows without generating a grid; `TRUE`
+#'   requires raw coordinates for each axis. Returned model-coordinate columns
+#'   keep their usual names and raw coordinates are retained in auxiliary
+#'   `.gratia_raw_*` columns. Draw these estimates with
+#'   `draw(object, back_transform = TRUE)` to display the raw coordinates.
+#'   Estimates containing only transformed coordinates give an informative error
+#'   if drawn on the original scale. This option does not change effect values
+#'   or their intervals at the chosen evaluation points.
+#' @param interval character or `NULL`; `NULL` (the default) returns estimates
+#'   and standard errors only. `"confidence"` adds pointwise intervals and
+#'   `"simultaneous"` adds a band covering, by default, the finite evaluation grid of each
+#'   fitted smooth. `"credible"` is an alias for `"confidence"`; the default
+#'   Bayesian covariance gives approximate Bayesian credible intervals.
+#' @param ci_level numeric; interval coverage, strictly between zero and one.
+#' @param interval_method character; "auto" uses stored [mgcv::scasm()] bootstrap draws
+#'   for pointwise intervals when available, and Gaussian intervals otherwise.
+#'   Use "gaussian" to request covariance-based limits or "bootstrap" to
+#'   require stored draws. Simultaneous bootstrap bands are not supported.
+#'   `"shape"` applies [shape_intervals()] to supported [mgcv::scasm()] smooth components,
+#'   using the initial limits chosen by `shape_source`.
+#' @param simultaneous_method character; calibration for simultaneous bands.
+#'   The default, `"simulation"`, uses coefficient draws on the evaluation
+#'   grid. `"tube"` uses a conservative Gaussian threshold-crossing bound
+#'   over a continuous interval for supported one-dimensional cubic splines.
+#'   See [simultaneous_bands].
+#' @param simultaneous_domain numeric pair of increasing finite endpoints, or
+#'   a named list of such pairs keyed by spline coordinate. For tube bands,
+#'   `NULL` uses the range of returned evaluation coordinates, including gaps.
+#'   All returned points must lie inside the interval and the interval must
+#'   lie inside the fitted spline support. Requires tube calibration.
+#' @param tube_control named list controlling numerical tube calibration:
+#'   `rel_tol` (default `1e-6`), `abs_tol` (`1e-8`), `subdivisions` (`1000L`),
+#'   and `root_tol` (`1e-8`). Requires tube calibration. Simulation controls
+#'   `n_sim`, `n_cores` (or `ncores`), and `seed` are ignored by tube calibration.
+#' @param shape_source character; initial uncertainty for `interval_method =
+#'   "shape"`: `"gaussian"` (the default) or stored `"bootstrap"` pointwise
+#'   limits. Bootstrap sources require `frequentist = FALSE` and
+#'   `unconditional = FALSE` because the stored draws hold smoothing fixed.
+#' @param n_sim,n_cores positive integers; coefficient draws and simulation cores
+#'   for simultaneous bands. Parallel simulation requires OpenMP support.
+#' @param seed integer or `NULL`; an explicit simulation seed preserves the
+#'   caller's RNG state. Shared coefficient draws make results independent of
+#'   selected smooth order and parallel evaluation scheduling.
 #' @param overall_uncertainty logical; should the uncertainty in the model
 #'  constant term be included in the standard error of the evaluate values of
 #'  the smooth?
@@ -44,31 +109,168 @@
 #' @param ... arguments passed to other methods.
 #'
 #' @return A data frame (tibble), which is of class `"smooth_estimates"`.
+#'   Its `plot_variables` attribute is a list of resolved covariate orders,
+#'   named by smooth label, used when drawing the saved estimates.
+#'   Its `cyclic_info` attribute retains the fitted cycle boundaries for
+#'   supported one-dimensional cyclic components, allowing
+#'   `draw(object, cyclic = "polar")` to configure the angular axis.
+#'   This attribute is retained in nested and unnested output.
+#'   When no evaluation rows remain, flat output has zero rows and retains the
+#'   estimate, standard error and predictor columns with their original types.
+#'   With `unnest = FALSE`, each selected smooth retains its metadata record
+#'   and a data table with zero rows in the `data` list column.
+#'
+#' @details
+#' For [GJRM::gamlss()] and [GJRM::gjrm()] models, smooths are evaluated in equation and smooth
+#' order using the final fitted GJRM coefficients and covariance matrices.
+#' Selection uses the model-wide labels returned by [smooths()], including
+#' suffixes such as `s.1(x)` for repeated labels. Equations without smooths
+#' are skipped; a model without any smooths gives an error. All grid, data,
+#' environment, coordinate transformation and interval controls are passed to
+#' the GAM method for each selected equation. `frequentist = TRUE` uses the
+#' final GJRM frequentist covariance. A smoothing-parameter uncertainty
+#' correction is unavailable: `unconditional = TRUE` warns and uses the
+#' uncorrected final covariance, as for GAMs without that correction.
+#'
+#' For distributional and glmmTMB models with multiple linear predictors,
+#' an optional `.model` column identifies the model part or parameter
+#' associated with each smooth. This display metadata is retained in nested
+#' output and subsets, allowing [draw()] to reproduce model subtitles from saved
+#' estimates. Smooth labels and selection remain unchanged.
+#'
+#' When distinct fitted terms share both their smooth label and type (for
+#' example, tensor products of soap-film components), `.smooth_id` contains
+#' their fitted smooth indices. This preserves their identity in saved
+#' estimates and plots without changing the labels supplied by mgcv.
+#'
+#' By default, simultaneous coverage is per fitted smooth over its valid evaluation points,
+#' including all its slices and factor levels. Separate factor-by smooths remain
+#' separate coverage sets when grouped in one plot. This finite-grid band does
+#' not claim joint coverage across selected smooths or the full fitted model.
+#' Increasing grid resolution improves the approximation to whole-curve coverage.
+#' For supported univariate cubic splines, `simultaneous_method = "tube"`
+#' instead calibrates over a continuous interval; see [simultaneous_bands].
+#' `overall_uncertainty` and covariance options apply to both interval types.
+#' SCAM smooth estimates retain the fitted centring and coefficient
+#' transformation when evaluation points are changed. Pointwise intervals use
+#' the covariance of the constrained coefficients. With
+#' `overall_uncertainty = TRUE`, their standard errors also include intercept
+#' uncertainty and its covariance with the smooth; estimates remain centred.
+#' Models without an intercept use smooth-only uncertainty for either setting.
+#' Native [mgcv::scasm()] fits use component-only uncertainty by default. Explicitly
+#' requesting `overall_uncertainty = TRUE` warns once if selected smooths lack
+#' the centring information needed to add mean uncertainty. Ordinary GAM
+#' defaults are unchanged.
+#'
+#' Bootstrap pointwise limits follow mgcv's percentiles and its `svar.only`
+#' correction for smoothing bias. The correction can move limits beyond the
+#' fitted shape constraints. Estimates and covariance-based standard errors
+#' are unchanged; `.crit` is `NA` for asymmetric bootstrap limits. No new
+#' replicates are generated. Simultaneous intervals use Gaussian draws and
+#' warn if automatic selection leaves stored bootstrap draws unused.
+#'
+#' The `interval_info` attribute records the interval source and correction.
+#' The `shape_constraints` attribute identifies requests and retained
+#' inequalities for each fitted smooth and tensor margin. Captions use
+#' plotmath arrows for increasing and decreasing constraints while `.type`
+#' and [smooth_type()] keep their existing basis names. Unsupported tensor
+#' requests produce a warning and are labelled as not retained.
+#'
+#' SCAM captions describe the basis and its constraints separately from the
+#' compact `.type` values. Increasing and decreasing constraints use plotmath
+#' arrows. Tensor captions name each covariate and its constraint; local
+#' constraints include the fitted change point. The `scam_smooth_info`
+#' attribute preserves these descriptions when plotting saved estimates.
+#'
+#' Shape enforcement is explicit and leaves the existing interval defaults
+#' unchanged. It preserves containment of a shape-restricted target whenever
+#' the entire initial band contains that target on the evaluation grid. This
+#' does not establish nominal coverage of the initial band, or preserve
+#' marginal coverage of transformed pointwise limits. The default Gaussian
+#' source uses approximate Bayesian covariance and does not construct a
+#' constrained posterior. Standard errors describe the initial calculation;
+#' `.crit` is `NA` after shape enforcement. Metadata records the initial source,
+#' correction, named shapes, model coordinates and whole-grid guarantee.
+#'
+#' Every selected term must have retained named [mgcv::scasm()] restrictions. Supported
+#' combinations are positivity, monotonicity in any directions and curvature
+#' in at most one direction. Tensor smooths require `te(..., np = FALSE)` with
+#' univariate B-spline margins (`"sc"` or `"bs"`). Normal reparameterisation
+#' and other complementary bases can invalidate the named surface shape even
+#' when coefficient inequalities were retained. Curvature additionally
+#' requires equally spaced fitted knots to rounding precision and degree at
+#' least two. Irregular evaluation
+#' coordinates are supported. Complete product grids, finite endpoints and
+#' evaluation inside the fitted B-spline domains are required; use `dist = 0`
+#' for tensors. Numeric `by` variables are unsupported; factor-by components
+#' and separate linear predictors are treated separately.
+#' Function-valued bases are required; derivative bases are unsupported.
+#' General `pc` inequalities can replace the named coefficient restrictions
+#' while leaving their original `xt` request in the fitted object. These
+#' replacements are labelled as general constraints and rejected for automatic
+#' shape intervals. Point equalities that retain the named inequalities are
+#' supported.
+#'
+#' Shape intervals use component-only uncertainty: explicit
+#' `overall_uncertainty = TRUE`, effect shifts and effect transformations are
+#' rejected. Coordinate transformations used in the model remain supported;
+#' their named shapes concern model coordinates. The transformed endpoints
+#' need not belong to the fitted spline space or obey centring equalities.
+#' See [shape_confidence_set()] for explicit coefficient restrictions and the
+#' [shape-constrained intervals article](https://gavinsimpson.github.io/gratia/articles/shape-constrained-intervals.html)
+#' for examples.
+#'
+#' Smoothing-parameter uncertainty is not currently supported for SCAM models;
+#' use `unconditional = FALSE`.
+#'
+#' For explicit `data`, missing covariates needed by a smooth produce `NA`
+#' estimates and standard errors at those positions. Missing values in variables
+#' unrelated to that smooth do not discard its otherwise evaluable rows.
+#'
+#' Raw `data` may contain `x` for a smooth such as `s(log(x))`; gratia evaluates
+#' the expression before constructing the prediction matrix. An evaluated
+#' column named `"log(x)"` can be supplied instead. When both are supplied,
+#' the raw inputs take precedence, except for stored model frames and grids
+#' prepared by gratia. Automatic grids are evenly spaced in the smooth
+#' coordinate (`log(x)`), and returned coordinate columns retain that name.
+#'
+#' Stored evaluated columns allow automatic plotting even when a local function
+#' used to fit the model is no longer available. Evaluating that function at new
+#' raw data requires `envir`; training values are never substituted for new
+#' observations. Arbitrary transformations are not inverted to recover raw data.
+#' The `coordinate_info` attribute identifies retained raw coordinate columns.
+#' [draw()] uses them for `back_transform = TRUE`; the usual coordinate
+#' columns remain on the model scale. Automatic raw grids require recoverable
+#' fitting rows and matching functions and constants. Supplied raw `data`
+#' instead define the prediction rows directly.
+#' Typical covariate values added to evaluated grids by `include_all = TRUE`
+#' are not raw axis coordinates. Numeric `by` multipliers are set to one on
+#' automatic grids, even when their name also identifies a raw axis; supplied
+#' prediction rows retain their actual multipliers. Soap-film boundary rows
+#' retain model coordinates only. If a boundary axis is transformed, draw the
+#' estimates with `back_transform = FALSE`; raw-scale drawing gives an error
+#' rather than dropping the boundary.
+
 #'
 #' @export
 #'
 #' @rdname smooth_estimates
+#' 
+#' @inheritParams get_vcov
 #'
 #' @examples
 #' load_mgcv()
 #' \dontshow{
 #' op <- options(cli.unicode = FALSE, pillar.sigfig = 6)
 #' }
-#' dat <- data_sim("eg1", n = 400, dist = "normal", scale = 2, seed = 2)
-#' m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
+#' # Simulate a Gaussian response with smooth effects and fit a GAM.
+#' dat <- data_sim("eg1", n = 120, dist = "normal", scale = 2, seed = 2)
+#' m <- gam(y ~ s(x0, k = 5) + s(x1, k = 5) + s(x2, k = 5) + s(x3, k = 5),
+#'   data = dat, method = "REML"
+#' )
 #'
-#' ## evaluate all smooths
-#' smooth_estimates(m1)
-#'
-#' ## or selected smooths
-#' smooth_estimates(m1, select = c("s(x0)", "s(x1)"))
-#'
-#' # parallel processing of smooths
-#' if (requireNamespace("mirai") && requireNamespace("carrier")) {
-#'   library("mirai")
-#'   daemons(2)                          # only low for CRAN requirements
-#'   smooth_estimates(m1)
-#' }
+#' # Evaluate each smooth at 30 points along its covariate.
+#' smooth_estimates(m, n = 30)
 #' \dontshow{
 #' options(op)
 #' }
@@ -83,27 +285,46 @@
 #' @importFrom rlang expr_label
 #' @importFrom lifecycle deprecated is_present
 #' @importFrom purrr in_parallel map
-#' @importFrom mirai daemons_set
 `smooth_estimates.gam` <- function(object,
     select = NULL,
     smooth = deprecated(),
     n = 100,
+    n_2d = 50,
     n_3d = 16,
     n_4d = 4,
     data = NULL,
     unconditional = FALSE,
+    frequentist = FALSE,
     overall_uncertainty = TRUE,
     dist = NULL,
     unnest = TRUE,
     partial_match = FALSE,
     clip = FALSE,
-    ...) {
+    envir = NULL,
+    back_transform = FALSE,
+    interval = NULL, ci_level = 0.95,
+    n_sim = 10000, n_cores = 1, seed = NULL,
+    interval_method = c("auto", "gaussian", "bootstrap", "shape"),
+    shape_source = c("gaussian", "bootstrap"),
+    ..., variables = NULL,
+    simultaneous_method = c('simulation', 'tube'),
+    simultaneous_domain = NULL, tube_control = list()) {
+  overall_supplied <- !missing(overall_uncertainty)
+  check_scam_unconditional(object, unconditional)
+  check_back_transform(back_transform)
+  interval <- normalize_smooth_interval(interval, allow_null = TRUE)
+  simultaneous_method <- resolve_simultaneous_method(simultaneous_method, interval,
+    simultaneous_domain, tube_control)
+  if (!is.null(interval) && simultaneous_method == 'simulation') {
+    validate_smooth_interval(interval, ci_level, n_sim, n_cores, seed)
+  }
+  model_name <- expr_label(substitute(object))
+  object <- with_model_envir(object, envir)
   if (lifecycle::is_present(smooth)) {
     lifecycle::deprecate_warn("0.8.9.9", "smooth_estimates(smooth)",
       "smooth_estimates(select)")
     select <- smooth
   }
-  model_name <- expr_label(substitute(object))
   ## if particular smooths selected
   S <- smooths(object) # vector of smooth labels - "s(x)"
 
@@ -118,6 +339,41 @@
 
   ## extract the mgcv.smooth objects
   smooths <- get_smooths_by_id(object, smooth_ids)
+  object <- plan_smooth_variables(object, smooth_ids, variables)
+  interval_method <- match.arg(interval_method)
+  shape_source <- match.arg(shape_source)
+  enforce_shape <- interval_method == "shape"
+  if (enforce_shape) {
+    validate_shape_flag(overall_uncertainty, "overall_uncertainty")
+    validate_shape_flag(frequentist, "frequentist")
+    validate_shape_flag(unconditional, "unconditional")
+  }
+  if (enforce_shape && is.null(interval)) {
+    cli::cli_abort("Request an interval when using interval_method = 'shape'.")
+  }
+  if (enforce_shape && overall_supplied && isTRUE(overall_uncertainty)) {
+    cli::cli_abort("Shape intervals use component-only uncertainty; set overall_uncertainty = FALSE.")
+  }
+  if (enforce_shape && shape_source == "bootstrap" &&
+      (isTRUE(frequentist) || isTRUE(unconditional))) {
+    cli::cli_abort("Stored bootstrap shape intervals require frequentist = FALSE and unconditional = FALSE.")
+  }
+  overall_uncertainty <- scasm_overall_uncertainty(object,
+    overall_uncertainty, overall_supplied, smooths)
+  shape_constraints <- smooth_shape_constraints(object, smooths, smooth_ids)
+  shape_specs <- if (enforce_shape) Map(function(sm, id) {
+    scasm_shape_spec(object, sm, shape_constraints[[as.character(id)]])
+  }, smooths, smooth_ids) else NULL
+  if (enforce_shape && interval == "confidence") {
+    cli::cli_warn("Shape enforcement preserves whole-grid containment; transformed pointwise limits have no guaranteed pointwise calibration.")
+  }
+  resolved_method <- scasm_interval_method(object,
+    if (enforce_shape) shape_source else interval_method,
+    interval = interval %||% "confidence")
+
+  if (simultaneous_method == 'tube') {
+    tube_check_model(object, if (enforce_shape) 'shape' else resolved_method)
+  }
 
   ## loop over the smooths and evaluate them
   sm_list <- vector(mode = "list", length = length(smooths))
@@ -129,8 +385,12 @@
         call. = FALSE
       )
     }
-    check_all_vars(object, data = data, smooths = smooths)
-    data <- delete_response(object, data = data)
+    # Evaluate only selected smooths; unrelated model terms are not needed.
+    for (sm in smooths) {
+      data <- prepare_smooth_data(object, sm, data)
+      data <- retain_smooth_coordinates(data, smooth_variable(sm), object,
+        required = back_transform)
+    }
   }
 
   # # fix up the n, n_3d, n_4d. If `n_3d` is `NULL` set `n_3d <- n`
@@ -143,30 +403,73 @@
   # }
 
   # loop over selected smooths and evaluate them, now with parallel processing
-  if (isFALSE(mirai::daemons_set())) {
-    sm_list <- map(
-      smooths,
-      eval_smooth,
-      model = object, n = n, n_3d = n_3d, n_4d = n_4d, data = data,
-      unconditional = unconditional,
-      overall_uncertainty = overall_uncertainty, dist = dist, clip = clip
-    )
-  } else {
+  if (isTRUE(requireNamespace("mirai", quietly = TRUE)) && 
+    isTRUE(mirai::daemons_set())) {
+    # parallel version
     sm_list <- map(
       smooths,
       in_parallel(
         \(sm) eval_smooth(
-          sm, model = object, n = n, n_3d = n_3d, n_4d = n_4d,
+          sm, model = object, n = n, n_2d = n_2d, n_3d = n_3d, n_4d = n_4d,
           data = data, unconditional = unconditional,
-          overall_uncertainty = overall_uncertainty, dist = dist
+          frequentist = frequentist,
+          overall_uncertainty = overall_uncertainty, dist = dist,
+          clip = clip, back_transform = back_transform
         ),
-        object = object, n = n, n_3d = n_3d, n_4d = n_4d, data = data,
-        unconditional = unconditional,
-        overall_uncertainty = overall_uncertainty, dist = dist, clip = clip,
+        object = object, n = n, n_2d = n_2d, n_3d = n_3d, n_4d = n_4d, data = data,
+        unconditional = unconditional, frequentist = frequentist,
+        overall_uncertainty = overall_uncertainty, dist = dist, clip = clip, back_transform = back_transform,
         eval_smooth = gratia::eval_smooth
       )
     )
+  } else {
+    # sequential version
+    sm_list <- map(
+      smooths,
+      eval_smooth,
+      model = object,
+      n = n,
+      n_2d = n_2d,
+      n_3d = n_3d,
+      n_4d = n_4d,
+      data = data,
+      unconditional = unconditional,
+      frequentist = frequentist,
+      overall_uncertainty = overall_uncertainty,
+      dist = dist,
+      clip = clip, back_transform = back_transform
+    )
   }
+
+  # Retain model-part labels with the estimates, including nested output.
+  model_labels <- smooth_model_labels(object, smooths)
+  if (any(!is.na(model_labels))) {
+    for (i in seq_along(sm_list)) sm_list[[i]]$.model <- model_labels[[i]]
+  }
+
+  if (!is.null(interval)) {
+    sm_list <- add_smooth_intervals(sm_list, smooths, object, interval, ci_level,
+      unconditional, frequentist, overall_uncertainty, n_sim, n_cores, seed,
+      interval_method = resolved_method, shape_specs = shape_specs,
+      simultaneous_method = simultaneous_method, simultaneous_domain = simultaneous_domain,
+      tube_control = tube_control)
+  }
+
+  tube_records <- attr(sm_list, 'tube_records')
+
+  # Use the labels and types supplied by each evaluator. Tensor products of
+  # the two soap components can share both, in which case we retain their IDs.
+  identities <- lapply(sm_list, function(estimates) {
+    unique(estimates[intersect(c(".smooth", ".type"), names(estimates))])
+  })
+  if (anyDuplicated(bind_rows(identities))) {
+    for (i in seq_along(sm_list)) sm_list[[i]]$.smooth_id <- smooth_ids[[i]]
+  }
+
+  surface_support <- Map(function(sm, estimates) {
+    smooth_surface_support(object, sm, estimates, dist)
+  }, smooths, sm_list)
+  names(surface_support) <- vapply(smooths, smooth_label, character(1))
 
   # see if we have any tensor term orders to collect & apply
   tensor_term_order <- lapply(sm_list, attr, "tensor_term_order")
@@ -180,6 +483,38 @@
 
   # add back any special attributes
   attr(sm_list, "tensor_term_order") <- do.call("c", tensor_term_order)
+  attr(sm_list, "plot_variables") <- stats::setNames(
+    lapply(smooth_ids, smooth_plot_variables, model = object),
+    vapply(smooths, smooth_label, character(1)))
+  coordinate_labels <- unique(unlist(lapply(smooths, terms_in_smooth)))
+  coordinate_info <- stats::setNames(lapply(coordinate_labels,
+    smooth_coordinate_info, model = object, data = data), coordinate_labels)
+  attr(coordinate_info, "smooth_variables") <- stats::setNames(
+    lapply(smooths, smooth_variable), vapply(smooths, smooth_label, character(1)))
+  attr(sm_list, "coordinate_info") <- coordinate_info
+  attr(sm_list, "surface_support") <- surface_support
+  attr(sm_list, "tensor_plot_info") <- tensor_plot_info(object, smooths)
+  attr(sm_list, "cyclic_info") <- smooth_cyclic_info(smooths, smooth_ids)
+  if (length(shape_constraints)) attr(sm_list, "shape_constraints") <- shape_constraints
+  scam_info <- scam_smooth_info(object, smooths, smooth_ids)
+  if (length(scam_info)) attr(sm_list, "scam_smooth_info") <- scam_info
+
+  if (!is.null(interval)) {
+    attr(sm_list, "interval_info") <- scasm_interval_info(object,
+      resolved_method, interval, ci_level)
+    if (enforce_shape) {
+      names(shape_specs) <- as.character(smooth_ids)
+      attr(sm_list, "interval_info") <- scasm_shape_interval_info(
+        attr(sm_list, "interval_info"), shape_specs, object, frequentist, unconditional)
+    }
+    if (simultaneous_method == 'tube') {
+      attr(sm_list, 'interval_info') <- c(attr(sm_list, 'interval_info'),
+        tube_info(tube_records, 'smooth', unconditional, frequentist))
+    }
+    attr(sm_list, "interval_info")$scope <- "smooth"
+    attr(sm_list, "interval_info")$overall_uncertainty <- overall_uncertainty &&
+      all(vapply(smooths, function(sm) isTRUE(attr(sm, "nCons") > 0L), logical(1)))
+  }
 
   ## add a class
   class(sm_list) <- c("smooth_estimates", class(sm_list))
@@ -188,28 +523,92 @@
   sm_list
 }
 
+#' @rdname smooth_estimates
+#' @export
+smooth_estimates.gamlss <- function(object, select = NULL, smooth = deprecated(),
+    ..., partial_match = FALSE) {
+  if (lifecycle::is_present(smooth)) {
+    lifecycle::deprecate_warn("0.8.9.9", "smooth_estimates(smooth)",
+      "smooth_estimates(select)")
+    select <- smooth
+  }
+  components <- gjrm_gamlss_components(object)
+  labels <- gjrm_gamlss_smooth_labels(components)
+  if (!length(labels)) stop("No smooths in GJRM model.", call. = FALSE)
+  if (anyNA(select) || (is.numeric(select) &&
+      any(!is.finite(select) | select < 1 | select != floor(select)))) {
+    stop("Smooth indices in 'select' must be positive integers without missing values.")
+  }
+  selected <- check_user_select_smooths(labels, select,
+    partial_match = partial_match)
+  if (!any(selected)) stop("No smooths selected.", call. = FALSE)
+
+  results <- list()
+  start <- 0L
+  for (m in components) {
+    attr(m, "gratia.cyclic_polar") <- attr(object, "gratia.cyclic_polar")
+    count <- length(m$smooth)
+    index <- start + seq_len(count)
+    if (any(selected[index])) {
+      # Use model-wide labels before evaluation so saved plotting metadata and
+      # repeated terms have the same identities as smooths(object).
+      for (i in seq_len(count)) m$smooth[[i]]$label <- labels[index[i]]
+      results[[length(results) + 1L]] <- smooth_estimates.gam(m,
+        select = selected[index], ..., partial_match = FALSE)
+    }
+    start <- start + count
+  }
+
+  out <- bind_rows(results)
+  for (attribute in c("tensor_term_order", "surface_support", "tensor_plot_info",
+      "plot_variables", "cyclic_info")) {
+    attr(out, attribute) <- do.call(c, lapply(results, attr, attribute))
+  }
+  coordinates <- lapply(results, attr, "coordinate_info")
+  info <- do.call(c, coordinates)
+  info <- info[!duplicated(names(info))]
+  attr(info, "smooth_variables") <- do.call(c,
+    lapply(coordinates, attr, "smooth_variables"))
+  attr(out, "coordinate_info") <- info
+  interval_info <- attr(out, "interval_info")
+  if (!is.null(interval_info)) {
+    interval_info$overall_uncertainty <- all(vapply(results, function(x) {
+      isTRUE(attr(x, "interval_info")$overall_uncertainty)
+    }, logical(1)))
+    if (identical(interval_info$calibration, "tube")) {
+      interval_info$curves <- do.call(c, lapply(results, function(x) {
+        attr(x, "interval_info")$curves
+      }))
+    }
+    attr(out, "interval_info") <- interval_info
+  }
+  out
+}
+
+#' @rdname smooth_estimates
+#' @export
+smooth_estimates.gjrm <- smooth_estimates.gamlss
+
 #' @export
 `smooth_estimates.gamm` <- function(object, ...) {
   smooth_estimates(object[["gam"]], ...)
 }
 
 #' @export
-`smooth_estimates.scam` <- function(object, ...) {
+`smooth_estimates.scam` <- function(object, ..., unconditional = FALSE) {
+  check_scam_unconditional(object, unconditional)
   # scam has too many smooth types to write methods for all of them
   # this just adds on some classes that allows gratia to dispatch special
   # methods for their peculiarities
   object$smooth <- lapply(object$smooth, reclass_scam_smooth)
   # now just call the "gam" method
-  smooth_estimates.gam(object, ...)
+  smooth_estimates.gam(object, ..., unconditional = unconditional)
 }
 
 # gamm4 method
 #' @export
-`smooth_estimates.list` <- function(object, ...) {
-  if (!is_gamm4(object)) {
-    stop("'smooth_estimates()' not available for a generic list")
-  }
-  smooth_estimates(object[["gam"]], ...)
+`smooth_estimates.gamm4` <- function(object, ...) {
+  smooth_estimates(gamm4_gam(object), ...)
 }
 
 #' Check user-supplied data for suitability
@@ -287,24 +686,44 @@
     unlist(lapply(smooths, FUN = term_names))
   }
 
-  ## check that the vars we need are in data
-  smooth_vars <- vars %in% names(data)
-  if (!all(smooth_vars)) {
-    stop(
-      paste(
-        "Variable(s)",
-        paste(paste0("'", vars[!smooth_vars], "'"),
-          collapse = ", "
-        ),
-        "not found in 'data'."
-      ),
-      call. = FALSE
-    )
-  }
+  # Validation uses the same expression rules as actual evaluation.
+  evaluate_terms(data, vars, model)
 
   ## if we get here then everything must be OK so return the required variable
   ## names invisibly in case it is useful
   invisible(vars)
+}
+
+# Construct a smooth's prediction matrix in the fitted coefficient order.
+`smooth_predict_matrix` <- function(smooth, data, model) {
+  # Optional smooth constructors register prediction methods when loaded.
+  if (inherits(model, "scam")) loadNamespace("scam")
+  if (!is.null(model$dinfo) &&
+    inherits(smooth, "random.effect") &&
+    inherits(smooth, "tensor.smooth")) {
+    # Discrete random effects use tensor order (last margin varies fastest),
+    # whereas model.matrix() varies the first factor fastest. The stored margins
+    # already include any reordering by bam(), even when rind is NULL.
+    margin_terms <- vapply(
+      smooth$margin, function(m) m$term, character(1L)
+    )
+    smooth$form <- stats::reformulate(
+      paste(rev(margin_terms), collapse = ":"),
+      intercept = FALSE,
+      env = environment(smooth$form)
+    )
+  }
+  X <- predict_mat_rows(smooth, data)
+  if (inherits(model, "scam") && is_scam_smooth(smooth)) {
+    X <- scam_smooth_matrix(smooth, X)
+    if (smooth_dim(smooth) == 2L &&
+        identical(attr(model, "gratia.scam.centre"), "plot")) {
+      offset <- attr(X, "offset")
+      X <- sweep(X, 2L, colMeans(X, na.rm = TRUE), FUN = "-")
+      if (!is.null(offset)) attr(X, "offset") <- offset - mean(offset, na.rm = TRUE)
+    }
+  }
+  X
 }
 
 #' Evaluate a spline at provided covariate values
@@ -313,7 +732,6 @@
 #' @param model a fitted model; currently only [mgcv::gam()] and [mgcv::bam()]
 #'   models are supported.
 #' @param data a data frame of values to evaluate `smooth` at.
-#' @param frequentist logical; use the frequentist covariance matrix?
 #'
 #' @inheritParams eval_smooth
 #'
@@ -322,13 +740,26 @@
 #' @importFrom dplyr pull
 #' @importFrom tidyselect all_of
 #' @importFrom tidyr nest unnest
-#' @importFrom mgcv PredictMat inSide
+#' @importFrom mgcv PredictMat
 #' @export
 `spline_values` <- function(
-    smooth, data, model, unconditional,
-    overall_uncertainty = TRUE, frequentist = FALSE) {
+    smooth,
+    data,
+    model,
+    unconditional,
+    overall_uncertainty = TRUE,
+    frequentist = FALSE, envir = NULL) {
+  check_scam_unconditional(model, unconditional)
+  if (inherits(model, "scam") &&
+      inherits(reclass_scam_smooth(smooth), "scam_smooth")) {
+    return(spline_values_scam(smooth, data, model,
+      overall_uncertainty = overall_uncertainty, frequentist = frequentist,
+      envir = envir))
+  }
+  model <- with_model_envir(model, envir)
+  data <- prepare_smooth_data(model, smooth, data)
   is_soap <- is_soap_film(smooth)
-  X <- PredictMat(smooth, data) # prediction matrix
+  X <- smooth_predict_matrix(smooth, data, model) # prediction matrix
   offset <- attr(X, "offset")
   start <- smooth[["first.para"]]
   end <- smooth[["last.para"]]
@@ -344,51 +775,29 @@
   label <- smooth_label(smooth)
 
   ## want full vcov for component-wise CI
-  V <- get_vcov(model, unconditional = unconditional)
+  V <- get_vcov(
+    model,
+    unconditional = unconditional,
+    frequentist = frequentist
+  )
 
-  ## variables for component-wise CIs for smooths
-  column_means <- model[["cmX"]]
-  lcms <- length(column_means)
-  nc <- ncol(V)
-  meanL1 <- smooth[["meanL1"]]
-  eta_idx <- lss_eta_index(model)
-
-  n_cons <- attr(smooth, "nCons")
-  if (isTRUE(overall_uncertainty) && !is.null(n_cons) && n_cons > 0L) {
-    if (lcms < nc) {
-      column_means <- c(column_means, rep(0, nc - lcms))
-    }
-    Xcm <- matrix(column_means, nrow = nrow(X), ncol = nc, byrow = TRUE)
-    if (!is.null(meanL1)) {
-      Xcm <- Xcm / meanL1
-    }
-    Xcm[, para.seq] <- X
-    # only apply the uncertainty from linear predictors of which this smooth
-    # is a part of
-    idx <- vapply(eta_idx, function(i, beta) any(beta %in% i),
-      FUN.VALUE = logical(1L), beta = para.seq
-    )
-    idx <- unlist(eta_idx[idx])
-    rs <- rowSums((Xcm[, idx, drop = FALSE] %*%
-      V[idx, idx, drop = FALSE]) * Xcm[, idx, drop = FALSE])
-  } else {
-    rs <- rowSums((X %*% V[para.seq, para.seq, drop = FALSE]) * X)
-  }
+  design <- smooth_uncertainty_design(smooth, X, model, V,
+    overall_uncertainty = overall_uncertainty)
+  rs <- rowSums((design$X %*% V[design$cols, design$cols, drop = FALSE]) * design$X)
 
   ## standard error of the estimate
   se.fit <- sqrt(pmax(0, rs))
 
   ## identify which vars are needed for this smooth...
-  keep_vars <- terms_in_smooth(smooth)
+  keep_vars <- unique(c(terms_in_smooth(smooth),
+    smooth_coordinate_columns(model, terms_in_smooth(smooth), data)))
   ## ... then keep only those vars
   data <- select(data, all_of(keep_vars))
 
   ## Return object
-  tbl <- tibble(.smooth = rep(label, nrow(X)), .estimate = fit, .se = se.fit)
-  ## bind on the data
-  tbl <- bind_cols(tbl, data)
-  ## nest all columns with varying data
-  tbl <- nest(tbl, data = all_of(c(".estimate", ".se", names(data))))
+  values <- bind_cols(tibble(.estimate = fit, .se = se.fit), data)
+  # Keep the selected smooth and its data prototype even with no observations.
+  tbl <- tibble(.smooth = label, data = list(values))
 
   tbl
 }
@@ -399,7 +808,7 @@
 #' `r lifecycle::badge("deprecated")`
 #'
 #' The function `spline_values2()` has been renamed to `spline_values()` as of
-#' version 0.9.0. This was allowed following the removal of `evaluate_smooth()`,
+#' version 0.9.0. This was allowed following the removal of [evaluate_smooth()],
 #' which was the only function using `spline_values()`. So `spline_values2()`
 #' has been renamed to `spline_values()`.
 #'
@@ -407,7 +816,6 @@
 #' @param model a fitted model; currently only [mgcv::gam()] and [mgcv::bam()]
 #'   models are supported.
 #' @param data an optional data frame of values to evaluate `smooth` at.
-#' @param frequentist logical; use the frequentist covariance matrix?
 #'
 #' @inheritParams eval_smooth
 #'
@@ -415,10 +823,11 @@
 #' @export
 `spline_values2` <- function(
     smooth, data, model, unconditional,
-    overall_uncertainty = TRUE, frequentist = FALSE) {
+    overall_uncertainty = TRUE, frequentist = FALSE, envir = NULL) {
   spline_values(
     smooth = smooth, data = data, model = model,
-    unconditional = unconditional, frequentist = frequentist
+    unconditional = unconditional, frequentist = frequentist,
+    overall_uncertainty = overall_uncertainty, envir = envir
   )
 }
 
@@ -427,68 +836,54 @@
 }
 
 #' @export
-`smooth_values.univariate_scam_smooth` <- function(
-    smooth, data, model, V,
+`smooth_values.scam_smooth` <- function(
+    smooth, data, model, V, overall_uncertainty = TRUE,
     ...) {
-  # get values of smooth
-  X <- PredictMat(smooth, data) # prediction matrix
-  off <- attr(X, "offset") # offset, if any
-  if (is.null(off)) {
-    off <- 0
-  }
-  para_seq <- smooth_coef_indices(smooth) # start:end
-  coefs <- coef(model, parametrized = FALSE)[para_seq]
-
-  # scam smooths work quite differently to mgcv smooths as X can contain
-  # constant terms, need exponentiating etc
-  which_exp <- which_exp_scam_coefs(model)[para_seq] # which betas need exp
-  idx <- seq_along(coefs)[which_exp]
-  # which exp function are we using?
-  exp_fn <- exp_fun(model)
-  # exponentiate any coefs that need it
-  coefs[idx] <- exp_fn(coefs[idx])
-  # coefs need reprarameterizing in some smooth type or padding with a 0
-  stats <- scam_beta_se(smooth,
-    beta = coefs, X = X, ndata = nrow(data),
-    V = V
-  )
-  coefs <- stats$betas
-  se_fit <- stats$se
-  fit <- drop(X %*% coefs) + off
+  X <- smooth_predict_matrix(smooth, data, model)
+  off <- attr(X, "offset") %||% 0
+  idx <- smooth_coef_indices(smooth)
+  fit <- drop(X %*% coef(model)[idx]) + off
+  design <- smooth_uncertainty_design(smooth, X, model, V,
+    overall_uncertainty = overall_uncertainty)
+  G <- design$X
+  idx <- design$cols
+  se_fit <- sqrt(pmax(0, rowSums((G %*% V[idx, idx, drop = FALSE]) * G)))
   list(fit = fit, se = se_fit)
 }
 
 `spline_values_scam` <- function(
     smooth, data, model,
-    overall_uncertainty = TRUE, frequentist = FALSE) {
+    overall_uncertainty = TRUE, frequentist = FALSE, envir = NULL) {
+  model <- with_model_envir(model, envir)
+  data <- prepare_smooth_data(model, smooth, data)
   # reclass the smooth to add classes needed for gratia's S3 methods to work
   smooth <- reclass_scam_smooth(smooth)
 
   ## want full vcov for component-wise CI
-  V <- vcov(model, freq = frequentist, parametrized = TRUE)
+  V <- get_vcov(model, frequentist = frequentist)
 
-  # get values of smooth & std errs, modified as needed for scam smooths
-  sv <- smooth_values(smooth = smooth, data = data, model = model, V = V)
-
-  fit <- sv$fit # fitted value at data
-  se_fit <- sv$se # sqrt(pmax(0, sv$se)) # std err of fitted value
+  # Evaluate rows with complete smooth predictors, then restore missing rows
+  # at their supplied positions without changing the fitted basis.
+  valid <- finite_predictor_rows(data[, terms_in_smooth(smooth), drop = FALSE])
+  fit <- se_fit <- rep(NA_real_, nrow(data))
+  if (any(valid)) {
+    sv <- smooth_values(smooth = smooth, data = data[valid, , drop = FALSE],
+      model = model, V = V, overall_uncertainty = overall_uncertainty)
+    fit[valid] <- sv$fit
+    se_fit[valid] <- sv$se
+  }
 
   label <- smooth_label(smooth)
 
   ## identify which vars are needed for this smooth...
-  keep_vars <- terms_in_smooth(smooth)
+  keep_vars <- unique(c(terms_in_smooth(smooth),
+    smooth_coordinate_columns(model, terms_in_smooth(smooth), data)))
   ## ... then keep only those vars
   data <- select(data, all_of(keep_vars))
 
   ## Return object
-  tbl <- tibble(
-    .smooth = rep(label, nrow(data)), .estimate = fit,
-    .se = se_fit
-  )
-  ## bind on the data
-  tbl <- bind_cols(tbl, data)
-  ## nest all columns with varying data
-  tbl <- nest(tbl, data = all_of(c(".estimate", ".se", names(data))))
+  values <- bind_cols(tibble(.estimate = fit, .se = se_fit), data)
+  tbl <- tibble(.smooth = label, data = list(values))
 
   tbl
 }
@@ -502,6 +897,7 @@
 #' @param ... arguments passed to other methods
 #'
 #' @inheritParams smooth_estimates
+#' @inheritParams get_vcov
 #'
 #' @export
 `eval_smooth` <- function(smooth, ...) {
@@ -513,13 +909,18 @@
 #' @export
 `eval_smooth.mgcv.smooth` <- function(smooth, model,
                                       n = 100,
+                                      n_2d = NULL,
                                       n_3d = NULL,
                                       n_4d = NULL,
                                       data = NULL,
                                       unconditional = FALSE,
+                                      frequentist = FALSE,
                                       overall_uncertainty = TRUE,
                                       dist = NULL,
+  envir = NULL,
+  back_transform = FALSE,
                                       ...) {
+  model <- with_model_envir(model, envir)
   by_var <- by_variable(smooth) # even if not a by as we want NA later
   if (by_var == "NA") {
     by_var <- NA_character_
@@ -527,8 +928,8 @@
 
   ## deal with data if supplied
   data <- process_user_data_for_eval(
-    data = data, model = model,
-    n = n, n_3d = n_3d, n_4d = n_4d,
+    data = data, model = model, back_transform = back_transform,
+    n = n, n_2d = n_2d, n_3d = n_3d, n_4d = n_4d,
     id = which_smooth(
       model,
       smooth_label(smooth)
@@ -540,7 +941,8 @@
     data = data,
     unconditional = unconditional,
     model = model,
-    overall_uncertainty = overall_uncertainty
+    overall_uncertainty = overall_uncertainty,
+    frequentist = frequentist
   )
 
   ## add on info regarding by variable
@@ -569,28 +971,27 @@
   smooth,
   model,
   n = 100,
+  n_2d = NULL,
   n_3d = NULL,
   n_4d = NULL,
   data = NULL,
   unconditional = FALSE,
+  frequentist = FALSE,
   overall_uncertainty = TRUE,
   clip = TRUE, # ?hmm thinking
+  envir = NULL,
+  back_transform = FALSE,
   ...
 ) {
+  model <- with_model_envir(model, envir)
   by_var <- by_variable(smooth) # even if not a by as we want NA later
   if (by_var == "NA") {
     by_var <- NA_character_
   }
 
-  # Deal with data if supplied
-  # As a special case, if no `data`, then we should generate some data here for
-  # soap film from the boundary
-  #if (is.null(data)) {
-  #  data <- soap_film_data(smooth, n = n, n_3d = n_3d, n_4d = n_4d)
-  #}
   data <- process_user_data_for_eval(
-    data = data, model = model,
-    n = n, n_3d = n_3d, n_4d = n_4d,
+    data = data, model = model, back_transform = back_transform,
+    n = n, n_2d = n_2d, n_3d = n_3d, n_4d = n_4d,
     id = which_smooth(
       model,
       smooth_label(smooth)
@@ -598,21 +999,17 @@
   )
 
   # handle soap film smooths
-  # can use this if Simon accepts the proposed changes to inSide()
   is_soap <- is_soap_film(smooth)
   if (is_soap) {
-    bnd <- boundary(smooth) # smooth$xt$bnd
-    # in_side <- inSide(bnd, x = data[[smooth$vn[[1]]]],
-    #  y = data[[smooth$vn[[1]]]],
-    # xname = "v", yname = "w") # needs fixed inSide
-    # use in_side to filter the data before we evaluate the spline
-    # any point outside the domain is NA anyway
+    bnd <- boundary(smooth)
     if (isTRUE(clip)) {
-      is_inside <- inside(
-        data,
-        bnd,
-        x_var = smooth$vn[[1]],
-        y_var = smooth$vn[[2]]
+      vars <- smooth_variable(smooth)
+      is_inside <- mgcv::inSide(
+        bnd = bnd,
+        x = data[[vars[[1L]]]],
+        y = data[[vars[[2L]]]],
+        xname = vars[[1L]],
+        yname = vars[[2L]]
       )
 
       data <- filter(data, is_inside)
@@ -620,11 +1017,13 @@
   }
 
   ## values of spline at data
-  eval_sm <- spline_values(smooth,
+  eval_sm <- spline_values(
+    smooth,
     data = data,
     unconditional = unconditional,
     model = model,
-    overall_uncertainty = overall_uncertainty
+    overall_uncertainty = overall_uncertainty,
+    frequentist = frequentist
   )
 
   ## add on info regarding by variable
@@ -668,13 +1067,19 @@
 #' @export
 `eval_smooth.scam_smooth` <- function(smooth, model,
                                       n = 100,
+                                      n_2d = NULL,
                                       n_3d = NULL,
                                       n_4d = NULL,
                                       data = NULL,
                                       unconditional = FALSE,
+                                      frequentist = FALSE,
                                       overall_uncertainty = TRUE,
                                       dist = NULL,
+  envir = NULL,
+  back_transform = FALSE,
                                       ...) {
+  check_scam_unconditional(model, unconditional)
+  model <- with_model_envir(model, envir)
   by_var <- by_variable(smooth) # even if not a by as we want NA later
   if (by_var == "NA") {
     by_var <- NA_character_
@@ -682,15 +1087,16 @@
 
   ## deal with data if supplied
   data <- process_user_data_for_eval(
-    data = data, model = model,
-    n = n, n_3d = n_3d, n_4d = n_4d,
+    data = data, model = model, back_transform = back_transform,
+    n = n, n_2d = n_2d, n_3d = n_3d, n_4d = n_4d,
     id = which_smooth(model, smooth_label(smooth))
   )
 
   ## values of spline at data
   eval_sm <- spline_values_scam(smooth,
     data = data, model = model,
-    overall_uncertainty = overall_uncertainty
+    overall_uncertainty = overall_uncertainty,
+    frequentist = frequentist
   )
 
   ## add on info regarding by variable
@@ -711,12 +1117,14 @@
   eval_sm
 }
 
-#' Wrapper to `gratia::smooth_data()` and `gratia:::check_user_data()` for use
+#' Wrapper to [gratia::smooth_data()] and `gratia:::check_user_data()` for use
 #' with [gratia::eval_smooth()] methods
 #'
 #' @param data an optional data frame of values for the smooth
 #' @param model a fitted model
 #' @param n numeric; the number of new observations to generate. Passed to
+#'   [gratia::smooth_data()].
+#' @param n_2d numeric; points along each surface axis. Passed to
 #'   [gratia::smooth_data()].
 #' @param n_3d numeric; the number of new observations to generate for the third
 #'   dimension of a 3D smooth. Passed to [gratia::smooth_data()].
@@ -730,19 +1138,25 @@
 #' @importFrom rlang .data
 #' @importFrom vctrs vec_slice
 `process_user_data_for_eval` <- function(
-    data, model, n, n_3d, n_4d, id,
-    var_order = NULL) {
+    data, model, n, n_3d, n_4d, id, n_2d = NULL,
+    var_order = NULL, back_transform = FALSE) {
   if (is.null(data)) {
     data <- smooth_data(
       model = model,
       n = n,
+      n_2d = n_2d,
       n_3d = n_3d,
       n_4d = n_4d,
       id = id,
-      var_order = var_order
+      var_order = var_order, back_transform = back_transform
     )
   } else {
+    spec <- tensor_plot_spec(model, id)
     smooth <- get_smooths_by_id(model, id)[[1L]]
+    data <- prepare_smooth_data(model, smooth, data)
+    data <- retain_smooth_coordinates(data, smooth_variable(smooth), model,
+      required = back_transform)
+    if (!is.null(spec)) data <- filter_tensor_levels(data, spec$levels)
     vars <- smooth_variable(smooth)
     by_var <- by_variable(smooth)
     if (!identical(by_var, "NA")) {
@@ -751,7 +1165,7 @@
     ## if this is a by variable, filter the by variable for the required
     ## level now
     if (is_factor_by_smooth(smooth)) {
-      data <- vec_slice(data, data[[by_var]] == by_level(smooth))
+      data <- vec_slice(data, is.na(data[[by_var]]) | data[[by_var]] == by_level(smooth))
     }
   }
   data
@@ -760,10 +1174,20 @@
 #' @rdname eval_smooth
 #' @export
 #' @importFrom tibble add_column
-`eval_smooth.fs.interaction` <- function(smooth, model, n = 100, data = NULL,
-                                         unconditional = FALSE,
-                                         overall_uncertainty = TRUE,
-                                         ...) {
+`eval_smooth.fs.interaction` <- function(
+  smooth,
+  model,
+  n = 100,
+  n_2d = NULL,
+  data = NULL,
+  unconditional = FALSE,
+  frequentist = FALSE,
+  overall_uncertainty = TRUE,
+  envir = NULL,
+  back_transform = FALSE,
+  ...
+) {
+  model <- with_model_envir(model, envir)
   by_var <- by_variable(smooth) # even if not a by as we want NA later
   if (by_var == "NA") {
     by_var <- NA_character_
@@ -776,12 +1200,14 @@
   # with the factor last. So use the reordering functionality in place for
   # >=3D tensor product smooths
   var_order <- reorder_tensor_smooth_terms(smooth)
+  spec <- tensor_plot_spec(model, which_smooth(model, smooth_label(smooth)))
+  if (!is.null(spec)) var_order <- spec$variables
 
   ## deal with data if supplied
   id <- which_smooth(model, smooth_label(smooth))
   data <- process_user_data_for_eval(
-    data = data, model = model,
-    n = n, n_3d = NULL, n_4d = NULL, id = id, var_order = var_order
+    data = data, model = model, back_transform = back_transform,
+    n = n, n_2d = n_2d, n_3d = NULL, n_4d = NULL, id = id, var_order = var_order
   )
 
   ## values of spline at data
@@ -789,7 +1215,8 @@
     data = data,
     unconditional = unconditional,
     model = model,
-    overall_uncertainty = overall_uncertainty
+    overall_uncertainty = overall_uncertainty,
+    frequentist = frequentist
   )
 
   ## add on info regarding by variable
@@ -804,10 +1231,20 @@
 #' @rdname eval_smooth
 #' @export
 #' @importFrom tibble add_column
-`eval_smooth.sz.interaction` <- function(smooth, model, n = 100, data = NULL,
-                                         unconditional = FALSE,
-                                         overall_uncertainty = TRUE,
-                                         ...) {
+`eval_smooth.sz.interaction` <- function(
+  smooth,
+  model,
+  n = 100,
+  n_2d = NULL,
+  data = NULL,
+  unconditional = FALSE,
+  frequentist = FALSE,
+  overall_uncertainty = TRUE,
+  envir = NULL,
+  back_transform = FALSE,
+  ...
+) {
+  model <- with_model_envir(model, envir)
   by_var <- by_variable(smooth) # even if not a by as we want NA later
   if (by_var == "NA") {
     by_var <- NA_character_
@@ -816,8 +1253,8 @@
   ## deal with data if supplied
   id <- which_smooth(model, smooth_label(smooth))
   data <- process_user_data_for_eval(
-    data = data, model = model,
-    n = n, n_3d = NULL, n_4d = NULL,
+    data = data, model = model, back_transform = back_transform,
+    n = n, n_2d = n_2d, n_3d = NULL, n_4d = NULL,
     id = id
   )
 
@@ -825,6 +1262,7 @@
   eval_sm <- spline_values(smooth,
     data = data,
     unconditional = unconditional,
+    frequentist = frequentist,
     model = model,
     overall_uncertainty = overall_uncertainty
   )
@@ -840,10 +1278,20 @@
 #' @rdname eval_smooth
 #' @export
 #' @importFrom tibble add_column
-`eval_smooth.random.effect` <- function(smooth, model, n = 100, data = NULL,
-                                        unconditional = FALSE,
-                                        overall_uncertainty = TRUE,
-                                        ...) {
+`eval_smooth.random.effect` <- function(
+  smooth,
+  model,
+  n = 100,
+  n_2d = NULL,
+  data = NULL,
+  unconditional = FALSE,
+  frequentist = FALSE,
+  overall_uncertainty = TRUE,
+  envir = NULL,
+  back_transform = FALSE,
+  ...
+) {
+  model <- with_model_envir(model, envir)
   by_var <- by_variable(smooth) # even if not a by as we want NA later
   if (by_var == "NA") {
     by_var <- NA_character_
@@ -852,8 +1300,8 @@
   ## deal with data if supplied
   id <- which_smooth(model, smooth_label(smooth))
   data <- process_user_data_for_eval(
-    data = data, model = model,
-    n = n, n_3d = NULL, n_4d = NULL,
+    data = data, model = model, back_transform = back_transform,
+    n = n, n_2d = n_2d, n_3d = NULL, n_4d = NULL,
     id = id
   )
 
@@ -861,6 +1309,7 @@
   eval_sm <- spline_values(smooth,
     data = data,
     unconditional = unconditional,
+    frequentist = frequentist,
     model = model,
     overall_uncertainty = overall_uncertainty
   )
@@ -876,25 +1325,52 @@
 #' @rdname eval_smooth
 #' @export
 #' @importFrom tibble add_column
-`eval_smooth.mrf.smooth` <- function(smooth, model, n = 100, data = NULL,
-                                     unconditional = FALSE,
-                                     overall_uncertainty = TRUE,
-                                     ...) {
-  .NotYetImplemented()
+`eval_smooth.mrf.smooth` <- function(
+  smooth,
+  model,
+  n = 100,
+  n_2d = NULL,
+  data = NULL,
+  unconditional = FALSE,
+  frequentist = FALSE,
+  overall_uncertainty = TRUE,
+  envir = NULL,
+  back_transform = FALSE,
+  ...) {
+  model <- with_model_envir(model, envir)
+  id <- which_smooth(model, smooth_label(smooth))
+  data <- process_user_data_for_eval(data, model, n = n, n_2d = n_2d,
+    n_3d = NULL, n_4d = NULL, id = id, back_transform = back_transform)
+  data <- prepare_mrf_data(smooth, data, model)
+  eval_sm <- spline_values(smooth, data = data, model = model,
+    unconditional = unconditional, frequentist = frequentist,
+    overall_uncertainty = overall_uncertainty)
+  by_var <- by_variable(smooth)
+  if (identical(by_var, "NA")) by_var <- NA_character_
+  eval_sm <- add_by_var_column(eval_sm, by_var = by_var)
+  add_smooth_type_column(eval_sm, sm_type = smooth_type(smooth))
 }
 
 #' @rdname eval_smooth
 #' @export
 #' @importFrom tibble add_column
-`eval_smooth.t2.smooth` <- function(smooth, model,
-                                    n = 100,
-                                    n_3d = NULL,
-                                    n_4d = NULL,
-                                    data = NULL,
-                                    unconditional = FALSE,
-                                    overall_uncertainty = TRUE,
-                                    dist = NULL,
-                                    ...) {
+`eval_smooth.t2.smooth` <- function(
+  smooth,
+  model,
+  n = 100,
+  n_2d = NULL,
+  n_3d = NULL,
+  n_4d = NULL,
+  data = NULL,
+  unconditional = FALSE,
+  frequentist = FALSE,
+  overall_uncertainty = TRUE,
+  dist = NULL,
+  envir = NULL,
+  back_transform = FALSE,
+  ...
+) {
+  model <- with_model_envir(model, envir)
   by_var <- by_variable(smooth) # even if not a by as we want NA later
   if (by_var == "NA") {
     by_var <- NA_character_
@@ -902,12 +1378,14 @@
 
   # order of variables
   var_order <- reorder_tensor_smooth_terms(smooth)
+  spec <- tensor_plot_spec(model, which_smooth(model, smooth_label(smooth)))
+  if (!is.null(spec)) var_order <- spec$variables
 
   ## deal with data if supplied
   id <- which_smooth(model, smooth_label(smooth))
   data <- process_user_data_for_eval(
-    data = data, model = model,
-    n = n, n_3d = n_3d, n_4d = n_4d,
+    data = data, model = model, back_transform = back_transform,
+    n = n, n_2d = n_2d, n_3d = n_3d, n_4d = n_4d,
     id = id, var_order = var_order
   )
 
@@ -915,6 +1393,7 @@
   eval_sm <- spline_values(smooth,
     data = data,
     unconditional = unconditional,
+    frequentist = frequentist,
     model = model,
     overall_uncertainty = overall_uncertainty
   )
@@ -948,15 +1427,22 @@
 #' @rdname eval_smooth
 #' @export
 #' @importFrom tibble add_column
-`eval_smooth.tensor.smooth` <- function(smooth, model,
-                                        n = 100,
-                                        n_3d = NULL,
-                                        n_4d = NULL,
-                                        data = NULL,
-                                        unconditional = FALSE,
-                                        overall_uncertainty = TRUE,
-                                        dist = NULL,
-                                        ...) {
+`eval_smooth.tensor.smooth` <- function(
+  smooth,
+  model,
+  n = 100,
+  n_2d = NULL,
+  n_3d = NULL,
+  n_4d = NULL,
+  data = NULL,
+  unconditional = FALSE,
+  frequentist = FALSE,
+  overall_uncertainty = TRUE,
+  dist = NULL,
+  envir = NULL,
+  back_transform = FALSE,
+  ...) {
+  model <- with_model_envir(model, envir)
   by_var <- by_variable(smooth) # even if not a by as we want NA later
   if (by_var == "NA") {
     by_var <- NA_character_
@@ -964,12 +1450,14 @@
 
   # order of variables
   var_order <- reorder_tensor_smooth_terms(smooth)
+  spec <- tensor_plot_spec(model, which_smooth(model, smooth_label(smooth)))
+  if (!is.null(spec)) var_order <- spec$variables
 
   # deal with data if supplied
   id <- which_smooth(model, smooth_label(smooth))
   data <- process_user_data_for_eval(
-    data = data, model = model,
-    n = n, n_3d = n_3d, n_4d = n_4d,
+    data = data, model = model, back_transform = back_transform,
+    n = n, n_2d = n_2d, n_3d = n_3d, n_4d = n_4d,
     id = id, var_order = var_order
   )
 
@@ -977,6 +1465,7 @@
   eval_sm <- spline_values(smooth,
     data = data,
     unconditional = unconditional,
+    frequentist = frequentist,
     model = model,
     overall_uncertainty = overall_uncertainty
   )
@@ -1009,50 +1498,52 @@
 
 #' Plot the result of a call to `smooth_estimates()`
 #'
-#' @param decrease_col,increase_col colour specifications to use for
+#' @param decrease_col,increase_col Deprecated; use [gratia_theme_get()] theme
+#'   settings instead. Colour specifications to use for
 #'   indicating periods of change. `col_change` is used when
 #'   `change_type = "change"`, while `col_decrease` and `col_increase` are used
 #'   when `change_type = "sizer"``.
-#' @param change_lwd numeric; the value to set the `linewidth` to in
+#' @param change_lwd Deprecated; use [gratia_theme_get()] theme
+#'   settings instead. Numeric; the value to set the `linewidth` to in
 #'   [ggplot2::geom_line()], used to represent the periods of change.
 #' @param ylim numeric; vector of y axis limits to use all *all* panels drawn.
 #'
 #' @inheritParams draw.gam
+#' @param interval character or `NULL`; the default draws stored interval bounds
+#'   unchanged, adding pointwise bounds if absent. An explicit choice validates
+#'   stored interval metadata; `"credible"` aliases `"confidence"`. Simultaneous
+#'   bands must first be computed from the fitted model by [smooth_estimates()].
+#'   Method and uncertainty controls such as `interval_method`, `shape_source`,
+#'   `frequentist`, and `unconditional` also require the fitted model; they
+#'   cannot change intervals when drawing saved estimates.
+#'
+#' @details `cyclic = "polar"` uses fitted cycle boundaries stored in the
+#'   `cyclic_info` attribute. Evaluation points are unchanged: estimates
+#'   covering only part of a cycle leave a gap. To draw a complete cycle,
+#'   supply both fitted boundary values when computing estimates, or use
+#'   `draw(model, cyclic = "polar")` to generate the full-cycle grid.
+#'   Recompute older saved estimates with [smooth_estimates()] if their
+#'   fitted cycle boundaries are unavailable. See [draw.gam()] for supported
+#'   smooths and coordinate options.
 #'
 #' @export
 #' @importFrom patchwork wrap_plots
 #'
 #' @examples
 #' load_mgcv()
-#' # example data
-#' df <- data_sim("eg1", seed = 21)
-#' # fit GAM
+#' # Simulate an additive Gaussian response and fit a GAM
+#' df <- data_sim("eg1", n = 200, seed = 21)
 #' m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df, method = "REML")
-#' # plot all of the estimated smooths
-#' sm <- smooth_estimates(m)
-#' draw(sm)
-#' # evaluate smooth of `x2`
+#'
+#' # Evaluate one smooth and plot its estimates and interval
 #' sm <- smooth_estimates(m, select = "s(x2)")
-#' # plot it
 #' draw(sm)
-#'
-#' # customising some plot elements
-#' draw(sm, ci_col = "steelblue", smooth_col = "forestgreen", ci_alpha = 0.3)
-#'
-#' # Add a constant to the plotted smooth
-#' draw(sm, constant = coef(m)[1])
-#'
-#' # Adding change indicators to smooths based on derivatives of the smooth
-#' d <- derivatives(m, n = 100) # n to match smooth_estimates()
-#'
-#' smooth_estimates(m) |>
-#'   add_sizer(derivatives = d, type = "sizer") |>
-#'   draw()
+#' @inheritSection draw Label layout
 `draw.smooth_estimates` <- function(object,
                                     constant = NULL,
                                     fun = NULL,
                                     contour = TRUE,
-                                    grouped_by = FALSE,
+                                    grouped_by = deprecated(),
                                     contour_col = "black",
                                     n_contour = NULL,
                                     ci_alpha = 0.2,
@@ -1071,9 +1562,60 @@
                                     ylim = NULL,
                                     crs = NULL,
                                     default_crs = NULL,
-                                    lims_method = "cross",
+                                    lims_method = "geometry_bbox",
                                     caption = TRUE,
-                                    ...) {
+                                    surface = c("raster", "tile", "3d"),
+                                    surface_3d = list(),
+                                    ci_3d = FALSE,
+                                    ci_3d_alpha = 0.15, ci_3d_col = "grey60",
+                                    back_transform = FALSE,
+                                    re_levels = NULL,
+                                    mrf_plot = c("effects", "qq"),
+                                    interval = NULL,
+                                    ..., variables = NULL,
+                                    cyclic = c("cartesian", "polar"),
+                                    polar_args = list(),
+                                    grouped = c("sz", "fs"),
+                                    show_ci = c("factor-by", "sz")) {
+  factor_controls <- resolve_factor_plot_controls(grouped, show_ci, grouped_by,
+    "draw.smooth_estimates")
+  grouped <- factor_controls$grouped
+  show_ci <- factor_controls$show_ci
+  gratia_plot_arguments(c("contour_col", "ci_alpha", "ci_col", "smooth_col", "resid_col", "decrease_col", "increase_col", "change_lwd", "ci_3d_alpha", "ci_3d_col"), environment())
+  dots <- names(match.call(expand.dots = FALSE)$...)
+  controls <- intersect(dots, c("interval_method", "shape_source", "frequentist",
+    "unconditional", "overall_uncertainty", "ci_level", "n_sim", "n_cores", "seed",
+    "simultaneous_method", "simultaneous_domain", "tube_control"))
+  if (length(controls)) {
+    cli::cli_abort(c("Interval computation controls require the fitted model: {paste(controls, collapse = ', ')}.",
+      "i" = "Compute intervals with smooth_estimates(model, ...) before drawing saved estimates."))
+  }
+  cyclic <- match.arg(cyclic)
+  validate_cyclic_polar(cyclic, polar_args)
+  cyclic_info <- attr(object, "cyclic_info")
+  check_back_transform(back_transform)
+  mrf_plot <- match.arg(mrf_plot)
+  surface <- match.arg(surface)
+  validate_surface_3d(surface_3d)
+  validate_ci_3d(ci_3d, ci_3d_alpha, ci_3d_col)
+  check_surface_dots(match.call(expand.dots = FALSE))
+  validate_tensor_plot_controls(re_levels)
+  validate_estimate_re_levels(object, re_levels)
+  interval_info <- validate_saved_smooth_interval(object, interval)
+  check_shape_effect_transform(interval_info, constant, fun)
+  shape_constraints <- attr(object, "shape_constraints")
+  scam_info <- attr(object, "scam_smooth_info")
+  plot_info <- attr(object, "tensor_plot_info")
+  surface_support <- attr(object, "surface_support")
+  plot_variables <- attr(object, "plot_variables")
+  if ("data" %in% names(object) && !".estimate" %in% names(object)) {
+    coordinate_info <- attr(object, "coordinate_info")
+    tensor_term_order <- attr(object, "tensor_term_order")
+    object <- tidyr::unnest(object, cols = "data")
+    attr(object, "coordinate_info") <- coordinate_info
+    attr(object, "tensor_term_order") <- tensor_term_order
+  }
+
   # add confidence intervals if they don't already exist
   if (!all(c(".lower_ci", ".upper_ci") %in% names(object))) {
     object <- object |> add_confint()
@@ -1082,33 +1624,22 @@
   # grab tensor term order if present, if not present it is NULL & that's OK
   tensor_term_order <- attr(object, "tensor_term_order")
 
-  # draw smooths
-  # the factor in group_split is to reorder to way the smooths entered the
-  # model
-  sm_levs <- unique(object$.smooth)
-
-  sm_l <- if (isTRUE(grouped_by)) {
-    levs <- unique(str_split_fixed(object$.smooth, ":", n = 2)[, 1])
-    # nest the object so we can reuse the code/ideas from draw.gam
-    sm_l <- object |>
-      nest(data = !all_of(c(".smooth", ".type", ".by"))) |>
-        mutate(
-          ..smooth.. = factor(.data$.smooth, levels = sm_levs),
-          .term = str_split_fixed(.data$.smooth, ":", n = 2)[, 1],
-          ..by.. = if_else(is.na(.data$.by), "..no_level..", .data$.by)
-        ) |>
-        relocate(".term", .before = 1L)
-    grp_by_levs <- unique(sm_l$"..by..")
-    sm_l |>
-      group_split(factor(.data$.term, levels = sm_levs),
-        factor(.data$"..by..", levels = grp_by_levs))
-  } else {
-    # the factor is to reorder to way the smooths entered the model
-    group_split(object, factor(object$.smooth, levels = sm_levs))
-  }
+  sm_l <- prepare_factor_smooth_panels(object, grouped, show_ci,
+    tensor_term_order = tensor_term_order, tensor_plot_info = plot_info,
+    plot_variables = plot_variables,
+    coordinate_info = attr(object, "coordinate_info"))
   ## plot
   plts <- map(sm_l,
     draw_smooth_estimates,
+    cyclic = cyclic, polar_args = polar_args, cyclic_info = cyclic_info,
+    re_levels = re_levels,
+    mrf_plot = mrf_plot,
+    tensor_plot_info = plot_info,
+    plot_variables = plot_variables,
+    variables = variables,
+    surface = surface, surface_3d = surface_3d,
+    ci_3d = ci_3d, ci_3d_alpha = ci_3d_alpha, ci_3d_col = ci_3d_col,
+    surface_support = surface_support,
     constant = constant,
     fun = fun,
     contour = contour,
@@ -1131,11 +1662,17 @@
     default_crs = default_crs,
     lims_method = lims_method,
     tensor_term_order = tensor_term_order, # pass on tensor order info,
+    coordinate_info = attr(object, "coordinate_info"),
+    interval_info = interval_info,
+    shape_constraints = shape_constraints,
+    scam_smooth_info = scam_info,
+    back_transform = back_transform,
     caption = caption,
-    grouped_by = grouped_by,
     ...
   )
 
+  plts <- Filter(Negate(is.null), plts)
+  if (!length(plts)) return(invisible(NULL))
   wrap_plots(plts)
 }
 
@@ -1143,6 +1680,9 @@
 #' @importFrom tidyselect any_of
 #' @importFrom purrr map_lgl
 `draw_smooth_estimates` <- function(object,
+                                    mrf_plot = c("effects", "qq"),
+                                    re_levels = NULL,
+                                    tensor_plot_info = NULL,
                                     constant = NULL,
                                     fun = NULL,
                                     contour = TRUE,
@@ -1164,12 +1704,40 @@
                                     ylim = NULL,
                                     crs = NULL,
                                     default_crs = NULL,
-                                    lims_method = "cross",
+                                    lims_method = "geometry_bbox",
                                     tensor_term_order = NULL,
                                     caption = NULL,
                                     grouped_by = FALSE,
+                                    surface = c("raster", "tile", "3d"),
+                                    surface_3d = list(),
+                                    ci_3d = FALSE,
+                                    ci_3d_alpha = 0.15, ci_3d_col = "grey60",
+                                    back_transform = FALSE,
+                                    coordinate_info = NULL,
+                                    surface_support = NULL,
+                                    interval_info = NULL,
+                                    shape_constraints = NULL,
+                                    scam_smooth_info = NULL,
+                                    plot_variables = NULL,
+                                    cyclic = "cartesian", polar_args = list(),
+                                    cyclic_info = NULL,
+                                    variables = NULL,
                                     ...) {
-  sm_vars <- tensor_term_order[[unique(object$.smooth)]]
+  factor_plot <- attr(object, "factor_plot")
+  if (!is.null(factor_plot)) grouped_by <- factor_plot$grouped_by
+  check_shape_effect_transform(interval_info, constant, fun)
+  surface <- match.arg(surface)
+  validate_surface_3d(surface_3d)
+  validate_ci_3d(ci_3d, ci_3d_alpha, ci_3d_col)
+  check_surface_dots(match.call(expand.dots = FALSE))
+
+  plot_info <- tensor_plot_info[[unique(object$.smooth)[1L]]]
+  sm_vars <- if (!is.null(plot_info)) plot_info$variables else {
+    tensor_term_order[[unique(object$.smooth)[1L]]]
+  }
+  if (is.null(sm_vars)) {
+    sm_vars <- attr(coordinate_info, "smooth_variables")[[unique(object$.smooth)[1L]]]
+  }
   if (is.null(sm_vars)) {
     sm_vars <- if (".term" %in% names(object)) {
       vars_from_label(unique(object[[".term"]]))
@@ -1177,8 +1745,19 @@
       vars_from_label(unique(object[[".smooth"]]))
     }
   }
+  fitted_variables <- sm_vars
+  saved_variables <- plot_variables[[unique(object$.smooth)[1L]]]
+  if (!is.null(saved_variables)) sm_vars <- saved_variables
+  sm_vars <- validate_plot_variables(variables, sm_vars)
   sm_dim <- length(sm_vars)
   sm_type <- unique(object[[".type"]])
+  if (identical(sm_type, "SOS") && !is.null(variables) &&
+      !identical(unname(variables), unname(fitted_variables))) {
+    cli::cli_abort("`variables` cannot reorder latitude and longitude in a spline on the sphere.")
+  }
+
+  polar_info <- resolve_cyclic_plot(object, sm_vars, cyclic, cyclic_info,
+    back_transform, coordinate_info)
 
   # set some values to NULL in case these components don't exist
   rug_data <- NULL
@@ -1188,10 +1767,14 @@
     obj_nms <- names(object)
     ## preserve partial residuals and rug data if present
     if ("rug_data" %in% obj_nms) {
-      rug_data <- object[["rug_data"]][[1L]]
+      rug_data <- if (isTRUE(grouped_by)) {
+        bind_rows(object[["rug_data"]])
+      } else object[["rug_data"]][[1L]]
     }
     if ("partial_residual" %in% obj_nms) {
-      p_residuals <- object[["partial_residual"]][[1L]]
+      p_residuals <- if (isTRUE(grouped_by)) {
+        bind_rows(object[["partial_residual"]])
+      } else object[["partial_residual"]][[1L]]
     }
     ## remove partial residuals and rug data from object
     object <- select(object, !any_of(c("partial_residual", "rug_data")))
@@ -1199,25 +1782,52 @@
     object <- unnest(object, cols = "data")
   }
 
+  if (!is.null(variables)) validate_plot_variable_types(sm_vars, object)
+
+  if ((!is.null(plot_info) || is_tensor_plot_type(sm_type)) &&
+      any(vapply(object[sm_vars], is.factor, logical(1)))) {
+    object <- filter_tensor_levels(object, re_levels)
+    if (!nrow(object)) cli::cli_abort("No tensor evaluation rows remain after selecting `re_levels`.")
+    if (is.null(variables) && is.null(saved_variables)) {
+      sm_vars <- tensor_plot_variables(sm_vars, object)
+    }
+    if (!is.null(rug_data)) rug_data <- filter_tensor_levels(rug_data, re_levels)
+  }
+
   if (sm_dim == 1L &&
     sm_type %in% c(
       "TPRS", "TPRS (shrink)", "CRS", "CRS (shrink)",
-      "Cyclic CRS", "Cyclic P spline", "P spline", "B spline", "Duchon spline",
+      "Cyclic CRS", "Cyclic P spline", "P spline", "B spline", "B spline tensor",
+      "Duchon spline",
       "GP",
-      "Mono inc P spline",
-      "Mono dec P spline",
-      "Convex P spline",
-      "Concave P spline",
-      "Mono dec conv P spline",
-      "Mono dec conc P spline",
-      "Mono inc conv P spline",
-      "Mono inc conc P spline",
-      "Mono inc 0 start P spline",
-      "Mono inc 0 start P spline"
+      "P spline (inc)",
+      "P spline (dec)",
+      "P spline (convex)",
+      "P spline (concave)",
+      "P spline (dec, convex)",
+      "P spline (dec, concave)",
+      "P spline (inc, convex)",
+      "P spline (inc, concave)",
+      "P spline (inc, left=0)",
+      "P spline (inc, right=0)",
+      "P spline (pos)", "P spline (pos, inc)",
+      "P spline (pos, dec)", "Cyclic P spline (pos)",
+      "P spline (local inc)", "P spline (inc then flat)",
+      # Retain rendering for estimates saved before the compact type labels.
+      "Mono inc P spline", "Mono dec P spline",
+      "Convex P spline", "Concave P spline",
+      "Mono dec conv P spline", "Mono dec conc P spline",
+      "Mono inc conv P spline", "Mono inc conc P spline",
+      "Mono inc 0 start P spline", "Mono inc 0 end P spline",
+      "Positive P spline", "Positive increasing P spline",
+      "Positive decreasing P spline", "Positive cyclic P spline",
+      "Locally increasing P spline", "Increasing then level P spline"
     )) {
     class(object) <- append(class(object), "mgcv_smooth", after = 0L)
   } else if (grepl("1d Tensor product", sm_type, fixed = TRUE)) {
     class(object) <- append(class(object), "mgcv_smooth", after = 0L)
+  } else if (sm_type == "MRF") {
+    class(object) <- append(class(object), c("mrf_smooth", "mgcv_smooth"), after = 0L)
   } else if (sm_type == "Random effect") {
     class(object) <- append(class(object),
       c("random_effect", "mgcv_smooth"),
@@ -1225,7 +1835,8 @@
     )
   } else if (
     sm_type == "Factor smooth" || (
-      sm_type %in% c("Tensor product int.", "Tensor product") &&
+      # Higher-dimensional T2 terms retain their faceted surface renderers.
+      is_tensor_plot_type(sm_type) &&
         any(map_lgl(object[sm_vars], is.factor))
     )
   ) {
@@ -1259,7 +1870,9 @@
       class(object) <- append(class(object), "isotropic_smooth",
         after = 0
       )
-    } else if (sm_type %in% "Soap film") {
+    } else if (sm_type %in% c(
+      "Soap film", "Soap film (boundary)", "Soap film (wiggly)"
+    )) {
       class(object) <- append(class(object), "soap_film", after = 0
       )
     }
@@ -1305,8 +1918,53 @@
     return(NULL)
   }
 
-  plot_smooth(
+  # Raw grids can be irregular when displayed on the model scale too.
+  if (any(vapply(sm_vars, function(label) {
+    axis <- coordinate_info[[label]]
+    !is.null(axis$column) && !identical(axis$original, label) &&
+      axis$column %in% names(object)
+  }, logical(1)))) attr(object, "gratia.coordinate_display") <- TRUE
+
+  support <- surface_support[[unique(object$.smooth)[1L]]]
+  support <- reorder_surface_support(support, sm_vars,
+    attr(coordinate_info, "smooth_variables")[[unique(object$.smooth)[1L]]])
+  if (surface == "3d" && !is.null(support) && isTRUE(back_transform)) {
+    # Domain checks use the coordinates where dist masking was calculated,
+    # even when the displayed covariates are on their original scale.
+    columns <- utils::tail(make.unique(c(names(object),
+      ".surface_support_x", ".surface_support_y")), 2L)
+    object[columns] <- object[sm_vars[1:2]]
+    support$columns <- columns
+  }
+
+  if (isTRUE(back_transform)) {
+    numeric_by <- intersect(unique(object$.by), names(object))
+    numeric_by <- numeric_by[vapply(object[numeric_by], is.numeric, logical(1))]
+    displayed <- back_transform_smooth_coordinates(object, sm_vars, coordinate_info,
+      numeric_by = numeric_by)
+    object <- displayed$data
+    if (!is.null(rug_data)) {
+      rug_data <- back_transform_smooth_coordinates(rug_data, sm_vars,
+        coordinate_info, numeric_by = numeric_by)$data
+    }
+    if (!is.null(p_residuals)) {
+      p_residuals <- back_transform_smooth_coordinates(p_residuals, sm_vars,
+        coordinate_info, numeric_by = numeric_by)$data
+    }
+    sm_vars <- displayed$variables
+  }
+
+  attr(object, "interval_info") <- interval_info
+  attr(object, "shape_constraints") <- shape_constraints
+  attr(object, "scam_smooth_info") <- scam_smooth_info
+  attr(object, "factor_panel_subtitle") <- factor_plot$subtitle
+  attr(object, "show_smooth_interval") <- factor_plot$interval
+  plt <- plot_smooth(
     object,
+    mrf_plot = mrf_plot,
+    surface = surface, surface_3d = surface_3d,
+    ci_3d = ci_3d, ci_3d_alpha = ci_3d_alpha, ci_3d_col = ci_3d_col,
+    surface_support = support,
     variables = sm_vars,
     rug = rug_data,
     partial_residuals = p_residuals,
@@ -1334,6 +1992,12 @@
     lims_method = lims_method,
     caption = caption,
     grouped_by = grouped_by,
+    curve_interval = factor_plot$interval,
+    separate_factor = isTRUE(factor_plot$separate),
     ...
   )
+  if (!is.null(polar_info)) {
+    plt <- add_cyclic_polar(plt, polar_info, polar_args, angle)
+  }
+  plt
 }

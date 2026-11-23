@@ -23,7 +23,8 @@ vector of terms. If missing, all parameters are considered.}
 
 \item{level}{numeric, \verb{0 < level < 1}; the confidence level of the
 point-wise or simultaneous interval. The default is \code{0.95} for a 95\%
-interval.}
+interval. It must be finite. If a vector is supplied, the first value is
+used with a warning.}
 
 \item{type}{character; the type of interval to compute. One of \code{"confidence"}
 for point-wise intervals, or \code{"simultaneous"} for simultaneous intervals.}
@@ -33,7 +34,7 @@ simultaneous intervals.}
 
 \item{ncores}{number of cores for generating random variables from a
 multivariate normal distribution. Passed to \code{\link[mvnfast:rmvn]{mvnfast::rmvn()}}.
-Parallelization will take place only if OpenMP is supported (but appears
+Parallelisation will take place only if OpenMP is supported (but appears
 to work on Windows with current \code{R}).}
 
 \item{...}{additional arguments for methods}
@@ -54,7 +55,10 @@ derivatives of smooth terms in a fitted GAM.
 \examples{
 load_mgcv()
 \dontshow{
-op <- options(pillar.sigfig = 2, cli.unicode = FALSE)
+op <- options(
+  pillar.sigfig = 2, cli.unicode = FALSE,
+  lifecycle_verbosity = "quiet"
+)
 }
 dat <- data_sim("eg1", n = 1000, dist = "normal", scale = 2, seed = 2)
 mod <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")

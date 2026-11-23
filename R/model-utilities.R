@@ -1,7 +1,7 @@
 #' Find the names of model terms
 #'
 #' Returns the names of any terms in a model, without needing to call
-#' `summary()`. The list of model terms is especially useful when predicting
+#' [base::summary()]. The list of model terms is especially useful when predicting
 #' from a [mgcv::gam()] model using the `exclude` or `terms` argument of
 #' [mgcv::predict.gam()] or [mgcv::predict.bam()].
 #'
@@ -64,7 +64,7 @@
 #' @export
 #' @rdname model_terms
 `model_terms.gamm4` <- function(object, ...) {
-  model_terms(object$gam)
+  model_terms(gamm4_gam(object))
 }
 
 #' @export
@@ -76,9 +76,10 @@
 #' Extract the model constant term
 #'
 #' `r lifecycle::badge("experimental")` Extracts the model constant term(s),
-#' the model intercept, from a fitted model object.
+#' the model intercept, from a fitted model object. Predictors without an
+#' intercept return zero.
 #'
-#' @param model a fitted model for which a `coef()` method exists.
+#' @param model a fitted model for which a [stats::coef()] method exists.
 #' @param lp numeric; which linear predictors to extract constant terms for.
 #' @param ... arguments passed to other methods.
 #'
@@ -123,10 +124,14 @@
     lp <- seq_len(n_lp)
   }
   lss_idx <- lss_idx[lp]
-  idx <- vapply(lss_idx, FUN = `[`, FUN.VALUE = numeric(1), 1)
-  b <- coef(model)[idx] |>
-    unname()
-  attr(b, "par_names") <- lss_parameters(model)
+  beta <- coef(model)
+  intercepts <- grep("^\\(Intercept\\)(\\.[0-9]+)?$", names(beta))
+  b <- vapply(lss_idx, function(idx) {
+    idx <- intersect(idx, intercepts)
+    # Shared formula blocks can contribute more than one intercept.
+    sum(beta[idx])
+  }, numeric(1))
+  attr(b, "par_names") <- lss_parameters(model)[lp]
   b
 }
 
@@ -140,7 +145,8 @@
 #' @rdname model_constant
 #' @importFrom stats coef
 `model_constant.glm` <- function(model, ...) {
-  coef(model)[1L]
+  beta <- coef(model)
+  if ("(Intercept)" %in% names(beta)) beta["(Intercept)"] else 0
 }
 
 #' List the variables involved in a model fitted with a formula
@@ -213,23 +219,9 @@
 #' @export
 #' @rdname model_vars
 `model_vars.gamm4` <- function(model, ...) {
-  # this is here for when Simon actually classes gamm4 objects
   # want a vector of variables involved in the model formula.
   # Don't want this `attr(terms(model), "term.labels")` ! as this returns
   # model terms not variable names. Use all.vars() on `pred.formula` for
   # a GAM(M) model
-  model_vars(model[["gam"]]$pred.formula)
-}
-
-#' @export
-#' @rdname model_vars
-`model_vars.list` <- function(model, ...) {
-  # want a vector of variables involved in the model formula.
-  # Don't want this `attr(terms(model), "term.labels")` ! as this returns
-  # model terms not variable names. Use all.vars() on `pred.formula` for
-  # a GAM(M) model
-  if (!is_gamm4(model)) {
-    stop("Don't know how to handle generic list objects.")
-  }
-  model_vars(model[["gam"]]$pred.formula)
+  model_vars(gamm4_gam(model)$pred.formula)
 }

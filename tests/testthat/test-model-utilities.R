@@ -9,7 +9,7 @@ test_that("model_constant returns the intercept estimate", {
 })
 
 test_that("model_constant works for a GAMLSS", {
-  expect_length(model_constant(m_accel), 2L)
+  expect_length(model_constant(m_gaulss), 2L)
   expect_length(model_constant(m_gam), 1L)
 })
 
@@ -49,4 +49,32 @@ test_that("model_terms works", {
       "fac2:ffB", "fac3:ffB", "fac2:ffC", "fac3:ffC", "fac2:ffD", "fac3:ffD"
     )
   )
+})
+
+test_that("model_terms handles one coefficient and preserves coefficient order", {
+  expect_identical(model_terms(variance_intercept_model), "(Intercept)")
+  expect_identical(model_terms(intercept_test_model("gam_linear")), "x0")
+  expect_identical(model_terms(m_only_para), names(coef(m_only_para)))
+  expect_identical(model_terms(m_para_sm),
+    c(names(summary(m_para_sm)$p.coeff), smooths(m_para_sm)))
+  expect_identical(model_terms(intercept_test_model("gam")), c("x0", "s(x1)"))
+  expect_identical(model_terms(m_bam), model_terms(m_gam))
+  expect_identical(model_terms(m_gamm4), model_terms(m_gam))
+})
+
+test_that("match_smoother returns one logical value for every supplied name", {
+  prefixes <- c("s(", "ti(", "te(", "t2(")
+  smooth_names <- paste0(c(prefixes, paste0("mgcv::", prefixes)), "x)")
+  other_names <- c("(Intercept)", "wt", "slope", "as(x)", "x:s(x)")
+  for (name in smooth_names) {
+    expect_identical(match_smoother(name), TRUE)
+  }
+  for (name in other_names) {
+    expect_identical(match_smoother(name), FALSE)
+  }
+  expect_identical(match_smoother(character()), logical())
+  expect_identical(match_smoother(c(other_names, smooth_names)),
+    c(rep(FALSE, length(other_names)), rep(TRUE, length(smooth_names))))
+  expect_identical(match_smoother(c(smooth = "s(x)", slope = "wt")),
+    c(TRUE, FALSE))
 })

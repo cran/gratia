@@ -4,26 +4,46 @@
 #' covariates. [conditional_values()] is modelled after
 #' [marginaleffects::plot_predictions()], but with an intentionally simpler,
 #' more restrictive functionality. The intended use case is for quickly
-#' visualizing predicted values from a fitted GAM on the response scale. For
+#' visualising predicted values from a fitted GAM on the response scale. For
 #' more complex model predictions, you are strongly encouraged to use
 #' [marginaleffects::plot_predictions()].
 #'
 #' @param model a fitted GAM object.
 #' @param condition either a character vector or a list supplying the names of
-#'   covariates, and possibly their values, to condition up. The order of the
+#'   covariates, and possibly their values, to condition on. The order of the
 #'   values determines how these are plotted via the [draw.conditional_values()]
 #'   method; the first element is mapped to the *x* channel, the second element
 #'   to the *colour* channel, the third to [ggplot2::facet_wrap()] **if no
 #'   fourth element is present**, if present, the fourth element is mapped to
 #'   the rows and the third element is mapped to the columns of
 #'   [ggplot2::facet_grid()].
-#' @param data data frame of values at which to predict. If supplied overrides
-#'   values supplied through `condition`.
+#'   To request a surface, group two numeric covariates in the first element,
+#'   for example `list(c("x1", "x2"), "treatment")`. The grouped covariates
+#'   supply the horizontal and vertical axes, in that order. The remaining
+#'   elements supply facet columns and rows; there is no categorical colour
+#'   channel. Use a nested list to supply axis values or helpers, for example
+#'   `list(list(x1 = c(0, 0.5, 1), x2 = "quartile"), "treatment")`.
+#'   At most four covariates are allowed, counting both surface axes.
+#' @param data optional data frame used to generate condition values and
+#'   determine covariate classes. Explicit values in `condition` take precedence.
+#'   Other covariates use the fitted model's typical values. The rows of `data`
+#'   are not used directly as a prediction grid.
 #' @param scale character; which scale should predictions be returned on?
-#' @param n_vals numeric; number of values to generate for numeric variables
-#'   named in `condition`.
+#' @param n_vals positive integer or `NULL`; number of values to generate along
+#'   each numeric axis. For [conditional_values()] and
+#'   [conditional_differences()], `NULL` (the default) uses 100 for curves and
+#'   50 per axis for surfaces. Explicit values or helpers in `condition`
+#'   override generated values. Other numeric conditions use their five-number
+#'   summaries unless explicit values or helpers are supplied.
 #' @param ci_level numeric; a number on interval (0,1) giving the coverage for
 #'   credible intervals.
+#' @param complete logical; if `TRUE` (the default), retain all combinations of
+#'   conditions. If `FALSE`, retain only combinations of factor levels among
+#'   the variables named in `condition` that occur in the fitted model's data.
+#'   Numeric conditions are not filtered, and variables absent from `condition`
+#'   remain at their typical values. Supplied `data` does not change which
+#'   combinations count as observed. An error is raised if no combinations
+#'   remain.
 #' @param ... arguments passed to [fitted_values()].
 #'
 #' @author Gavin L. Simpson
@@ -34,71 +54,14 @@
 #'
 #' @examples
 #' load_mgcv()
-#' df <- data_sim("eg1", seed = 2)
-#' m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df, method = "REML")
+#' # Simulate an additive Gaussian response and fit a GAM
+#' df <- data_sim("eg1", n = 200, seed = 2)
+#' m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df, method = "REML")
 #'
-#' # predictions conditional on values evenly spaced over x2, all other
-#' # variables in model are held at representative values
-#' cv <- conditional_values(
-#'   m1,
-#'   condition = "x2"
-#' )
-#' # plot
-#' cv |> draw()
-#'
-#' # as above but condition on `x1` also. When plotted, `x1` is mapped to the
-#' # colour channel, noting that it has been summarised using fivenum()
-#' cv <- conditional_values(
-#'   m1,
-#'   condition = c("x2", "x1")
-#' )
-#' # plot
-#' cv |> draw()
-#'
-#' # can pass `condition` a list, allowing for greater flexibility
-#' # For example, here we condition on all four variables in the model,
-#' # summarising:
-#' #   * `x1` at its five number summary,
-#' #   * `x0  at its quartiles
-#' #   * `x3` at its mean a d mean +/- sd
-#' cv <- conditional_values(
-#'   m1,
-#'   condition = list("x2", x1 = "fivenum", x0 = "quartile", x3 = "threenum")
-#' )
-#' # plot
-#' cv |> draw()
-#'
-#' # some model terms can be exclude from the conditional predictions using the
-#' # `exclude` mechanism of `predict.gam`. Here we exclude the effects of
-#' # `s(x0)` and `s(x3)` from the conditional predictions. This, in effect,
-#' # treats these smooths as having **0** effect on the conditional predictions
-#' # of the response, even though the two smooths conditioned on (`s(x2)` and
-#' # `s(x1)`) were estimated given the two excluded smooths were in the model
-#' cv <- conditional_values(
-#'   m1,
-#'   condition = list("x2", x1 = "minmax"),
-#'   exclude = c("s(x0)", "s(x3)")
-#' )
-#' # plot
-#' cv |> draw()
-#'
-#' # categorical conditions are also handled
-#' df <- data_sim("eg4", seed = 2)
-#' m2 <- gam(y ~ fac + s(x2, by = fac) + s(x0), data = df, method = "REML")
-#' cv <- conditional_values(
-#'   m2,
-#'   condition = list("fac", x2 = "fivenum")
-#' )
-#' # plot - we see a discrete x axis
-#' cv |> draw()
-#'
-#' # in this example we condition on `x2` and `fac %in% c(2,3)`
-#' cv <- conditional_values(
-#'   m2,
-#'   condition = list("x2", fac = 2:3)
-#' )
-#' # plot - smooths of `x2` for `fac == 2` and `fac == 3`
-#' cv |> draw()
+#' # Vary x2 while holding the other covariates at representative values
+#' cv <- conditional_values(m, condition = "x2")
+#' cv
+#' draw(cv)
 `conditional_values` <- function(
   model,
   condition = NULL,
@@ -111,55 +74,21 @@
 
 #' @export
 #' @rdname conditional_values
-#' @importFrom dplyr setdiff
+#' @importFrom dplyr setdiff semi_join
 `conditional_values.gam` <- function(
   model,
   condition = NULL,
   data = NULL,
   scale = c("response", "link", "linear_predictor"),
-  n_vals = 100,
+  n_vals = NULL,
   ci_level = 0.95,
+  complete = TRUE,
   ...
 ) {
   scale <- match.arg(scale)
-  # replace this with `process_condition` to capture all possible
-  if (is.null(condition)) {
-    stop("'condition' must be supplied")
-  }
-  c_x <- condition[1]
-  c_colour <- condition[2]
-  c_fcol <- condition[3]
-  c_frow <- condition[4]
-
-  c_cond <- c(c_x, c_colour, c_fcol, c_frow) |>
-    setNames(c("x", "colour", "fcol", "frow"))
-
-  c_miss <- is.na(c_cond)
-  c_cond <- c_cond[!c_miss]
-
-  data <- if (is.null(data)) {
-    data <- data_slice_data(model) |> as_tibble()
-  } else {
-    data # probably need some checking here but for now just pass on
-  }
-
-  # the calls below shouldn't be to evenly but to a wrapper
-  # that wrapper can call other functions to create the vectors of data needed
-  # for the prediction set.
-  m_vars <- model_vars(model)
-  cond_list <- process_condition(condition, data = data, variables = m_vars,
-    n_vals = n_vals)
-  named_cond <- names(cond_list)
-
-  # which model vars were *not* included in the conditions?
-  used_vars <- names(cond_list)
-  not_used <- dplyr::setdiff(m_vars, used_vars)
-  tv <- typical_values(model, data = data)
-  tv <- tv[not_used] # |> select(all_of(not_used))
-  cond_list <- c(cond_list, tv)
-
-  # return the data for testing
-  pred_data <- expand_grid(!!!{cond_list})
+  grid <- conditional_prediction_grid(model, condition, data, n_vals, complete,
+    surfaces = TRUE)
+  pred_data <- grid$data
 
   pv <- fitted_values(
     model, data = pred_data, scale = scale, ci_level = ci_level, ...
@@ -167,16 +96,166 @@
 
   # form an attributes list so we know which vars are to be encoded to which
   # channels as per condition
-  channels <- rep(list(NULL), 4) |>
-    setNames(c("x", "colour", "f_col", "f_row"))
-  channels[seq_along(named_cond)] <- named_cond
-  attr(pv, "channels") <- channels
+  attr(pv, "channels") <- grid$channels
 
   # add a new class as we have attributes to handle with `[`
   class(pv) <- append(class(pv), "conditional_values", after = 0L)
 
   # return
   pv
+}
+
+# Shared grid construction for conditional predictions and differences.
+# Comparison factors are expanded separately, so they do not consume plotting
+# channels or change which numeric condition is evaluated over its full range.
+conditional_prediction_grid <- function(model, condition, data = NULL,
+                                        n_vals = 100, complete = TRUE,
+                                        by = character(), surfaces = FALSE) {
+  if (!is.logical(complete) || length(complete) != 1L || is.na(complete)) {
+    cli::cli_abort("{.arg complete} must be a single non-missing logical value")
+  }
+  if (is.null(condition) || !length(condition)) {
+    cli::cli_abort("{.arg condition} must be supplied")
+  }
+  if (!is.null(n_vals) && (!is.numeric(n_vals) || length(n_vals) != 1L ||
+      !is.finite(n_vals) || n_vals < 1 || n_vals > .Machine$integer.max ||
+      n_vals != trunc(n_vals))) {
+    cli::cli_abort("{.arg n_vals} must be NULL or a positive integer.")
+  }
+  if (is.null(data)) data <- data_slice_data(model) |> as_tibble()
+  m_vars <- model_vars(model)
+  comparison <- list()
+  if (length(by)) {
+    if (!(is.character(condition) || is.list(condition))) {
+      cli::cli_abort("{.arg condition} must be a list or a character vector")
+    }
+    condition <- as.list(condition)
+    nms <- names(condition)
+    if (is.null(nms)) nms <- rep("", length(condition))
+    ids <- vapply(seq_along(condition), function(i) {
+      if (nzchar(nms[i])) nms[i] else {
+        x <- condition[[i]]
+        if (is.character(x) && length(x) == 1L) x else ""
+      }
+    }, character(1L))
+    if (anyDuplicated(ids[nzchar(ids)])) {
+      cli::cli_abort("Variables in {.arg condition} must not be repeated.")
+    }
+    for (nm in by) {
+      lev <- levels(model$var.summary[[nm]])
+      if (!nm %in% names(data)) {
+        cli::cli_abort("Comparison factor {.var {nm}} is missing from {.arg data}.")
+      }
+      values <- as.character(data[[nm]])
+      if (anyNA(values) || any(!values %in% lev)) {
+        cli::cli_abort("Comparison factor {.var {nm}} has missing or unknown levels.")
+      }
+      available <- if (is.factor(data[[nm]])) levels(data[[nm]]) else unique(values)
+      data[[nm]] <- factor(values, levels = lev[lev %in% available],
+        ordered = is.ordered(model$var.summary[[nm]]))
+      i <- match(nm, ids)
+      selected <- if (is.na(i)) {
+        evenly(data[[nm]], n = n_vals %||% 100)
+      } else {
+        condition_to_data(condition[[i]],
+          if (nzchar(nms[i])) nm else NULL, data, m_vars, n_vals %||% 100)
+      }
+      if (anyNA(selected) || any(!as.character(selected) %in% lev)) {
+        cli::cli_abort("Invalid comparison levels for {.var {nm}}.")
+      }
+      comparison[[nm]] <- factor(lev[lev %in% as.character(selected)],
+        levels = lev, ordered = is.ordered(data[[nm]]))
+    }
+    condition <- condition[!ids %in% by]
+    if (!length(condition)) {
+      cli::cli_abort("{.arg condition} must include a covariate other than {.arg by}.")
+    }
+  }
+  specification <- conditional_axes(condition, surfaces = surfaces)
+  condition <- specification$condition
+  n_axes <- specification$n_axes
+  n_vals <- n_vals %||% if (n_axes == 2L) 50 else 100
+  cond_list <- process_condition(condition, data = data, variables = m_vars,
+    n_vals = n_vals, n_axes = n_axes)
+  named_cond <- names(cond_list)
+  if (anyDuplicated(named_cond)) {
+    cli::cli_abort("Variables in {.arg condition} must not be repeated.")
+  }
+  if (n_axes == 2L) {
+    axes <- cond_list[1:2]
+    valid <- vapply(seq_along(axes), function(i) {
+      nm <- names(axes)[i]
+      nm %in% m_vars && !nm %in% by && is.numeric(data[[nm]]) &&
+        is.numeric(axes[[i]]) && all(is.finite(axes[[i]])) &&
+        length(unique(axes[[i]])) >= 2L
+    }, logical(1L))
+    if (!all(valid)) {
+      cli::cli_abort("Surface axes must be two distinct numeric model covariates, each with at least two finite values, and cannot be comparison factors.")
+    }
+    cond_list[1:2] <- lapply(axes, unique)
+  }
+  used_vars <- c(named_cond, by)
+  tv <- typical_values(model, data = data)
+  tv <- tv[dplyr::setdiff(m_vars, used_vars)]
+  cond_list <- c(cond_list, comparison, tv)
+  if (length(by)) cond_list <- lapply(cond_list, unique)
+  pred_data <- expand_grid(!!!cond_list)
+  if (!complete) {
+    factor_vars <- used_vars[
+      vapply(cond_list[used_vars], is.factor, logical(1L))
+    ]
+    if (length(factor_vars)) {
+      observed <- data_combos(model, vars = all_of(factor_vars),
+        complete = FALSE, data = data)
+      pred_data <- semi_join(pred_data, observed, by = factor_vars)
+      if (!nrow(pred_data)) {
+        cli::cli_abort("No observed combinations of the supplied factor conditions remain")
+      }
+    }
+  }
+  list(data = pred_data, condition = named_cond,
+    channels = conditional_channels(named_cond, n_axes))
+}
+
+# A group in the first plotting position supplies both surface coordinates.
+# Flatten only that group; named vectors elsewhere remain explicit values.
+conditional_axes <- function(condition, surfaces = FALSE) {
+  if (!(is.character(condition) || is.list(condition))) {
+    cli::cli_abort("{.arg condition} must be a list or a character vector")
+  }
+  condition <- as.list(condition)
+  nms <- names(condition)
+  if (is.null(nms)) nms <- rep("", length(condition))
+  if (anyNA(nms)) cli::cli_abort("Condition names must not be missing.")
+  grouped <- vapply(seq_along(condition), function(i) {
+    !nzchar(nms[i]) && (is.list(condition[[i]]) ||
+      (is.character(condition[[i]]) && length(condition[[i]]) > 1L))
+  }, logical(1L))
+  n_axes <- 1L
+  if (any(grouped)) {
+    if (!surfaces) {
+      cli::cli_abort("Grouped surface conditions are supported only by {.fn conditional_values} and {.fn conditional_differences}.")
+    }
+    if (!identical(which(grouped), 1L) || length(condition[[1L]]) != 2L) {
+      cli::cli_abort("A surface requires exactly two covariates grouped in the first plotting position of {.arg condition}.")
+    }
+    axes <- as.list(condition[[1L]])
+    condition <- c(axes, condition[-1L])
+    n_axes <- 2L
+  }
+  list(condition = condition, n_axes = n_axes)
+}
+
+conditional_channels <- function(condition, n_axes = 1L) {
+  channels <- setNames(rep(list(NULL), 4L), c("x", "colour", "f_col", "f_row"))
+  if (n_axes == 1L) {
+    channels[seq_along(condition)] <- condition
+  } else {
+    channels$x <- condition[1:2]
+    extra <- condition[-c(1L, 2L)]
+    if (length(extra)) channels[c("f_col", "f_row")[seq_along(extra)]] <- extra
+  }
+  channels
 }
 
 `condition_helper` <- function(helper) {
@@ -222,9 +301,9 @@
 }
 
 #' @importFrom scales ordinal_format
-#' @importFrom cli format_error qty
-#' @importFrom rlang abort
-`process_condition` <- function(condition, data, variables, n_vals = 100) {
+#' @importFrom cli qty
+`process_condition` <- function(condition, data, variables, n_vals = 100,
+                              n_axes = 1L) {
   # condition: the thing passed as condition to conditional_values
   # data: a data frame to use for evaluating the fitted values
   # variables: the variables used in the model
@@ -273,7 +352,7 @@
       "i" = "Did you forget to name {qty(msg_qty)} {?this/these} element{?s}?"
     )
     if (!is.null(msg_allowed) | !is.null(msg_wrong)) {
-      rlang::abort(format_error(msg))
+      cli::cli_abort(msg)
     }
   }
   if (is.null(nms)) {
@@ -281,12 +360,12 @@
   }
   c_vec <- is.character(condition)
   if (!(c_list || c_vec)) {
-    stop("'condition' must be a list or a character vector")
+    cli::cli_abort("{.arg condition} must be a list or a character vector")
   }
   # if no names on the list, then unlist(condition) must be character vector
   if (c_list && is.null(nms)) {
     if (!(cl <- unlist(condition) |> is.character())) {
-      stop("If 'condition' is an unnamed list, elements must be length 1
+      cli::cli_abort("If {.arg condition} is an unnamed list, elements must be length 1
 characters")
     }
   }
@@ -301,30 +380,15 @@ characters")
   # model at, or we have functions (or names of functions) that we can apply
   # but we should only have at most 4
   if ((lc <- length(condition)) > 4L) {
-    stop("'condition' has '", lc, "' elements; only 4 allowed")
+    cli::cli_abort("{.arg condition} has {lc} elements; only 4 allowed.")
   }
 
   # iterate over the elements of condition, creating data vectors depending on
   # what is in each element
-  out <- list()
-  out$c1 <- condition_to_data(condition[[1]], nms[[1]], data = data,
-    variables = variables, n_vals = n_vals, summary = FALSE
-  )
-  if (lc > 1L) {
-    out$c2 <- condition_to_data(condition[[2]], nms[[2]], data = data,
-      variables = variables, n_vals = n_vals, summary = TRUE
-    )
-  }
-  if (lc > 2L) {
-    out$c3 <- condition_to_data(condition[[3]], nms[[3]], data = data,
-      variables = variables, n_vals = n_vals, summary = TRUE
-    )
-  }
-  if (lc > 3L) {
-    out$c4 <- condition_to_data(condition[[4]], nms[[4]], data = data,
-      variables = variables, n_vals = n_vals, summary = TRUE
-    )
-  }
+  out <- lapply(seq_len(lc), function(i) {
+    condition_to_data(condition[[i]], nms[[i]], data = data,
+      variables = variables, n_vals = n_vals, summary = i > n_axes)
+  })
 
   # get the variable names as processed
   var_nms <- vapply(out, attr, character(1L), "var_name")
@@ -381,7 +445,7 @@ characters")
     name <- x
     x_data <- data[[x]]
     if (is.null(x_data)) {
-      stop("'", x, "' is not a variable in '", deparse(substitute(data)), "'")
+      cli::cli_abort("{.var {x}} is not a variable in {.arg data}.")
     }
     # if this is a faceting var, we want a small set of representative values
     # to use as facet values
@@ -399,7 +463,7 @@ characters")
   if (!good) {
     # check name is in data
     if (!(name %in% names(data))) {
-      stop("'", name, "' is not in '", deparse(substitute(data)), "'")
+      cli::cli_abort("{.var {name}} is not in {.arg data}.")
     }
     # need to check what data type we are dealing with
     x_data <- data[[name]]
@@ -407,7 +471,7 @@ characters")
     # Handle different data types
     if (is.numeric(x_data)) { # handle number x
       if (isFALSE(identical(x_cls, "numeric"))) {
-        stop("'", name, "' is numeric but supplied condition is not.")
+        cli::cli_abort("{.var {name}} is numeric but the supplied condition is not.")
       }
       good <- TRUE
       out <- x
@@ -432,13 +496,35 @@ characters")
 
 #' Plot conditional predictions
 #'
+#' Curves show predictions and intervals. Grouped numeric conditions show a
+#' surface, with predictions mapped to fill and, for `surface = "3d"`, height.
+#' Remaining conditions create separate facets. Flat surfaces show estimates;
+#' `ci_3d = TRUE` adds the returned lower and upper interval surfaces in 3D.
+#'
 #' @param object an object of class `"conditional_values"`, the result of a call
 #'   to [conditional_values()].
 #' @param facet_scales character; should facets have the same axis scales
 #'   across facets? See [ggplot2::facet_wrap()] for details. Options are:
 #'   `"fixed"` (default), `"free_x"`, `"free_y"`, and `"free"`.
-#' @param ylab character; label for the y axis of the plot.
+#' @param ylab character; label for the prediction axis of a curve, or the
+#'   second covariate axis of a surface.
 #' @param xlab character; label for the x axis of the plot.
+#' @param zlab character; label for the surface fill legend and 3D height axis.
+#'   Defaults to the prediction label, or the difference and its scale for
+#'   conditional differences.
+#' @param surface character; `"raster"` (default), `"tile"`, or `"3d"`.
+#'   Applies to grouped numeric conditions. Three-dimensional surfaces require
+#'   the optional ggcube package. Irregular flat grids use rectangles bounded
+#'   by adjacent coordinate midpoints.
+#' @param ci_3d logical; add the returned lower and upper interval surfaces
+#'   when `surface = "3d"`? Defaults to `FALSE`.
+#' @param surface_3d named list of view options passed to [ggcube::coord_3d()],
+#'   for example `list(yaw = 45, persp = FALSE)`. The default view uses
+#'   `ggcube::light(backface_scale = 1)`. A supplied `light` replaces that
+#'   lighting specification. The same view applies to all panels; gratia
+#'   retains its plot theme.
+#' @param contour logical; draw contour lines on surfaces? Defaults to `TRUE`.
+#' @param ... additional arguments; currently unused.
 #'
 #' @inheritParams draw.smooth_estimates
 #'
@@ -446,9 +532,9 @@ characters")
 #' @importFrom stats as.formula
 #' @importFrom ggplot2 facet_grid facet_wrap ggplot geom_ribbon geom_line labs
 #'   position_dodge geom_pointrange
-#' @importFrom ggokabeito scale_colour_okabe_ito scale_fill_okabe_ito
 #' @importFrom tidyselect where any_of
 #' @export
+#' @inheritSection draw Label layout
 `draw.conditional_values` <- function(
     object,
     facet_scales = "fixed",
@@ -456,8 +542,19 @@ characters")
     discrete_fill = NULL,
     xlab = NULL,
     ylab = NULL,
-    ...) {
+    ...,
+    surface = c("raster", "tile", "3d"), surface_3d = list(),
+    continuous_fill = NULL, contour = TRUE, n_contour = NULL,
+    ci_3d = FALSE, zlab = NULL) {
   channels <- attr(object, "channels")
+  surface <- match.arg(surface)
+  if (length(channels$x) == 2L) {
+    return(draw_conditional_surface(object, channels,
+      facet_scales = facet_scales, xlab = xlab, ylab = ylab, zlab = zlab,
+      surface = surface, surface_3d = surface_3d,
+      continuous_fill = continuous_fill, contour = contour,
+      n_contour = n_contour, ci_3d = ci_3d))
+  }
 
   # if using colour channel of faceting, fix the number of signif digits
   # if colour or facet vars are not NULL and are numeric
@@ -471,30 +568,30 @@ characters")
     )
 
   # base plot
-  plt <- ggplot(data = object)
+  plt <- gratia_plot(data = object)
 
   # if x channel is a numeric we have a continuous x axis
   if (isTRUE(is.numeric(object[[channels$x]]))) {
     if (is.null(channels$colour)) {
       plt <- plt +
-        geom_ribbon(
+        geom_gratia_interval_ribbon(
           mapping = aes(x = .data[[channels$x]], y = .data$.fitted,
             ymin = .data[[".lower_ci"]], ymax = .data[[".upper_ci"]]),
           alpha = 0.2
         ) +
-        geom_line(
+        geom_gratia_effect_line(
           mapping = aes(x = .data[[channels$x]], y = .data$.fitted)
         )
     } else {
       plt <- plt +
-        geom_ribbon(
+        geom_gratia_interval_ribbon(
           mapping = aes(x = .data[[channels$x]], y = .data$.fitted,
             ymin = .data[[".lower_ci"]], ymax = .data[[".upper_ci"]],
             fill = factor(.data[[channels$colour]])
           ),
           alpha = 0.2
         ) +
-        geom_line(
+        geom_gratia_effect_line(
           mapping = aes(x = .data[[channels$x]], y = .data$.fitted,
             colour = factor(.data[[channels$colour]])
           )
@@ -503,14 +600,14 @@ characters")
   } else { # categorical x axis
     if (is.null(channels$colour)) {
       plt <- plt +
-        geom_pointrange(
+        geom_gratia_effect_pointrange(
           mapping = aes(x = .data[[channels$x]], y = .data$.fitted,
             ymin = .data[[".lower_ci"]], ymax = .data[[".upper_ci"]]
           )
         )
     } else {
       plt <- plt +
-        geom_pointrange(
+        geom_gratia_effect_pointrange(
           mapping = aes(x = .data[[channels$x]], y = .data$.fitted,
             ymin = .data[[".lower_ci"]], ymax = .data[[".upper_ci"]],
             colour = factor(.data[[channels$colour]])
@@ -527,17 +624,17 @@ characters")
     n_levs <- nlevels(object[[channels$colour]])
     if (is.null(discrete_colour)) {
       discrete_colour <- if (n_levs > 9L) {
-        scale_colour_hue()
+        gratia_default_scale(scale_colour_hue())
       } else {
-        scale_colour_okabe_ito()
+        gratia_default_scale(scale_colour_okabe_ito())
       }
     }
 
     if (is.null(discrete_fill)) {
       discrete_fill <- if (n_levs > 9L) {
-        scale_fill_hue()
+        gratia_default_scale(scale_fill_hue())
       } else {
-        scale_fill_okabe_ito()
+        gratia_default_scale(scale_fill_okabe_ito())
       }
     }
     plt <- plt +
@@ -582,6 +679,59 @@ characters")
 
   # return
   plt
+}
+
+# Surface rendering is shared by predictions and differences. Facet variables
+# are passed to the mesh builder as well as ggplot2 so panels never share faces.
+draw_conditional_surface <- function(object, channels, facet_scales = "fixed",
+    xlab = NULL, ylab = NULL, zlab = NULL, surface = "raster",
+    surface_3d = list(), continuous_fill = NULL, contour = TRUE,
+    n_contour = NULL, ci_3d = FALSE) {
+  difference <- inherits(object, "conditional_differences")
+  object$.estimate <- if (difference) object$.diff else object$.fitted
+  value_label <- if (difference) {
+    paste0("Difference (", attr(object, "scale"), " scale)")
+  } else expression(hat(y))
+  value_label <- zlab %||% value_label
+  extra <- intersect(c(".parameter", ".category", ".y", ".family"), names(object))
+  extra <- extra[vapply(object[extra], function(x) dplyr::n_distinct(x) > 1L,
+    logical(1L))]
+  facet_vars <- unique(c(if (difference) ".comparison", extra,
+    channels$f_col, channels$f_row))
+  facet <- if (difference || length(extra)) {
+    ggplot2::facet_wrap(ggplot2::vars(!!!rlang::syms(facet_vars)),
+      scales = facet_scales,
+      labeller = ggplot2::labeller(
+        .comparison = ggplot2::as_labeller(
+          function(x) sub("^[0-9]+[.] ", "", x),
+          default = ggplot2::label_value),
+        .default = ggplot2::label_both))
+  } else if (!is.null(channels$f_row)) {
+    ggplot2::facet_grid(rows = ggplot2::vars(!!!rlang::syms(channels$f_row)),
+      cols = ggplot2::vars(!!!rlang::syms(channels$f_col)),
+      scales = facet_scales, labeller = ggplot2::label_both)
+  } else if (!is.null(channels$f_col)) {
+    ggplot2::facet_wrap(ggplot2::vars(!!!rlang::syms(channels$f_col)),
+      scales = facet_scales, labeller = ggplot2::label_both)
+  } else NULL
+  # Constant surfaces remain useful, but have no contour lines to compute.
+  contour_data <- object |>
+    dplyr::group_by(across(all_of(facet_vars))) |>
+    dplyr::filter(dplyr::n_distinct(.data$.estimate[is.finite(.data$.estimate)]) > 1L) |>
+    dplyr::ungroup()
+  fill_limits <- surface_fill_limits(object$.estimate, symmetric = difference)
+  prepare_surface_plot(object,
+    x_var = channels$x[1L], y_var = channels$x[2L], fill_var = ".estimate",
+    fill_limits = fill_limits, fill_title = value_label,
+    labels = ggplot2::labs(x = xlab %||% channels$x[1L],
+      y = ylab %||% channels$x[2L]),
+    surface = surface, surface_3d = surface_3d,
+    continuous_fill = continuous_fill,
+    contour = isTRUE(contour) && nrow(contour_data) > 0L,
+    contour_data = contour_data, n_contour = n_contour,
+    ci_3d = ci_3d, facet = facet, facet_vars = facet_vars,
+    irregular_cells = TRUE,
+    z_limits = if (difference) NULL else fill_limits)
 }
 
 # Simple formatter for numeric data that will be used for facets

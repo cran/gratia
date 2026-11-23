@@ -2,7 +2,10 @@
 % Please edit documentation in R/gjrm-methods.R
 \name{draw.gamlss}
 \alias{draw.gamlss}
-\title{Plot smooths of a GAMLSS model estimated by \code{GJRM::gamlss}}
+\alias{assemble.gamlss}
+\alias{draw.gjrm}
+\alias{assemble.gjrm}
+\title{Plot smooths of models estimated by GJRM}
 \usage{
 \method{draw}{gamlss}(
   object,
@@ -12,11 +15,68 @@
   guides = "keep",
   widths = NULL,
   heights = NULL,
-  ...
+  ...,
+  n = 100,
+  envir = NULL,
+  select = NULL,
+  parametric = NULL,
+  terms = NULL,
+  partial_match = FALSE,
+  wrap = TRUE
+)
+
+\method{assemble}{gamlss}(
+  object,
+  scales = c("free", "fixed"),
+  ...,
+  residuals = FALSE,
+  n = 100,
+  envir = NULL,
+  select = NULL,
+  parametric = NULL,
+  terms = NULL,
+  partial_match = FALSE,
+  grouped_by = deprecated(),
+  grouped = c("sz", "fs"),
+  show_ci = c("factor-by", "sz")
+)
+
+\method{draw}{gjrm}(
+  object,
+  scales = c("free", "fixed"),
+  ncol = NULL,
+  nrow = NULL,
+  guides = "keep",
+  widths = NULL,
+  heights = NULL,
+  ...,
+  n = 100,
+  envir = NULL,
+  select = NULL,
+  parametric = NULL,
+  terms = NULL,
+  partial_match = FALSE,
+  wrap = TRUE
+)
+
+\method{assemble}{gjrm}(
+  object,
+  scales = c("free", "fixed"),
+  ...,
+  residuals = FALSE,
+  n = 100,
+  envir = NULL,
+  select = NULL,
+  parametric = NULL,
+  terms = NULL,
+  partial_match = FALSE,
+  grouped_by = deprecated(),
+  grouped = c("sz", "fs"),
+  show_ci = c("factor-by", "sz")
 )
 }
 \arguments{
-\item{object}{a model, fitted by \code{\link[GJRM:gamlss]{GJRM::gamlss()}}}
+\item{object}{a model fitted by \code{\link[GJRM:gamlss]{GJRM::gamlss()}} or \code{\link[GJRM:gjrm]{GJRM::gjrm()}}.}
 
 \item{scales}{character; should all univariate smooths be plotted with the
 same y-axis scale? If \code{scales = "free"}, the default, each univariate
@@ -38,35 +98,129 @@ there is more than 1 plot and \code{widths = NULL}, the value of \code{widths} w
 be set internally to \code{widths = 1} to accommodate plots of smooths that
 use a fixed aspect ratio.}
 
-\item{...}{arguments passed to \code{\link[=draw.gam]{draw.gam()}}}
+\item{...}{arguments passed to \code{\link[=assemble.gam]{assemble.gam()}}}
+
+\item{n}{numeric; the number of points over the range of the covariate at
+which to evaluate a univariate smooth.}
+
+\item{envir}{an optional environment supplying functions and constants used
+in model expressions. The available model formula environment is used when
+\code{NULL}. Covariate observations should be supplied in \code{data}.}
+
+\item{select}{Smooth selection across all equations, using the labels from
+\code{\link[=smooths]{smooths()}}, or numeric or logical indices in equation and smooth order.
+Repeated labels receive suffixes such as \code{s.1(x)}; existing distinct labels
+are retained. \code{partial_match} uses these model-wide labels.}
+
+\item{parametric}{logical or \code{NULL}; plot parametric terms also? The default,
+\code{NULL}, includes parametric terms when \code{select = NULL}, but excludes them
+when smooths are selected explicitly. Use \code{TRUE} to include parametric terms
+regardless of \code{select}, or \code{FALSE} to draw only smooths (the previous
+default). The \code{terms} argument selects which parametric effects are plotted;
+\code{select} selects only smooths.}
+
+\item{terms}{character; which model parametric terms should be drawn? The
+Default of \code{NULL} will plot all parametric terms that can be drawn.
+Interactions show their individual contributions to the linear predictor;
+main effects and intercepts are not added. Multivariate parametric terms
+use the grid and surface controls below, as described in
+\code{\link[=parametric_effects]{parametric_effects()}}.}
+
+\item{partial_match}{logical; in the case of character \code{select}, should
+\code{select} match partially against \code{smooths}? If \code{partial_match = TRUE},
+\code{select} must only be a single string, a character vector of length 1.}
+
+\item{wrap}{Logical; return an assembled patchwork when \code{TRUE} (the default),
+or a flat named list of plots when \code{FALSE}.}
+
+\item{residuals}{logical; should partial residuals for a smooth be drawn?
+Ignored for anything but a simple univariate smooth.
+If the model does not provide working residuals and working weights,
+warns once and draws the smooths without partial residuals.}
+
+\item{grouped_by}{Deprecated; use \code{grouped}. Explicit \code{TRUE} adds
+\code{"factor-by"} to \code{grouped}; \code{FALSE} removes it, retaining the other types.}
+
+\item{grouped}{character or \code{FALSE}; factor smooth types whose curves share
+a panel. Choose any of \code{"factor-by"}, \code{"sz"}, and \code{"fs"}, or \code{FALSE} to
+separate all their curves. The default, \code{c("sz", "fs")}, overlays \code{sz}
+and \code{fs} curves and separates factor-by curves. \code{"factor-by"} includes
+ordered factors. In reference-plus-deviation models the reference smooth
+remains separate; only fitted nonreference deviations are grouped.
+For \code{sz} terms with several factors, separate plots show each evaluated
+combination of levels. Applies to curves with one continuous covariate;
+existing surface displays are unchanged. Separate curves use the usual
+univariate styling: a black line and a translucent black interval by
+default, with colours and opacity controlled by the smooth theme settings.}
+
+\item{show_ci}{character or \code{FALSE}; factor smooth types whose curves show
+intervals. Choose any of \code{"factor-by"}, \code{"sz"}, and \code{"fs"}, or \code{FALSE} to
+hide all their ribbons. The default, \code{c("factor-by", "sz")}, retains
+existing interval visibility; including \code{"fs"} enables its intervals.
+Controls display only, independently of \code{interval} and \code{grouped}.
+Ordinary smooths and parametric effects retain their intervals.}
+}
+\value{
+\code{\link[=assemble]{assemble()}} and \code{draw(wrap = FALSE)} return a flat named list of
+plots, ordered by equation and then by term within each equation. Smooth
+names use the model-wide labels returned by \code{\link[=smooths]{smooths()}}. \code{\link[=draw]{draw()}} returns
+a patchwork by default. Both methods return invisible \code{NULL} when there
+are no plots to draw.
 }
 \description{
-Provides a \code{\link[=draw]{draw()}} method for GAMLSS (distributional GAMs) fitted
-by \code{\link[GJRM:gamlss]{GJRM::gamlss()}}.
+Provides \code{\link[=draw]{draw()}} and \code{\link[=assemble]{assemble()}} methods for GAMLSS
+and joint models fitted by \code{\link[GJRM:gamlss]{GJRM::gamlss()}} or \code{\link[GJRM:gjrm]{GJRM::gjrm()}}. \code{\link[=assemble]{assemble()}} returns the
+individual plots; \code{\link[=draw]{draw()}} arranges them using \code{\link[patchwork:wrap_plots]{patchwork::wrap_plots()}}.
 }
 \note{
-Plots of smooths are not labelled with the linear predictor to which
-they belong.
+For models with multiple linear predictors, smooth and parametric
+plot subtitles identify the distributional parameter using the parent
+model's margin and equation order, rather than the working family of
+the embedded GAMs.
+Univariate GAMLSS models with one predictor omit these automatic labels.
+Joint models retain equation labels even when only dependence is estimated.
+Existing smooth labels, selection, by-variable information and custom
+subtitles are retained.
+Pass \verb{surface = "3d", ci_3d = TRUE} through \code{...} to add interval surfaces
+to smooths and numeric parametric interactions in any equation.
+\code{ci_3d_alpha} and \code{ci_3d_col} control their opacity and fill colour.
+Pass \code{cyclic = "polar"} and optional \code{polar_args} through \code{...} for
+polar plots of supported one-dimensional cyclic smooths in any equation;
+see \code{\link[=draw.gam]{draw.gam()}} for the coordinate options.
+
+Joint models use the final joint coefficients and covariance for every
+embedded GAM, including dependence equations and random-effect smooths.
+Parametric plot subtitles also identify their response and parameter.
+For both univariate and joint models, a parametric term repeated across
+equations has list names such as \verb{x (equation 1)} and \verb{x (equation 2)};
+unique terms keep their original names.
+Grouped factor-by panels also receive an equation suffix when their
+base name would hide another smooth's selection label.
+Ordinal cutpoints are excluded from smooth and intercept uncertainty.
+Fixed-margin fits plot their estimated dependence equation only.
+Flexible survival equations fitted using SCAM are not yet supported.
+Working residuals from preliminary GAM fits are unavailable for joint
+models; requesting partial residuals warns and draws the smooths alone.
 }
+\section{Label layout}{
+
+Pass \code{label_control = draw_label_control(...)} to \code{draw()} to wrap discrete
+axis labels and legend text, stagger discrete tick labels, or adjust legend
+and colour-bar layout. Settings apply to each panel, including unwrapped
+plot lists. See \code{\link[=draw_label_control]{draw_label_control()}} for the available settings.
+}
+
 \examples{
-if (suppressPackageStartupMessages(require("GJRM", quietly = TRUE))) {
-  # follow example from ?GJRM::gamlss
+if (requireNamespace("GJRM", quietly = TRUE)) {
   load_mgcv()
-  suppressPackageStartupMessages(library("GJRM"))
+  # Simulate a response whose mean and standard deviation vary with x.
   set.seed(0)
-  n <- 100
-  x1 <- round(runif(n))
-  x2 <- runif(n)
-  x3 <- runif(n)
-  f1 <- function(x) cos(pi * 2 * x) + sin(pi * x)
-  y1 <- -1.55 + 2 * x1 + f1(x2) + rnorm(n)
-  dataSim <- data.frame(y1, x1, x2, x3)
+  n <- 80
+  x <- runif(n)
+  dat <- data.frame(x = x, y = sin(2 * pi * x) + rnorm(n, sd = exp(x)))
 
-  eq_mu <- y1 ~ x1 + s(x2)
-  eq_s <- ~ s(x3, k = 6)
-  fl <- list(eq_mu, eq_s)
-  m <- gamlss(fl, data = dataSim)
-
-  draw(m)
+  # Fit and plot the smooths for the mean and standard deviation.
+  model <- GJRM::gamlss(list(y ~ s(x, k = 5), ~ s(x, k = 4)), data = dat)
+  draw(model, n = 40)
 }
 }

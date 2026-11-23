@@ -7,29 +7,46 @@
 #'
 #' @param object and R object to plot.
 #' @param ... arguments passed to other methods.
+#' @inheritParams draw
+#' @inheritSection draw Label layout
 #'
 #' @return A list of [ggplot2::ggplot()] objects.
 #'
 #' @author Gavin L. Simpson
 #'
 #' @export
-`assemble` <- function(object, ...) {
+`assemble` <- function(object, ..., label_control = NULL) {
+  if (!is.null(label_control)) {
+    control <- validate_draw_label_control(label_control)
+    value <- withVisible(assemble(object, ...))
+    result <- apply_draw_label_control(value$value, control)
+    if (!value$visible) return(invisible(result))
+    return(result)
+  }
   UseMethod("assemble")
 }
 
-#' Plot estimated smooths from a fitted GAM
+#' Plot smooth and parametric terms from a fitted GAM
 #'
-#' Plots estimated smooths from a fitted GAM model in a similar way to
-#' `mgcv::plot.gam()` but instead of using base graphics, [ggplot2::ggplot()]
-#' is used instead.
+#' Plots smooth and parametric contributions from a fitted GAM model using
+#' [ggplot2::ggplot()].
+#' For models fitted by [mgcv::gamm()], `assemble()` and [draw()] use the
+#' fitted `gam` component.
 #'
 #' @inheritParams draw.gam
-#' @param ... Arguments to other methods; not used.
+#' @details Smooth and parametric plot subtitles identify the model part or
+#'   distributional parameter as described in [draw.gam()]. Custom labels, including
+#'   `subtitle`, can be passed through `...`. Use `cyclic = "polar"` to draw
+#'   one-dimensional cyclic smooths with polar coordinates; `polar_args`
+#'   customises the coordinate display as described in [draw.gam()].
+#' @param ... Additional smooth plotting arguments, including `title`,
+#'   `subtitle`, `xlab` and `ylab`. `subtitle` also applies to parametric panels;
+#'   use `NULL` for automatic predictor labels or `""` to suppress them.
 #'
 #' @note Internally, plots of each smooth are created using [ggplot2::ggplot()]
 #'   and composed into a single plot using [patchwork::wrap_plots()]. As a
 #'   result, it is not possible to use `+` to add to the plots in the way one
-#'   might typically work with `ggplot()` plots. Instead, use the `&` operator;
+#'   might typically work with [ggplot2::ggplot()] plots. Instead, use the `&` operator;
 #'   see the examples.
 #'
 #' @return A list of [ggplot2::ggplot()] objects.
@@ -39,7 +56,7 @@
 #' @importFrom ggplot2 scale_colour_discrete scale_colour_continuous
 #'   scale_fill_distiller
 #' @importFrom dplyr mutate rowwise ungroup left_join group_split summarise
-#' @importFrom purrr pluck map_lgl in_parallel map map_chr
+#' @importFrom purrr pluck map_lgl map map_chr
 #' @importFrom rlang expr_label
 #' @importFrom utils packageVersion getFromNamespace
 #' @importFrom stringr str_split_fixed
@@ -49,27 +66,25 @@
 #' @examples
 #' load_mgcv()
 #'
-#' # simulate some data
-#' df1 <- data_sim("eg1", n = 400, dist = "normal", scale = 2, seed = 2)
-#' # fit GAM
-#' m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df1, method = "REML")
+#' # Fit smooths for two predictors in a simulated data set.
+#' dat <- data_sim("eg1", n = 100, seed = 2)
+#' model <- gam(y ~ s(x0, k = 6) + s(x1, k = 6), data = dat, method = "REML")
 #'
-#' # assemble plots of all smooths
-#' assemble(m1)
-#'
-#' # can be passed to patchwork::wrap_plots()
-#' suppressPackageStartupMessages(library("patchwork"))
-#' assemble(m1) |> wrap_plots(ncol = 2, nrow = 2)
+#' # Arrange the returned plots in one column and apply a common theme.
+#' plots <- assemble(model, n = 40)
+#' patchwork::wrap_plots(plots, ncol = 1) & ggplot2::theme_minimal()
+#' @inheritSection draw Label layout
 `assemble.gam` <- function(
   object,
   data = NULL,
   select = NULL,
-  parametric = FALSE,
+  parametric = NULL,
   terms = NULL,
   residuals = FALSE,
   scales = c("free", "fixed"),
   ci_level = 0.95,
   n = 100,
+  n_2d = 50,
   n_3d = 16,
   n_4d = 4,
   unconditional = FALSE,
@@ -80,7 +95,7 @@
   rug = TRUE,
   distinct_rug = TRUE,
   contour = TRUE,
-  grouped_by = FALSE,
+  grouped_by = deprecated(),
   ci_alpha = 0.2,
   ci_col = "black",
   smooth_col = "black",
@@ -98,13 +113,53 @@
   guides = "keep", widths = NULL, heights = NULL,
   crs = NULL,
   default_crs = NULL,
-  lims_method = "cross",
+  lims_method = "geometry_bbox",
   wrap = TRUE,
   caption = TRUE,
-  envir = environment(formula(object)),
-  ...
+  envir = NULL,
+  surface = c("raster", "tile", "3d"),
+  surface_3d = list(),
+  ci_3d = FALSE,
+  ci_3d_alpha = 0.15, ci_3d_col = "grey60",
+  back_transform = FALSE,
+  re_levels = NULL,
+  mrf_plot = c("effects", "qq"),
+  interval = c("confidence", "simultaneous"),
+  n_sim = 10000, n_cores = 1, seed = NULL,
+  interval_method = c("auto", "gaussian", "bootstrap", "shape"),
+  frequentist = FALSE,
+  shape_source = c("gaussian", "bootstrap"),
+  ..., variables = NULL,
+  simultaneous_method = c('simulation', 'tube'),
+  simultaneous_domain = NULL, tube_control = list(),
+  cyclic = c("cartesian", "polar"), polar_args = list(),
+  grouped = c("sz", "fs"), show_ci = c("factor-by", "sz"),
+  time_varying_style = c("ribbon", "pointrange")
 ) {
+  factor_controls <- resolve_factor_plot_controls(grouped, show_ci, grouped_by,
+    "assemble.gam")
+  grouped <- factor_controls$grouped
+  show_ci <- factor_controls$show_ci
+  gratia_plot_arguments(c("ci_alpha", "ci_col", "smooth_col", "resid_col", "contour_col", "ci_3d_alpha", "ci_3d_col"), environment())
+  if (missing(overall_uncertainty) && is_scasm_model(object)) {
+    overall_uncertainty <- FALSE
+  }
+  cyclic <- match.arg(cyclic)
+  validate_cyclic_polar(cyclic, polar_args)
+  mrf_plot <- match.arg(mrf_plot)
+  interval <- normalize_smooth_interval(interval)
+  simultaneous_method <- resolve_simultaneous_method(simultaneous_method, interval,
+    simultaneous_domain, tube_control)
+  if (simultaneous_method == 'simulation') validate_smooth_interval(interval, ci_level, n_sim, n_cores, seed)
+  check_back_transform(back_transform)
+  time_varying_style <- match.arg(time_varying_style)
+  surface <- match.arg(surface)
+  validate_surface_3d(surface_3d)
+  validate_ci_3d(ci_3d, ci_3d_alpha, ci_3d_col)
+  check_surface_dots(match.call(expand.dots = FALSE))
+
   .call <- match.call()
+  parametric_subtitle <- list(...)[["subtitle"]]
 
   # fixed or free scale?
   scales <- match.arg(scales)
@@ -117,21 +172,15 @@
   #    discrete_colour <- scale_colour_discrete()
   # }
   if (is.null(continuous_colour)) {
-    continuous_colour <- scale_colour_continuous()
+    continuous_colour <- gratia_default_scale(scale_colour_continuous())
   }
   if (is.null(continuous_fill)) {
-    continuous_fill <- scale_fill_distiller(palette = "RdBu", type = "div")
+    continuous_fill <- gratia_default_scale(scale_fill_distiller(palette = "RdBu", type = "div"))
   }
 
-  # if not using select, set parametric TRUE if not set to FALSE
-  if (!is.null(select)) {
-    if (is.null(parametric)) {
-      parametric <- FALSE
-    }
-  } else {
-    if (is.null(parametric)) {
-      parametric <- TRUE
-    }
+  # Include parametric terms by default unless smooths were selected explicitly.
+  if (is.null(parametric)) {
+    parametric <- is.null(select)
   }
 
   # sort out n_3d and n_4d. If these are `NULL` then do sensible thing at set
@@ -147,146 +196,170 @@
       partial_match = partial_match,
       model_name = expr_label(substitute(object))
     )
+  smooth_ids <- which(select)
+  object <- with_model_envir(object, envir)
+  object <- plan_tensor_plots(object, smooth_ids, data, re_levels)
+  attr(object, "gratia.cyclic_polar") <- identical(cyclic, "polar")
 
   # this is needed for the parametric terms below
   sm_plts <- NULL
   ylims <- NULL
 
   # do we have any smooths to plot?
-  if (length(select) > 0L) {
+  if (any(select)) {
+    if (isTRUE(residuals)) {
+      residuals <- check_partial_residuals(object, warn = TRUE)
+    }
     # evaluate all requested smooths
     sm_eval <- smooth_estimates(object,
-      select = S[select],
+      envir = envir, back_transform = back_transform,
+      select = smooth_ids,
       n = n,
+      n_2d = n_2d,
       n_3d = n_3d,
       n_4d = n_4d,
+      variables = variables,
       data = data,
       unconditional = unconditional,
+      frequentist = frequentist,
       overall_uncertainty = overall_uncertainty,
       dist = dist,
       clip = TRUE,
-      unnest = FALSE
+      unnest = FALSE,
+      interval = interval, ci_level = ci_level,
+      interval_method = interval_method,
+      simultaneous_method = simultaneous_method, simultaneous_domain = simultaneous_domain,
+      tube_control = tube_control,
+      shape_source = shape_source,
+      n_sim = n_sim, n_cores = n_cores, seed = seed
     )
 
     # grab tensor term order if present, if not it is NULL & that's OK
     tensor_term_order <- attr(sm_eval, "tensor_term_order")
+    coordinate_info <- attr(sm_eval, "coordinate_info")
+    surface_support <- attr(sm_eval, "surface_support")
 
-    # add confidence interval
-    sm_eval <- sm_eval |>
-      rowwise() |>
-      mutate(data = list(add_confint(.data$data, coverage = ci_level))) |>
-      ungroup()
+    interval_info <- attr(sm_eval, "interval_info")
+    shape_constraints <- attr(sm_eval, "shape_constraints")
+    scam_info <- attr(sm_eval, "scam_smooth_info")
 
     # Take the range of the smooths & their confidence intervals now
     # before we put rug and residuals on
-    if (utils::packageVersion("dplyr") > "1.0.10") {
-      sm_rng <- sm_eval |>
-        rowwise() |>
-        utils::getFromNamespace("reframe", "dplyr")(rng =
-          range(c(data$.estimate, data$.lower_ci, data$.upper_ci))) |>
-        pluck("rng")
-    } else {
-      sm_rng <- sm_eval |>
-        rowwise() |>
-        summarise(rng = range(c( # FIXME: summarise() -> reframe()
-          data$.estimate, data$.lower_ci,
-          data$.upper_ci
-        ))) |>
-        pluck("rng")
+    sm_rng <- factor_smooth_plot_range(sm_eval, show_ci)
+
+    if (scales == "fixed") {
+      sm_rng <- factor_smooth_plot_range(sm_eval, show_ci, constant, fun,
+        transform = TRUE)
+      sm_rng <- sm_rng[is.finite(sm_rng)]
     }
+
+    observation_data <- NULL
+    if (back_transform && (isTRUE(rug) || isTRUE(residuals))) {
+      observation_data <- model.frame(object)
+      labels <- unique(unlist(lapply(get_smooths_by_id(object, smooth_ids), smooth_variable)))
+      raw_vars <- unique(unlist(lapply(labels, function(label) {
+        smooth_coordinate_info(label, object)$original
+      })))
+      raw <- tryCatch(recover_raw_data(object, vars = raw_vars),
+        gratia_data_recovery_error = function(e) {
+          if (is.null(data)) stop(e)
+          NULL
+        })
+      if (is.null(raw)) {
+        # Prediction rows are not observed data for rugs or partial residuals.
+        observation_data <- NULL
+        rug <- residuals <- FALSE
+      } else {
+        for (v in raw_vars) observation_data[[v]] <- raw[[v]]
+        observation_data <- retain_smooth_coordinates(observation_data, labels, object, required = TRUE)
+      }
+    }
+
+    # Join observations by fitted index when a label names several components.
+    # The nested estimates have one row per fitted smooth in selection order.
+    had_smooth_ids <- ".smooth_id" %in% names(sm_eval)
+    join_by_index <- (isTRUE(residuals) || isTRUE(rug)) &&
+      (had_smooth_ids || anyDuplicated(S) > 0L)
+    observation_key <- if (join_by_index) ".smooth_id" else ".smooth"
+    if (join_by_index && !had_smooth_ids) sm_eval$.smooth_id <- smooth_ids
 
     # Add partial residuals if requested - by default they are
     # At the end of this, sm_eval will have a new list column containing the
     # partial residuals, `partial_residual`
     p_resids_rng <- NULL
     if (isTRUE(residuals)) {
-      if (is.null(residuals(object)) || is.null(weights(object))) {
-        residuals <- FALSE
+      # get residuals in a suitable format
+      p_resids <- if (join_by_index) {
+        nested_component_observations(object, smooth_ids,
+          data = observation_data, partial = TRUE)
       } else {
-        # get residuals in a suitable format
-        p_resids <- nested_partial_residuals(object, terms = S[select])
-
-        # compute the range of residuals for each smooth
-        # p_resids_rng <- p_resids |>
-        #     rowwise() |>
-        #     dplyr::reframe(rng =
-        #         range(.data$partial_residual$partial_residual)) |>
-        #     pluck("rng")
-        if (utils::packageVersion("dplyr") > "1.0.10") {
-          p_resids_rng <- p_resids |>
-            rowwise() |>
-            utils::getFromNamespace("reframe", "dplyr")(
-              rng = range(.data$partial_residual$partial_residual)) |>
-            pluck("rng")
-        } else {
-          p_resids_rng <- p_resids |>
-            rowwise() |>
-            summarise(
-              rng =
-                range(.data$partial_residual$partial_residual)
-            ) |>
-            pluck("rng")
-        }
-        # merge with the evaluated smooth
-        sm_eval <- suppress_matches_multiple_warning(
-          left_join(sm_eval, p_resids, by = ".smooth")
-        )
+        nested_partial_residuals(object, terms = S[select], data = observation_data)
       }
+
+      # compute the range of residuals for each smooth
+      # p_resids_rng <- p_resids |>
+      #     rowwise() |>
+      #     dplyr::reframe(rng =
+      #         range(.data$partial_residual$partial_residual)) |>
+      #     pluck("rng")
+      if (utils::packageVersion("dplyr") > "1.0.10") {
+        p_resids_rng <- p_resids |>
+          rowwise() |>
+          utils::getFromNamespace("reframe", "dplyr")(
+            rng = range(.data$partial_residual$partial_residual)) |>
+          pluck("rng")
+      } else {
+        p_resids_rng <- p_resids |>
+          rowwise() |>
+          summarise(
+            rng =
+              range(.data$partial_residual$partial_residual)
+          ) |>
+          pluck("rng")
+      }
+      # merge with the evaluated smooth
+      sm_eval <- suppress_matches_multiple_warning(
+        left_join(sm_eval, p_resids, by = observation_key)
+      )
     }
 
     # add rug data?
     if (isTRUE(rug)) {
       # get rug data in a suitable format
-      rug_data <- nested_rug_values(
-        object,
-        terms = S[select],
-        distinct = distinct_rug
-      )
+      rug_data <- if (join_by_index) {
+        nested_component_observations(object, smooth_ids,
+          data = observation_data, distinct = distinct_rug)
+      } else {
+        nested_rug_values(object,
+          terms = S[select], data = observation_data, distinct = distinct_rug)
+      }
 
       # merge with the evaluated smooth
       sm_eval <- suppress_matches_multiple_warning(
-        left_join(sm_eval, rug_data, by = ".smooth")
+        left_join(sm_eval, rug_data, by = observation_key)
       )
     }
+    if (join_by_index && !had_smooth_ids) sm_eval$.smooth_id <- NULL
 
     # need to figure out scales if "fixed"
     if (isTRUE(identical(scales, "fixed"))) {
-      ylims <- range(sm_rng, p_resids_rng)
+      ylims <- surface_fill_limits(c(sm_rng, p_resids_rng), symmetric = FALSE)
     }
 
-    # draw smooths
-    sm_l <- if (isTRUE(grouped_by)) {
-      sm_levels <- unique(sm_eval$.smooth)
-      levs <- unique(str_split_fixed(sm_eval$.smooth, ":", n = 2)[, 1])
-      sm_l <- sm_eval |>
-        mutate(
-          ..smooth.. = factor(.data$.smooth, levels = S[select]),
-          .term = str_split_fixed(.data$.smooth, ":", n = 2)[, 1],
-          ..by.. = if_else(is.na(.data$.by), "..no_level..", .data$.by)
-        ) |>
-        relocate(".term", .before = 1L)
-      grp_by_levs <- unique(sm_l$"..by..")
-      sm_l <- sm_l |>
-        group_split(factor(.data$.term, levels = sm_levels),
-          factor(.data$"..by..", levels = grp_by_levs))
-      # sometimes the steps to get the order right above don't work
-      sm_l_levs <- vapply(sm_l, \(x) unique(x$.term), character(1L))
-      if (!identical(unique(sm_l_levs), levs)) {
-        names(sm_l) <- sm_l_levs
-        sm_l <- sm_l[levs]
-        names(sm_l) <- NULL
-      }
-      sm_l
-    } else {
-      # the factor is to reorder to way the smooths entered the model
-      sm_eval <- add_column(
-        sm_eval,
-        .term = str_split_fixed(sm_eval$.smooth, ":", n = 2)[, 1]
-      )
-      group_split(sm_eval, factor(.data$.smooth, levels = S[select]))
-    }
+    sm_l <- prepare_factor_smooth_panels(sm_eval, grouped, show_ci)
+    # Keep ggplot object creation serial: trials with mirai workers did not
+    # improve performance.
     sm_plts <- map(sm_l,
       draw_smooth_estimates,
+      cyclic = cyclic, polar_args = polar_args,
+      cyclic_info = attr(sm_eval, "cyclic_info"),
+      surface = surface, surface_3d = surface_3d,
+      ci_3d = ci_3d, ci_3d_alpha = ci_3d_alpha, ci_3d_col = ci_3d_col,
+      surface_support = surface_support,
+      tensor_plot_info = attr(sm_eval, "tensor_plot_info"),
+      plot_variables = attr(sm_eval, "plot_variables"),
+      re_levels = re_levels,
+      mrf_plot = mrf_plot,
       constant = constant,
       fun = fun,
       contour = contour,
@@ -307,74 +380,37 @@
       default_crs = default_crs,
       lims_method = lims_method,
       tensor_term_order = tensor_term_order,
+      coordinate_info = coordinate_info, back_transform = back_transform,
+      interval_info = interval_info,
+      shape_constraints = shape_constraints,
+      scam_smooth_info = scam_info,
       caption = caption,
-      grouped_by = grouped_by,
       ... # FIXME: temporary fix to allow captions to be suppressed-ish
     )
-
-    # Parallel version; currently not working for some weird ggproto thing
-    # that needs some debugging
-    # sm_plts2 <- map(
-    #   sm_l,
-    #   in_parallel(
-    #     \(sm, ...) draw_smooth_estimates(
-    #       sm,
-    #       constant = constant, fun = fun, contour = contour,
-    #       contour_col = contour_col, n_contour = n_contour,
-    #       ci_alpha = ci_alpha, ci_col = ci_col, smooth_col = smooth_col,
-    #       resid_col = resid_col, partial_match = partial_match,
-    #       discrete_colour = discrete_colour,
-    #       discrete_fill = discrete_fill,
-    #       continuous_colour = continuous_colour,
-    #       continuous_fill = continuous_fill,
-    #       angle = angle, ylim = ylims, crs = crs, default_crs = default_crs,
-    #       lims_method = lims_method, tensor_term_order = tensor_term_order,
-    #       caption = caption, ...
-    #     ),
-    #     constant = constant, fun = fun, contour = contour,
-    #     contour_col = contour_col, n_contour = n_contour,
-    #     ci_alpha = ci_alpha, ci_col = ci_col, smooth_col = smooth_col,
-    #     resid_col = resid_col, partial_match = partial_match,
-    #     discrete_colour = discrete_colour, discrete_fill = discrete_fill,
-    #     continuous_colour = continuous_colour,
-    #     continuous_fill = continuous_fill,
-    #     angle = angle, ylims = ylims, crs = crs, default_crs = default_crs,
-    #     lims_method = lims_method, tensor_term_order = tensor_term_order,
-    #     caption = caption,
-    #     draw_smooth_estimates = draw_smooth_estimates, ...
-    #   )
-    # )
 
     # filter out NULLs as those are types of smooths we can't plot (yet)
     no_plot <- map_lgl(sm_plts, is.null)
     sm_plts <- sm_plts[!no_plot]
     sm_l <- sm_l[!no_plot]
-    sm_plt_nms <- map_chr(sm_l, .f = \(x) unique(x$.term))
-    #sm_eval <- sm_eval |> add_column(
-    #  .term = sm_plt_nms, .before = 1L
-    #)
-    ## sm_eval <- sm_eval[!no_plot, ]
+    sm_plt_nms <- map_chr(sm_l, factor_panel_name)
     # set names on sm_plts
     if (length(sm_plts) > 0L) {
       sm_plts <- setNames(sm_plts, sm_plt_nms)
-      #sm_plts <- if (grouped_by) {
-      #  setNames(sm_plts, sm_plt_nms)
-      #} else {
-      #  setNames(sm_plts, sm_plt_nms)
-      #}
     }
   } # end stuff for smooths...
 
   # Are we plotting parametric effects too?
   if (isTRUE(parametric)) {
     if (length(parametric_terms(object)) == 0L) {
-      message("The model contains no parametric terms")
       parametric <- FALSE
     } else {
       para <- parametric_effects(object,
-        select = terms, data = data,
+        overall_uncertainty = overall_uncertainty,
+        terms = terms, data = data,
         unconditional = unconditional,
-        unnest = TRUE, ci_level = ci_level, envir = envir
+        unnest = TRUE, ci_level = ci_level, envir = envir,
+        n = n, n_2d = n_2d, n_3d = n_3d, n_4d = n_4d, dist = dist,
+        back_transform = back_transform
       )
 
       if (is.null(para)) {
@@ -388,10 +424,13 @@
         object <- para |> add_confint(coverage = ci_level)
         # need to alter the ylim if scales are fixed
         if (isTRUE(identical(scales, "fixed"))) {
-          ylims <- range(
-            ylims, object$.partial, object$.upper_ci,
-            object$.lower_ci
-          )
+          displayed <- object |>
+            add_constant(constant = constant,
+              column = c(".partial", ".lower_ci", ".upper_ci")) |>
+            transform_fun(fun = fun,
+              column = c(".partial", ".lower_ci", ".upper_ci"))
+          ylims <- surface_fill_limits(c(ylims, displayed$.partial,
+            displayed$.upper_ci, displayed$.lower_ci), symmetric = FALSE)
         }
 
         f_levels <- attr(para, "factor_levels")
@@ -401,7 +440,12 @@
           group_map(
             .keep = TRUE,
             .f = ~ draw_parametric_effect(.x,
+              subtitle = parametric_subtitle,
               ci_level = ci_level,
+              caption = if (isTRUE(caption) && interval == "simultaneous" &&
+                  !identical(unique(.x$.type), "time_varying")) {
+                paste0(format(100 * ci_level), "% pointwise intervals (parametric effect)")
+              } else if (identical(caption, FALSE)) FALSE else NULL,
               ci_col = ci_col,
               ci_alpha = ci_alpha,
               line_col = smooth_col,
@@ -411,34 +455,36 @@
               position = position,
               angle = angle,
               ylim = ylims,
-              factor_levels = f_levels
+              factor_levels = f_levels, term_info = attr(para, "term_info"),
+              axis_info = attr(para, "axis_info"), from_raw = back_transform,
+              time_varying_info = attr(para, "time_varying_info"),
+              time_varying_style = time_varying_style,
+              back_transform = back_transform,
+              contour = contour, contour_col = contour_col, n_contour = n_contour,
+              surface = surface, surface_3d = surface_3d,
+              ci_3d = ci_3d, ci_3d_alpha = ci_3d_alpha, ci_3d_col = ci_3d_col,
+              continuous_fill = continuous_fill,
+              discrete_colour = discrete_colour, discrete_fill = discrete_fill
             )
           )
       }
     }
   }
 
-  # filter out NULLs as those are types of smooths we can't plot (yet)
-  #no_plot <- map_lgl(sm_plts, is.null)
-  #sm_plts <- sm_plts[!no_plot]
-  #sm_eval <- sm_eval[!no_plot,]
-  #sm_l <- sm_l |> bind_rows()
-  #sm_l <- sm_l[!no_plot] |> bind_rows()
-
-  ## set names on sm_plts
-  #if (length(sm_plts) > 0L) {
-  #  sm_plts <- if (grouped_by) {
-  #    setNames(sm_plts, map_chr(sm_l, .f = \(x) unique(x$.term)))
-  #  } else {
-  #    # setNames(sm_plts, sm_eval$.smooth)
-  #    setNames(sm_plts, sm_l$.smooth)
-  #  }
-  #}
-
   if (isTRUE(parametric)) {
-    para_nm <- unique(para$.term)
+    para_nm <- dplyr::group_keys(dplyr::group_by(para, .data$.term))$.term
     para_plts <- setNames(para_plts, para_nm)
     sm_plts <- append(sm_plts, para_plts)
+  }
+
+  if (surface == "3d" && scales == "fixed" && length(ylims)) {
+    common <- surface_fill_limits(ylims)
+    sm_plts <- lapply(sm_plts, function(p) {
+      if (!is.null(p) && inherits(p$coordinates, "Coord3D")) {
+        p <- p + ggplot2::expand_limits(z = ylims, fill = common)
+      }
+      p
+    })
   }
 
   # recheck: filter out NULLs as those are types of terms we can't plot (yet)
@@ -471,4 +517,20 @@
   cli_ol(names(x))
   cli_par()
   cli_end()
+}
+
+#' @export
+#' @rdname assemble.gam
+assemble.gamm <- function(object, ...) {
+  assemble(gamm_plot_model(object), ...)
+}
+
+#' @export
+#' @rdname assemble.gam
+#' @inheritParams draw.gam
+`assemble.scam` <- function(object, ..., overall_uncertainty = FALSE,
+  centre = c("model", "plot")) {
+  object <- scam_gam_adapter(object)
+  attr(object, "gratia.scam.centre") <- match.arg(centre)
+  assemble.gam(object, overall_uncertainty = overall_uncertainty, ...)
 }

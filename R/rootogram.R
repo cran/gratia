@@ -17,6 +17,9 @@
 #' @param breaks for continuous responses, how to group the response. Can be
 #'   anything that is acceptable as the `breaks` argument of
 #'   [graphics::hist.default()]
+#' @param conditioning for [gamm4::gamm4()], `"conditional"` (default) checks the response
+#'   distribution at all fitted effects, `"marginal"` averages over new effects,
+#'   and `"gam_component"` checks the extracted GAM.
 #' @param ... arguments passed to other methods
 #'
 #' @references Kleiber, C., Zeileis, A., (2016) Visualizing Count Data
@@ -25,26 +28,14 @@
 #'
 #' @export
 #' @examples
-#' load_mgcv()
-#' \dontshow{
-#' op <- options(cli.unicode = FALSE, pillar.sigfig = 6)
-#' }
-#' df <- data_sim("eg1", n = 1000, dist = "poisson", scale = 0.1, seed = 6)
-#'
-#' # A poisson example
-#' m <- gam(y ~ s(x0, bs = "cr") + s(x1, bs = "cr") + s(x2, bs = "cr") +
-#'   s(x3, bs = "cr"), family = poisson(), data = df, method = "REML")
-#' rg <- rootogram(m)
-#' rg
-#' draw(rg) # plot the rootogram
-#'
-#' # A Gaussian example
-#' df <- data_sim("eg1", dist = "normal", seed = 2)
-#' m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df, method = "REML")
-#' draw(rootogram(m, breaks = "FD"), type = "suspended")
-#' \dontshow{
-#' options(op)
-#' }
+#' # Simulate Poisson counts with a mean that varies smoothly with x.
+#' set.seed(6)
+#' dat <- data.frame(x = runif(120))
+#' dat$y <- rpois(nrow(dat), exp(1 + sin(2 * pi * dat$x)))
+#' m <- mgcv::gam(y ~ s(x, k = 6), family = poisson(),
+#'   data = dat, method = "REML")
+#' # Compare observed and fitted frequencies for each count.
+#' draw(rootogram(m))
 `rootogram` <- function(object, ...) {
   UseMethod("rootogram")
 }
@@ -144,13 +135,23 @@
   }
   mf <- model.frame(model)
   y <- model.response(mf)
-  mu <- predict(model, newdata = mf, na.action = na.omit)
+  mu <- predict(model, newdata = mf, na.action = na.omit, type = "response")
   h <- hist(y, breaks = breaks, plot = FALSE)
   bin <- h$breaks
   names(bin) <- as.character(bin)
   obs <- h$counts
   mid <- h$mids
-  sigma <- model$sig2
+  # Interpret Gaussian prior weights as relative observation precisions.
+  w <- stats::model.weights(mf)
+  if (is.null(w)) {
+    w <- rep(1, length(y))
+  }
+  if (length(w) != length(y) || any(!is.finite(w) | w <= 0)) {
+    stop("Gaussian rootograms require finite, positive prior weights.",
+      call. = FALSE
+    )
+  }
+  sigma <- sqrt(model$sig2 / w)
   pdf <- purrr::map_dfc(bin, .f = pnorm, mean = mu, sd = sigma)
   nc <- length(bin)
   fitted <- pdf[, seq(1, nc - 1, by = 1L)]
@@ -191,7 +192,8 @@
 #' @param ref_line logical; draw a reference line at zero?
 #' @param warn_limits logical; draw Tukey's warning limit lines at +/- 1?
 #' @param fitted_colour,bar_colour,bar_fill,ref_line_colour,warn_line_colour
-#'   colours used to draw the respective element of the rootogram.
+#'   Deprecated; use [gratia_theme_get()] theme settings instead. Colours used
+#'   to draw the respective element of the rootogram.
 #' @param xlab,ylab character; labels for the x and y axis of the rootogram.
 #'   May be missing (`NULL`), in which case suitable labels will be used.
 #''
@@ -212,19 +214,12 @@
 #' @importFrom ggplot2 ggplot aes geom_rect geom_point geom_line labs geom_hline
 #'
 #' @examples
-#' load_mgcv()
-#' df <- data_sim("eg1", n = 1000, dist = "poisson", scale = 0.1, seed = 6)
-#'
-#' # A poisson example
-#' m <- gam(y ~ s(x0, bs = "cr") + s(x1, bs = "cr") + s(x2, bs = "cr") +
-#'   s(x3, bs = "cr"), family = poisson(), data = df, method = "REML")
-#' rg <- rootogram(m)
-#'
-#' # plot the rootogram
-#' draw(rg)
-#'
-#' # change the type of rootogram
-#' draw(rg, type = "suspended")
+#' # Fit a Poisson model for the counts under each spray treatment.
+#' m <- mgcv::gam(count ~ spray, family = poisson(),
+#'   data = InsectSprays, method = "REML")
+#' # Draw a suspended rootogram to show the differences from fitted frequencies.
+#' draw(rootogram(m), type = "suspended")
+#' @inheritSection draw Label layout
 `draw.rootogram` <- function(object,
                              type = c("hanging", "standing", "suspended"),
                              sqrt = TRUE,
@@ -236,15 +231,19 @@
                              ref_line_colour = "black",
                              warn_line_colour = "black",
                              ylab = NULL, xlab = NULL, ...) {
+  gratia_plot_arguments(c("fitted_colour", "bar_colour", "bar_fill", "ref_line_colour", "warn_line_colour"), environment())
   type <- match.arg(type)
+
+  if (as.logical(sqrt)) {
+    object <- mutate(object,
+      .observed = sqrt(.data$.observed),
+      .fitted = sqrt(.data$.fitted)
+    )
+  }
 
   ## Create a suitable axis label for y axis if none supplied
   if (is.null(ylab)) {
     ylab <- if (as.logical(sqrt)) {
-      object <- mutate(object,
-        .observed = sqrt(.data$.observed),
-        .fitted = sqrt(.data$.fitted)
-      )
       expression(sqrt(Frequency))
     } else {
       "Frequency"
@@ -291,8 +290,8 @@
     )
   }
 
-  plt <- ggplot(object) +
-    geom_rect(
+  plt <- gratia_plot(object) +
+    geom_gratia_rootogram_bar_rect(
       aes(
         xmin = .data$x_low,
         xmax = .data$x_high,
@@ -301,14 +300,14 @@
       ),
       fill = bar_fill, col = bar_colour
     ) +
-    geom_line(
+    geom_gratia_rootogram_fitted_line(
       aes(
         x = .data$.bin,
         y = .data$.fitted
       ),
       colour = fitted_colour, linewidth = 1
     ) +
-    geom_point(
+    geom_gratia_rootogram_fitted_point(
       aes(
         x = .data$.bin,
         y = .data$.fitted
@@ -317,11 +316,11 @@
     )
 
   if (as.logical(ref_line) & type != "standing") {
-    plt <- plt + geom_hline(yintercept = 0, colour = ref_line_colour)
+    plt <- plt + geom_gratia_rootogram_reference_hline(yintercept = 0, colour = ref_line_colour)
   }
 
   if (as.logical(warn_limits) & type != "standing") {
-    plt <- plt + geom_hline(
+    plt <- plt + geom_gratia_rootogram_warning_hline(
       yintercept = c(-1, 1), lty = "dashed",
       colour = warn_line_colour
     )
@@ -330,4 +329,47 @@
   plt <- plt + labs(y = ylab, x = xlab)
 
   plt
+}
+
+# Expected frequencies need only a fitted response CDF. Preserve each row's
+# parameters and sum its bin probabilities, including when effects are averaged.
+rootogram_from_distribution <- function(distribution, y, family,
+                                        max_count = NULL, breaks = "Sturges", ...) {
+  name <- if (family == "gaussian") "Gaussian" else if (family == "poisson")
+    "Poisson" else if (startsWith(family, "Negative Binomial")) "Negative Binomial" else
+      stop("Only <Poisson, Negative Binomial, Gaussian> models supported.", call. = FALSE)
+  if (name == "Gaussian") {
+    h <- graphics::hist(y, breaks = breaks, plot = FALSE)
+    lower <- utils::head(h$breaks, -1L); upper <- utils::tail(h$breaks, -1L)
+    observed <- h$counts
+  } else {
+    lower <- seq(0, max_count %||% rootogram_max_count(y), by = 1L)
+    upper <- lower
+    observed <- as.integer(table(factor(y, levels = lower)))
+    lower <- lower - 1
+  }
+  probability <- function(lo, hi) {
+    log_upper <- distribution$cdf(hi, log_p = TRUE)
+    use_upper_tail <- log_upper > log(.5)
+    a <- ifelse(use_upper_tail,
+      distribution$cdf(lo, log_p = TRUE, lower_tail = FALSE), log_upper)
+    b <- ifelse(use_upper_tail,
+      distribution$cdf(hi, log_p = TRUE, lower_tail = FALSE),
+      distribution$cdf(lo, log_p = TRUE))
+    value <- exp(a) * -expm1(b - a)
+    value[which(a == b)] <- 0
+    value
+  }
+  out <- tibble::tibble(.bin = if (name == "Gaussian") lower else upper,
+    .observed = observed,
+    .fitted = vapply(seq_along(lower), function(i)
+      sum(probability(lower[i], upper[i])), numeric(1)))
+  if (name == "Gaussian") {
+    attr(out, "sigma") <- sqrt(distribution$variance)
+    attr(out, "mid") <- h$mids
+    attr(out, "width") <- diff(h$breaks)
+  }
+  class(out) <- c("rootogram", class(out))
+  attr(out, "distribution") <- name
+  out
 }

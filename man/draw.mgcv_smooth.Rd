@@ -29,7 +29,7 @@ object will be created for each level and combined using
 \code{\link[patchwork:wrap_plots]{patchwork::wrap_plots()}}. \strong{Currently ignored}.}
 
 \item{labeller}{a labeller function with which to label facets. The default
-is to use \code{\link[ggplot2:labellers]{ggplot2::label_both()}}.}
+is to use \code{\link[ggplot2:label_both]{ggplot2::label_both()}}.}
 
 \item{xlab}{character or expression; the label for the x axis. If not
 supplied, a suitable label will be generated from \code{object}.}
@@ -57,6 +57,14 @@ A \code{\link[ggplot2:ggplot]{ggplot2::ggplot()}} object.
 \description{
 Plots basis functions using ggplot2
 }
+\section{Label layout}{
+
+Pass \code{label_control = draw_label_control(...)} to \code{draw()} to wrap discrete
+axis labels and legend text, stagger discrete tick labels, or adjust legend
+and colour-bar layout. Settings apply to each panel, including unwrapped
+plot lists. See \code{\link[=draw_label_control]{draw_label_control()}} for the available settings.
+}
+
 \examples{
 load_mgcv()
 df <- data_sim("eg4", n = 400, seed = 42)

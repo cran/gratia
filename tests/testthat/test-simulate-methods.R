@@ -1,11 +1,5 @@
 ## Test simulate() methods
 
-data(smallAges)
-smallAges$Error[1] <- 1.1
-sw <- scam(Date ~ s(Depth, k = 5, bs = "mpd"),
-  data = smallAges,
-  weights = 1 / smallAges$Error, gamma = 1.4
-)
 
 test_that("simulate() works with a gam", {
   sims <- simulate(m_gam, nsim = 5, seed = 42)
@@ -42,20 +36,17 @@ test_that("simulate() works with a scam", {
 })
 
 test_that("simulate() works with no .Random.seed", {
-  rm(".Random.seed", envir = globalenv())
-  sims <- simulate(m_gam, nsim = 5, seed = 42)
-  expect_identical(nrow(sims), 1000L)
-  expect_identical(ncol(sims), 5L)
-
-  rm(".Random.seed", envir = globalenv())
-  sims <- simulate(m_gamm, nsim = 5, seed = 42)
-  expect_identical(nrow(sims), 1000L)
-  expect_identical(ncol(sims), 5L)
-
-  rm(".Random.seed", envir = globalenv())
-  sims <- simulate(sw, nsim = 5, seed = 42)
-  expect_identical(nrow(sims), 12L)
-  expect_identical(ncol(sims), 5L)
+  withr::local_preserve_seed()
+  models <- list(m_gam, m_gamm, sw)
+  for (model in models) {
+    if (exists(".Random.seed", .GlobalEnv, inherits = FALSE)) {
+      rm(".Random.seed", envir = .GlobalEnv)
+    }
+    sims <- simulate(model, nsim = 5, seed = 42)
+    expect_identical(nrow(sims), if (inherits(model, "scam")) 12L else 1000L)
+    expect_identical(ncol(sims), 5L)
+    expect_false(exists(".Random.seed", .GlobalEnv, inherits = FALSE))
+  }
 })
 
 test_that("simulate() works with out a seed", {
@@ -73,11 +64,11 @@ test_that("simulate() works with out a seed", {
 })
 
 test_that("simulate() fails if we don't have an rd function", {
+  models <- secondary_models()
   skip_on_cran()
 
-  expect_error(simulate(m_censor),
-    "Don't yet know how to simulate from family <cnorm(2.42)>",
-    fixed = TRUE
+  expect_error(simulate(models$m_bcg),
+    "^Don't yet know how to simulate from family <bcg\\(",
   )
 })
 

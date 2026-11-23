@@ -1,3 +1,8 @@
+# Smooth-only visual baselines opt out of parametric panels explicitly.
+# Full plotting examples and snapshots run locally and on CI.
+# Small numerical/build checks live in test-draw-core.R.
+skip_on_cran()
+
 ## Test draw() methods
 
 test_that("draw.gam works with numeric select", {
@@ -79,21 +84,21 @@ test_that("draw.gam works with select and parametric", {
   )
   plt2 <- draw(su_m_factor_by,
     select = "s(x2)", partial_match = TRUE,
-    parametric = FALSE, data = su_eg4, envir = teardown_env(),
+    parametric = FALSE, data = su_eg4,
     rug = FALSE
   )
   plt3 <- draw(su_m_factor_by,
     select = "s(x2)", partial_match = TRUE,
-    parametric = TRUE, data = su_eg4, envir = teardown_env(),
+    parametric = TRUE, data = su_eg4,
     rug = FALSE
   )
   plt4 <- draw(su_m_factor_by,
     parametric = TRUE, rug = FALSE,
-    data = su_eg4, envir = teardown_env()
+    data = su_eg4
   )
   plt5 <- draw(su_m_factor_by,
     parametric = FALSE, rug = FALSE,
-    data = su_eg4, envir = teardown_env()
+    data = su_eg4
   )
 
   # skip_on_ci() # testing without as moved to mac os x
@@ -129,8 +134,8 @@ test_that("draw.gam() plots an AM with a single 2d smooth", {
 })
 
 test_that("draw.gam() plots an AM with a single factor by-variable smooth", {
-  plt1 <- draw(su_m_factor_by, rug = FALSE)
-  plt2 <- draw(su_m_factor_by, scales = "fixed", rug = FALSE)
+  plt1 <- draw(su_m_factor_by, parametric = FALSE, rug = FALSE)
+  plt2 <- draw(su_m_factor_by, parametric = FALSE, scales = "fixed", rug = FALSE)
 
   # skip_on_ci() # testing without as moved to mac os x
   expect_doppelganger("draw AM with factor by-variable smooth", plt1)
@@ -160,8 +165,8 @@ test_that("draw() works with random effect smooths (bs = 're')", {
 })
 
 test_that("draw() with random effect smooths (bs = 're') & factor by variable ", {
-  p2 <- draw(rm2, ncol = 3, rug = FALSE)
-  p3 <- draw(rm2, ncol = 3, scales = "fixed", rug = FALSE)
+  p2 <- draw(rm2, parametric = FALSE, ncol = 3, rug = FALSE)
+  p3 <- draw(rm2, parametric = FALSE, ncol = 3, scales = "fixed", rug = FALSE)
 
   # skip_on_ci() # testing without as moved to mac os x
   skip_if_not_installed("ggplot2", "3.5.2.9002")
@@ -198,34 +203,26 @@ test_that("draw() works with factor-smooth interactions (bs = 'fs')", {
   skip_if(packageVersion("mgcv") < "1.8.36")
   p2 <- draw(m_fs, ncol = 2, rug = FALSE)
   p3 <- draw(m_fs, ncol = 2, scales = "fixed", rug = FALSE)
-
-  skip_on_ci() # testing without as moved to mac os x
   expect_doppelganger("draw.gam model with fs smooth", p2)
   expect_doppelganger("draw model with fs smooth fixed scales", p3)
 })
 
 # See issue #358
 test_that("draw() works with random effect basis (bs = c('tp', 're')) in univariate tensor-product interaction ti", {
+  models <- secondary_models()
   # skip_on_ci() # testing without as moved to mac os x
   skip_if(packageVersion("mgcv") < "1.8.36")
-  p1 <- draw(m_re_interaction, ncol = 2, rug = FALSE)
-
-  skip_on_ci() # testing without as moved to mac os x
+  p1 <- draw(models$m_re_interaction, ncol = 2, rug = FALSE)
   expect_doppelganger("draw.gam model with re basis in univariate ti", p1)
 })
 
 # See issue #358
-test_that("draw() does not works with random effect basis (bs = c('tp', 'tp', 're')) in multivariate tensor-product interaction ti", {
-  # skip_on_ci() # testing without as moved to mac os x
-  skip_if(packageVersion("mgcv") < "1.8.36")
-  expect_snapshot(
-    p1 <- draw(m_re_two_interaction, ncol = 2, rug = FALSE)#,
-    #"ℹ Can't yet plot multivariate smooths with a 're' marginal: ti(x0,x1,fac).",
-    #fixed = TRUE
-  )
-
-  skip_on_ci() # testing without as moved to mac os x
-  expect_doppelganger("draw.gam model with re basis in multivariate ti", p1)
+test_that("draw() supports random effect surfaces in tensor interactions", {
+  models <- secondary_models()
+  p <- draw(models$m_re_two_interaction, n_2d = 5, rug = FALSE,
+    contour = FALSE, wrap = FALSE)
+  expect_length(p, length(models$m_re_two_interaction$smooth))
+  expect_silent(ggplot2::ggplotGrob(p[[length(p)]]))
 })
 
 test_that("draw() works with parametric terms", {
@@ -267,7 +264,7 @@ test_that("draw() works with parametric terms", {
   p1 <- draw(e1, rug = FALSE)
 
   ## check evaluate_parametric_term works
-  p2 <- draw(mod, rug = FALSE)
+  p2 <- draw(mod, parametric = FALSE, rug = FALSE)
 
   ## factor parametric terms
   x0 <- factor(x0)
@@ -276,7 +273,7 @@ test_that("draw() works with parametric terms", {
   mod <- gam(y ~ x0 + s(x1) + s(x2) + s(x3), data = df)
 
   ## check evaluate_parametric_term works
-  p3 <- draw(mod, rug = FALSE)
+  p3 <- draw(mod, parametric = FALSE, rug = FALSE)
 
   ## evaluate parametric terms directly
   e2 <- evaluate_parametric_term(mod, term = "x0")
@@ -336,8 +333,6 @@ test_that("draw.derivates() plots derivatives for a GAM rotated labels", {
   d1 <- derivatives(su_m_univar_4, type = "central", n = 100)
   plt1 <- draw(d1, angle = 45)
   plt2 <- draw(d1, scales = "fixed", angle = 45)
-
-  skip_on_ci() # testing without as moved to mac os x
   expect_doppelganger("draw derivatives for a GAM rotated labels", plt1)
   expect_doppelganger(
     "draw derivatives for a GAM with fixed scales rotated",
@@ -384,7 +379,7 @@ test_that("draw plots partial derivs for GAM rotated labels", {
 
 ## test that issue 39 stays fixed
 test_that("draw.gam doesn't create empty plots with multiple parametric terms", {
-  plt <- draw(m_2_fac, rug = FALSE)
+  plt <- draw(m_2_fac, parametric = FALSE, rug = FALSE)
   # skip_on_ci() # testing without as moved to mac os x
   expect_doppelganger("draw issue 39 empty plots", plt)
 })
@@ -419,25 +414,26 @@ test_that("draw.mgcv_smooth() can plot by factor basis smooth bases", {
 })
 
 test_that("draw() works with a ziplss models; issue #45", {
-  plt <- draw(m_ziplss, rug = FALSE)
+  plt <- draw(m_ziplss, parametric = FALSE, rug = FALSE)
   # skip_on_ci() # testing without as moved to mac os x
   expect_doppelganger("draw ziplss parametric terms issue 45", plt)
 })
 
 test_that("draw works for sample_smooths objects", {
+  withr::local_options(lifecycle_verbosity = "quiet")
   skip_on_cran()
   # skip_on_ci() # testing without as moved to mac os x # minor statistical differences
 
-  sm1 <- smooth_samples(su_m_univar_4, n = 5, seed = 23478, n_vals = 50)
+  sm1 <- smooth_samples(su_m_univar_4, n_draws = 5, seed = 23478, n_grid = 50)
   plt1 <- draw(sm1, alpha = 0.7, n_samples = 5, seed = 2635, rug = FALSE)
 
-  sm2 <- smooth_samples(su_m_bivar, n = 4, seed = 23478, n_vals = 50)
+  sm2 <- smooth_samples(su_m_bivar, n_draws = 4, seed = 23478, n_grid = 50)
   plt2 <- draw(sm2, alpha = 0.7, n_samples = 4, seed = 2635)
 
-  sm3 <- smooth_samples(su_m_factor_by, n = 5, seed = 23478, n_vals = 50)
+  sm3 <- smooth_samples(su_m_factor_by, n_draws = 5, seed = 23478, n_grid = 50)
   plt3 <- draw(sm3, alpha = 0.7, n_samples = 5, seed = 2635, rug = FALSE)
 
-  sm3 <- smooth_samples(su_m_factor_by, n = 5, seed = 23478, n_vals = 50)
+  sm3 <- smooth_samples(su_m_factor_by, n_draws = 5, seed = 23478, n_grid = 50)
   plt4 <- draw(sm3,
     alpha = 0.7, scales = "fixed", n_samples = 10,
     seed = 2635, rug = FALSE
@@ -451,28 +447,29 @@ test_that("draw works for sample_smooths objects", {
 })
 
 test_that("draw works for sample_smooths objects rotated labels", {
+  withr::local_options(lifecycle_verbosity = "quiet")
   skip_on_cran()
   # skip_on_ci() # testing without as moved to mac os x # minor statistical differences
 
-  sm1 <- smooth_samples(su_m_univar_4, n = 5, seed = 23478, n_vals = 50)
+  sm1 <- smooth_samples(su_m_univar_4, n_draws = 5, seed = 23478, n_grid = 50)
   plt1 <- draw(sm1,
     alpha = 0.7, n_samples = 5, seed = 2635, angle = 45,
     rug = FALSE
   )
 
-  sm2 <- smooth_samples(su_m_bivar, n = 4, seed = 23478, n_vals = 50)
+  sm2 <- smooth_samples(su_m_bivar, n_draws = 4, seed = 23478, n_grid = 50)
   plt2 <- draw(sm2,
     alpha = 0.7, n_samples = 4, seed = 2635, angle = 45,
     rug = FALSE
   )
 
-  sm3 <- smooth_samples(su_m_factor_by, n = 5, seed = 23478, n_vals = 50)
+  sm3 <- smooth_samples(su_m_factor_by, n_draws = 5, seed = 23478, n_grid = 50)
   plt3 <- draw(sm3,
     alpha = 0.7, n_samples = 5, seed = 2635, angle = 45,
     rug = FALSE
   )
 
-  sm3 <- smooth_samples(su_m_factor_by, n = 5, seed = 23478, n_vals = 50)
+  sm3 <- smooth_samples(su_m_factor_by, n_draws = 5, seed = 23478, n_grid = 50)
   plt4 <- draw(sm3,
     alpha = 0.7, scales = "fixed", n_samples = 5, seed = 2635,
     angle = 45, rug = FALSE
@@ -489,8 +486,9 @@ test_that("draw works for sample_smooths objects rotated labels", {
 })
 
 test_that("draw works for smooth_samples objects", {
+  withr::local_options(lifecycle_verbosity = "quiet")
   skip_on_os("win")
-  sm2 <- smooth_samples(su_m_bivar, n = 2, seed = 23478, n_vals = 50)
+  sm2 <- smooth_samples(su_m_bivar, n_draws = 2, seed = 23478, n_grid = 50)
   plt <- draw(sm2, alpha = 0.7, contour = TRUE)
 
   # skip_on_ci() # testing without as moved to mac os x
@@ -498,16 +496,17 @@ test_that("draw works for smooth_samples objects", {
 })
 
 test_that("draw works for sample_smooths objects with n_samples", {
+  withr::local_options(lifecycle_verbosity = "quiet")
   skip_on_cran()
   # skip_on_ci() # testing without as moved to mac os x # minor statistical differences
 
-  sm1 <- smooth_samples(su_m_univar_4, n = 5, seed = 23478, n_vals = 50)
+  sm1 <- smooth_samples(su_m_univar_4, n_draws = 5, seed = 23478, n_grid = 50)
   plt1 <- draw(sm1, alpha = 0.7, n_samples = 3, rug = FALSE, seed = 1)
 
-  sm2 <- smooth_samples(su_m_bivar, n = 4, seed = 23478, n_vals = 50)
+  sm2 <- smooth_samples(su_m_bivar, n_draws = 4, seed = 23478, n_grid = 50)
   plt2 <- draw(sm2, alpha = 0.7, n_samples = 2, rug = FALSE, seed = 14)
 
-  sm3 <- smooth_samples(su_m_factor_by, n = 5, seed = 23478, n_vals = 50)
+  sm3 <- smooth_samples(su_m_factor_by, n_draws = 5, seed = 23478, n_grid = 50)
   plt3 <- draw(sm3, alpha = 0.7, n_samples = 3, rug = FALSE, seed = 19)
 
   # skip_on_ci() # testing without as moved to mac os x
@@ -517,10 +516,11 @@ test_that("draw works for sample_smooths objects with n_samples", {
 })
 
 test_that("draw works for sample_smooths objects with user specified smooth", {
+  withr::local_options(lifecycle_verbosity = "quiet")
   skip_on_cran()
   # skip_on_ci() # testing without as moved to mac os x # minor statistical differences
 
-  sm3 <- smooth_samples(su_m_factor_by, n = 5, seed = 23478, n_vals = 50)
+  sm3 <- smooth_samples(su_m_factor_by, n_draws = 5, seed = 23478, n_grid = 50)
   plt1 <- draw(sm3, select = "s(x0)", alpha = 0.7, rug = FALSE)
 
   plt2 <- draw(sm3,
@@ -577,8 +577,6 @@ test_that("draw.gam can take user specified scales", {
     rug = FALSE,
     discrete_colour = ggplot2::scale_colour_viridis_d(option = "plasma")
   )
-
-  skip_on_ci() # testing without as moved to mac os x
   expect_doppelganger("draw 2d smooth with spectral palette", plt1)
 
   skip_if(packageVersion("mgcv") < "1.8.36")
@@ -591,7 +589,7 @@ test_that("draw.gam can take user specified scales", {
 test_that("plotting sos smooths works", {
   skip_on_cran()
   skip_if_not_installed("sf")
-  expect_silent(plt <- draw(m_sos, n = 20))
+  expect_silent(plt <- draw(m_sos, n_2d = 20))
 
   # skip_on_ci() # testing without as moved to mac os x
   skip_if_not_installed("ggplot2", "3.5.2.9002")

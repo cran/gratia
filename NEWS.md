@@ -1,3 +1,1465 @@
+# gratia 0.12.1
+
+## CRAN submission
+
+* Version 0.12.0 went unreleased because the test suite took over 16 minutes
+  during CRAN's Windows incoming check. Version 0.12.1 includes the changes
+  planned for 0.12.0 and runs a shorter set of representative tests on CRAN.
+  The full suite remains available locally and in GitHub Actions.
+
+## User visible changes
+
+* **Breaking change:** gratia has removed its `fixef()` re-export and the
+  methods it registered for that generic. Use `gratia::fixed_effects()` for
+  GAMs, GAMMs, GLMs and linear models supported by gratia. For models fitted
+  directly with nlme or lme4, use `nlme::fixef()` or `lme4::fixef()`, respectively.
+
+* Help examples use fewer model fits and repeated plots to focus on each
+  function's main use and reduce execution time.
+
+* gratia no longer requires ggokabeito; default plot colours and their ordering
+  are unchanged. Unused curl and svglite suggestions have been removed, and
+  ggdist, distributional and hexbin are now listed as website dependencies
+  because they are used only in a website article.
+
+* `grouped_by` is deprecated in `draw()` and `assemble()`. Include
+  `"factor-by"` in the new `grouped` argument to overlay factor-by curves,
+  or omit it to draw them separately. Explicit uses of `grouped_by` still
+  update factor-by grouping, including ordered factors, while retaining
+  the requested grouping of `sz` and `fs` curves.
+
+* `draw.basis()` now draws contour lines on surface plots by default
+  (`contour = TRUE`), matching `draw.gam()`. Use `contour = FALSE` to restore
+  the previous appearance.
+
+* **Plot appearance and theme migration**
+
+  Plot aesthetic arguments for colours, opacity and line widths are
+  deprecated in favour of ggplot2 component themes (#215). Existing
+  default appearances are unchanged, and explicitly supplied arguments
+  remain fixed overrides during migration.
+
+  Apply `theme()` with `&` to every panel in a patchwork, or with `+` to a
+  single plot. For example, replace `smooth_col` with
+  `geom.gratia.smooth = element_geom(colour = ...)` and `ci_alpha` with
+  `gratia.alpha.interval` inside `theme()`. See `gratia_theme_get()` and
+  the Customising gratia plots article for migration examples.
+
+  gratia now requires ggplot2 >= 4.0.3 and patchwork >= 1.3.2.
+
+* Native `mgcv::scasm()` smooth estimation, drawing and `confint()` now default to
+  `overall_uncertainty = FALSE`. An explicit request for unavailable overall
+  mean uncertainty warns once (#372, #373).
+
+* **Sampling arguments (breaking changes)**
+
+  **Breaking change:** Sampling functions now use `n_draws` for the total
+  retained draw count and `n_grid` for automatically constructed
+  evaluation grids. Sampling controls must be named. Obsolete names,
+  including `n`, `n_sim`, `n_vals`, `freq`, `newdata`, and `ncores`,
+  produce migration errors.
+
+  `derivative_samples()` takes `model` rather than `object`; `add_*()`
+  sampling helpers take `data` rather than `object`. See the
+  [sampling migration guide](https://gavinsimpson.github.io/gratia/articles/sampling-migration.html).
+
+  Coefficient and `*_samples()` functions require an explicit `n_draws`
+  when generating draws; supplied coefficient draws determine their own
+  count and chains. Likelihood, LOO, WAIC and bayesplot wrappers use
+  `n_draws` with their documented defaults.
+
+  Derivative sampling now defaults to a grid resolution of 200, matching
+  smooth sampling; supply `n_grid = 100` for the previous derivative
+  resolution.
+
+  Gaussian threads use `n_threads`, while `n_cores` limits concurrent MH
+  chains. Explicit controls that do not apply to the selected sampler are
+  rejected.
+
+* **Fitted quantities (breaking changes)**
+
+  **Breaking change:** `fitted_samples()` now defaults to all distribution
+  parameters represented by predictors, matching `fitted_values()`.
+  Request `quantity = "expectation"` for the expected response, on the
+  response scale only. Both functions use explicit parameter names,
+  including for scalar models.
+
+  Gaussian location-scale models return standard deviation rather than
+  reciprocal standard deviation; GEV location is labelled separately from
+  expectation.
+  Multivariate responses and categories have separate `.y` and `.category`
+  identifiers.
+
+  Global family parameters remain fixed during coefficient sampling.
+  Unknown general families require a natural-parameter or expectation
+  specification; their first predictor remains available on the link scale
+  (#426).
+
+* Gaussian coefficient sampling for `mgcv::scasm()` fits with linear inequality
+  constraints now warns that the draws need not satisfy the fitted shapes.
+  Metropolis-Hastings sampling now gives an explicit error because its
+  proposals and likelihood calculation do not enforce those constraints.
+
+* gratia has a new neon hex logo. The pkgdown site uses the pink
+  g from the logo as its favicon.
+
+* **Covariate scales in plots**
+
+  **Breaking change:** Parametric plots now use covariates as evaluated in
+  the model: `log(x)` is plotted against `log(x)`, with a matching axis
+  label. Use `back_transform = TRUE` in `draw.gam()`, `assemble.gam()`,
+  `draw.parametric_effects()` or `draw.smooth_estimates()` to use original
+  covariates for interaction axes, tensor products, rugs and conditioning
+  facets (#412). Multi-column basis expansions retain their original
+  covariate axes, and changing the coordinate scale leaves effects and
+  their intervals unchanged.
+
+  The `transform` argument of `parametric_effects()` is deprecated.
+  Replace it with `back_transform = !transform` (#412).
+
+* **Breaking change:** `draw.gam()` and `assemble.gam()` now default to
+  `parametric = NULL`, including parametric terms alongside smooths when
+  `select = NULL`; the extra panels can change plot layouts and the number of
+  plots returned by `assemble()` or `draw(wrap = FALSE)`. Selecting smooths
+  explicitly continues to draw only those smooths, unless `parametric = TRUE`
+  is supplied. Use `parametric = FALSE` to restore the previous default.
+
+* Parametric effect intervals now include intercept uncertainty and its
+  covariance with the term, while partial estimates are unchanged. Use
+  `overall_uncertainty = FALSE` in `parametric_effects()`, `draw()` or
+  `assemble()` to recover term-only intervals. Each term uses the intercept
+  of its own linear predictor; models without an intercept are unaffected.
+
+* Derivative functions now choose the finite-difference step automatically
+  when `eps = NULL`, using the fitted covariate range, derivative order and
+  difference method. This reduces rounding error in second derivatives. Supply
+  a positive `eps` to specify an absolute step size.
+
+* `appraise()` now automatically uses scalable plots when at least 10,000
+  observations were used for fitting. Set `scalable = TRUE` or `FALSE` to
+  override this behaviour, or change `scalable_threshold`.
+
+* Explicit `xlab = NULL` and `ylab = NULL` now request default axis labels for
+  continuous-covariate `fs` plots and random-effect tensor curves, consistent
+  with other univariate smooths. Previously, explicit `NULL` suppressed these
+  labels (#308).
+
+* **Tweedie distribution calculations**
+
+  Tweedie cumulative distribution functions now use fast Poisson-Gamma
+  mixtures for `1 < p < 2` instead of requiring the tweedie package (#410).
+  The Gamma case (`p = 2`) uses native R distribution functions.
+
+  Mixture calculations warn and return available approximations when their
+  work or accuracy limits are reached. The tweedie package is now
+  optional, in Suggests, and is needed only for numerical inversion
+  requested with `fallback = TRUE`.
+
+* `posterior_samples()` now uses separate random-number streams for
+  coefficient and response draws. Response draws for a given seed differ from
+  earlier releases, but remain reproducible.
+
+* gratia now requires mgcv >= 1.9-4 and R >= 4.4.0.
+
+* glmmTMB support now requires the released version 1.1.15.2 or later, so
+  the development version of glmmTMB is no longer needed.
+
+## New features
+
+* mgcv's B-spline tensor products (`bs = "bt"`, available from mgcv 1.9-5)
+  are supported in smooth estimates, drawing, basis and penalty extraction,
+  derivatives and smooth sampling. `smooth_type()` returns `"B spline tensor"`
+  for these smooths.
+
+* `compare_smooths()` evaluates two-variable smooths at common locations,
+  and `draw()` compares their surfaces in side-by-side facets with shared axes
+  and colours. Use `show = "difference"` and `pair` to plot one model's
+  smooth contribution minus another's, with a colour scale centred on zero (#435).
+  Conditioning values retain separate panels, constant surfaces omit contours,
+  and labels for distribution parameters are preserved.
+
+* `draw.compare_smooths()` accepts `ci_level` to set the coverage of its
+  pointwise intervals, matching `draw.gam()`. Unsupported `coverage` and `level`
+  arguments now give an error directing callers to `ci_level`, including when
+  supplied alongside it (#436).
+
+* `difference_smooths()` computes first and second derivatives of differences
+  between factor-by smooths using `order`, including partial derivatives across
+  surfaces using `focal`. Intervals retain covariance between the smooths, and
+  `draw()` labels the derivative values; raw-covariate comparisons also allow
+  transformations that depend on the comparison factor (#264, #356).
+
+* `draw_label_control()` provides optional label layout settings across
+  `draw()` and `assemble()` methods. Wrap discrete axis labels, legend
+  entries and guide titles, stagger discrete tick labels, arrange legend
+  keys, and adjust colour-bar dimensions and label angles. Existing
+  defaults, scale labels and palettes are retained (#430).
+
+* **Conditional prediction surfaces**
+
+  `conditional_values()` accepts two numeric covariates grouped in the
+  first condition, such as `condition = list(c("x1", "x2"), "treatment")`, to
+  evaluate and draw prediction surfaces. Remaining conditions supply
+  facets.
+
+  Its `draw()` method supports raster, tile and optional ggcube 3D
+  surfaces, including interval surfaces via `ci_3d = TRUE`. The default
+  `n_vals = NULL` uses 100 values for curves and 50 along each surface axis.
+
+* **Random-effect sampling and marginal predictions**
+
+  `random_effect_samples()` draws new random intercepts, slopes and
+  factor-smooth curves from their estimated Gaussian distributions.
+
+  `marginalise` integrates response means in fitted predictions using
+  Gaussian quadrature or Monte Carlo, and generates new-group effects in
+  response simulations. Smoothing parameters and dispersion remain fixed
+  at their fitted estimates.
+
+  Factor-by curves retain their by-level selection when other random terms
+  are marginalised. Identity, log and probit links use closed-form
+  integrals; other links check quadrature with interlaced nodes and an
+  independent adaptive rule to detect unresolved link transitions. Fits
+  using `min.sp` are rejected because their fitted lower bounds are not
+  retained for covariance reconstruction.
+
+* `variance_comp()` has expanded support for variance components in `gam()`,
+  `bam()`, `gamm()` and `gamm4()` models, and the new `type = "terms"` returns
+  fitted term variances and proportions of total variance, accounting for
+  covariance between terms and providing posterior intervals. A new `draw()`
+  method plots variance components, standard deviations or proportions.
+
+* `basis()` accepts `unweighted = TRUE` for fitted GAM(M)s to return basis
+  functions without multiplying by fitted coefficients. `draw()` shows these
+  shared bases, and bases from factor-by smooth specifications, once per
+  factor-by set. Coefficient-weighted fitted bases remain separate by level
+  (#428).
+
+* **Fitted quantities and family parameters**
+
+  `fitted_values()` and `fitted_samples()` accept `quantity` to select
+  distribution parameters or expected responses. Parameter draws retain
+  their joint coefficient uncertainty; coupled expectation intervals use
+  the full covariance.
+
+  `family_parameters()` describes natural parameters, native
+  representations, predictor order and fixed global parameters. These
+  shared descriptions also provide parameters for posterior response
+  simulation, including when an expectation does not exist.
+
+  Grouped ordinal expectations return category probabilities alongside
+  scalar component means (#426).
+
+* Grouped-family diagnostics now accept `response = NULL` for all family
+  components or a single integer family-list index for one component.
+  This uses the same selection convention as joint GJRM diagnostics.
+  `by_family` independently controls the existing pooling and faceting
+  behaviour, and selected results retain their original component labels.
+
+* `assemble()`, `draw()` and `smooth_estimates()` now support joint models
+  fitted by `GJRM::gjrm()`, using the final joint coefficients and covariance
+  matrices for smooths, random effects and parametric effects. Diagnostic
+  functions support ordinary uncensored joint models whose predictors do not
+  include modeled responses; `appraise()` facets each panel by response.
+
+* **Grouping and drawing factor-related curves**
+
+  `draw()` and `assemble()` can separate `sz` and `fs` curves into
+  individual plots (#244). `grouped` names the types to overlay:
+  `"factor-by"`, `"sz"`, and `"fs"`. `show_ci` independently selects which
+  types show intervals, including optional intervals for `fs` curves.
+
+  The defaults retain existing grouping and interval visibility.
+  Ordered-factor deviations use the factor-by settings and keep their
+  reference smooth separate. Saved smooth estimates support the same
+  controls.
+
+  Common axis ranges use displayed estimates and visible intervals.
+  Grouped factor-by plots retain observations from every plotted level and
+  accept custom colour and fill scales.
+
+  Smooth and custom titles retain colons within their text.
+
+  Separate curves use the usual black line and translucent black interval.
+  Set `grouped = FALSE` to separate all factor-related curves, or
+  `show_ci = FALSE` to hide their intervals.
+
+* `assemble()` now supports models fitted by `mgcv::gamm()`, returning named
+  plots of smooth and parametric contributions. It shares preparation of the
+  fitted GAM component with `draw()`.
+
+* **Plots and smooth estimates for `GJRM::gamlss()`**
+
+  `assemble()` now supports models fitted by `GJRM::gamlss()`, returning a
+  named list of smooth and parametric plots across equations. It shares model
+  preparation, selection and scale handling with `draw()`.
+
+  Direct calls to `smooth_estimates()` now work for `GJRM::gamlss()` models
+  (#352). Estimates use the final fitted coefficients and covariance, with
+  smooth selection across equations and parameter labels retained for drawing
+  saved estimates. Frequentist covariance also comes from the final fit, and
+  gratia warns and uses the fitted Bayesian covariance when the requested
+  smoothing-parameter correction is unavailable.
+
+* `assemble()` now supports glmmTMB models, returning named plots for
+  smooths, native random effects and parametric terms. It shares model
+  preparation and argument checks with `draw()`.
+
+* **Polar plots of cyclic smooths**
+
+  `draw()` and `assemble()` can draw one-dimensional cyclic smooths with
+  `cyclic = "polar"`, including factor-by and one-dimensional tensor smooths
+  across supported model classes. Fitted cycle boundaries configure the
+  angular axis and automatic evaluation grids span a complete cycle. Saved
+  smooth estimates retain these boundaries; supplied evaluation points are
+  unchanged.
+
+  `polar_args` customises the polar coordinate display. Radial padding
+  separates interval bands from the outer observation rug. Radial axes
+  appear inside the circle by default; override their position through
+  `polar_args`.
+
+* `draw.basis()` now plots basis functions of three- and four-covariate
+  smooths as separate surfaces with conditioning facets (#258, #259).
+  `basis()` and `draw.basis()` accept `variables` to choose the axes and
+  conditioning order. Automatic grids use the existing `n_2d`, `n_3d`, and
+  `n_4d` controls, and saved bases retain their chosen covariate order.
+
+* **Response moments**
+
+  `fitted_moments()` and `conditional_moments()` estimate response means,
+  variances, SDs, coefficients of variation, skewness and kurtosis.
+  Standard, distributional, categorical, multivariate-normal, grouped and
+  latent censored response families are supported where their moments
+  exist. Conditional moments can be drawn with `draw()`.
+
+  Delta-method intervals and joint Gaussian simulation propagate
+  covariance between distribution parameters. Supported ML/REML fits also
+  propagate estimated global family parameters and dispersion;
+  `nuisance = "fixed"` explicitly conditions on their fitted values.
+  Dispersion and coefficient covariance use the same ML/REML scale
+  estimate as the saved fitting curvature, including models with linked or
+  fixed smoothing parameters.
+
+* `smooth_estimates()`, `derivatives()`, and `difference_smooths()` offer
+  continuous-interval Gaussian simultaneous bands for supported one-dimensional
+  cubic splines via `simultaneous_method = "tube"`. Bands use a conservative
+  threshold-crossing bound, preserve the selected covariance and group means,
+  and record the domain and numerical diagnostics in interval metadata.
+  `draw()`, `assemble()`, and `confint()` forward the controls.
+
+* **Axes and conditioning facets**
+
+  Surface plotting and related evaluation functions now accept `n_2d`,
+  with a default of 50 points along each surface axis (#153). Default
+  surface grids therefore shrink from 10,000 to 2,500 points per panel.
+  Curve and conditioning slice resolutions can be controlled separately.
+
+  Smooth estimation and drawing, including `difference_smooths()`, now
+  accept `variables` to choose x and y axes and the order of conditioning
+  facets. Differences between 3D and 4D smooths can now be drawn as
+  faceted surfaces (#256, #257).
+
+  Their automatic grids use `n_3d = 16` and `n_4d = 4`, matching individual
+  smooths; use `NULL` to use `n` for those dimensions. Resolved covariate
+  orders are retained when drawing saved estimates. Supply `data` to
+  choose explicit conditioning values.
+
+* **Surrogate residuals**
+
+  Surrogate residuals are available for `mgcv::ocat()` and
+  `mgcv::multinom()` GAMs through `surrogate_residuals()`,
+  `type = "surrogate"` in ordinary and scalable residual diagnostic plots,
+  and `add_residuals()`. Ordinal residuals follow Liu and Zhang (2018),
+  with logistic references (#359). Nominal residuals follow Cheng, Wang
+  and Zhang (2021), retaining a centred Gumbel utility component for every
+  category, including category 0.
+
+  All appraisal panels share one draw, and categories have separate
+  panels. Both methods require no additional package and preserve accuracy
+  in extreme tails.
+
+* `derivatives()`, `partial_derivatives()`, `smooth_samples()` and
+  `difference_smooths()` use workers configured by `mirai::daemons()` for
+  independent smooth or comparison calculations, or run serially without
+  workers (#348). Joint posterior draws, seeded simulation results and
+  result order are preserved across worker counts. Custom smooth prediction
+  methods run in the caller so workers use the same bases.
+
+* **Plot themes and palettes**
+
+  Plots now support native ggplot2 theme settings for smooths, intervals,
+  residuals, diagnostics and other components, including completed
+  patchwork figures. `gratia_theme_get()`, `gratia_theme_set()` and
+  `gratia_theme_update()` manage the optional `gratia.plot.theme`
+  override.
+
+  `gratia_palette()` provides optional Paul Tol palettes. Current default
+  appearances are retained, including group legends without symbols for
+  fixed-colour partial residuals (#215).
+
+* **SCAM model support**
+
+  All 43 smooth constructors in scam 1.2-23 are supported for smooth
+  estimates, bases, sampling and plots, including bivariate smooths,
+  cyclic margins, interactions and explicit `By` classes. This includes
+  `tedi` and `teid` surfaces that increase along one covariate and
+  decrease along the other.
+
+  `draw()` and `assemble()` accept `centre = "plot"` to match scam's
+  centring of bivariate displays; the default retains the fitted function.
+
+  SCAM `smooth_type()` labels use compact descriptions such as
+  `P spline (inc)` and `Tensor (inc, free)`. Saved estimates with earlier type
+  labels remain drawable.
+
+  Plot captions describe the basis and constraints separately, using
+  arrows for monotonicity, covariate names for tensor constraints and
+  fitted change points for local constraints. Saved smooth estimates
+  retain these captions.
+
+  SCAM models gain conditional simultaneous smooth bands, derivatives,
+  contrasts, conditional predictions, parametric effects, residual
+  helpers, model summaries, concurvity, penalties and variance-component
+  ratios. Independent-response likelihoods, LOO/WAIC, supplied coefficient
+  draws and scalable posterior predictive plots are also supported. See
+  the SCAM support article for supported combinations and uncertainty
+  calculations.
+
+* **Shape-constrained intervals**
+
+  `shape_intervals()` applies monotone rearrangement and convex or concave
+  envelopes to existing interval endpoints on a finite grid. Supported
+  `scasm()` smooths expose this through `interval_method = "shape"` and an
+  explicit Gaussian or stored-bootstrap initial source. The transformation
+  preserves whole-grid containment events; it does not establish nominal
+  coverage or preserve marginal coverage of pointwise limits.
+
+  `shape_confidence_set()` and `in_shape_set()` represent and inspect
+  intersections with coefficient inequalities and equalities. See the
+  shape-constrained intervals article for supported combinations, tensor
+  requirements and examples (#372, #373).
+
+  `draw()` and `assemble()` also accept `frequentist` for the initial
+  smooth covariance calculation.
+
+  General `pc` replacements and derivative bases are rejected when they do
+  not justify the named function shape. Curvature requires equally spaced
+  fitted knots to rounding precision, and extrapolation is rejected.
+
+  Convex envelope interpolation preserves exactly flat segments. Saved
+  estimates reject interval computation controls that require the fitted
+  model.
+
+  `interval_method` selects native `scasm()` bootstrap or Gaussian pointwise
+  intervals for smooths, fitted values, smooth derivatives and
+  `confint()`.
+
+  Shifting or transforming smooth confidence intervals retains asymmetric
+  limits. Replacing saved intervals with `add_confint()` records their
+  Gaussian source.
+
+  Automatic selection uses stored bootstrap draws, including mgcv's
+  smoothing-bias correction. Simultaneous bootstrap bands remain
+  unsupported (#372, #373).
+
+* `scasm()` captions show retained shape constraints with portable mathematical
+  arrows. Saved estimates retain constraint metadata for each tensor margin;
+  ignored requests, including named constraints replaced by general `pc`
+  inequalities, are labelled and produce a warning (#373). Shape-enforced
+  intervals keep the basis and constraint caption, with interval details in
+  the documentation and metadata.
+
+* Gaussian simultaneous bands now support positive-semidefinite coefficient
+  covariance matrices, including `scasm()` fits with exact equality
+  constraints.
+
+* `penalty()` extracts stored tensor and `t2()` penalty matrices, including
+  marginal penalties via `margins = TRUE` and their original scaling.
+
+* **Posterior sampling and diagnostics**
+
+  Posterior sampling supports multiple chains, including parallel MH
+  chains using mirai. `n_draws = 1000, chains = 4` retains 250 draws per chain
+  after separate burn-in. Chain identities are preserved through fitted,
+  response, smooth, and derivative samples.
+
+  `as_mcmc_draws()` converts draws for posterior, coda, and bayesplot;
+  `diagnostics = TRUE` and `sampling_diagnostics()` provide coefficient
+  convergence summaries and acceptance rates (#281).
+
+  `draw(sampling_diagnostics(x))` plots native coefficient traces or
+  pooled-rank histogram outlines by chain. Sampling with
+  `diagnostics = TRUE` retains the coefficient draws for these plots through
+  fitted, response, smooth and derivative sampling.
+
+  Sampling for models with several distribution parameters supports fitting
+  rows, subsets and new covariates without observed responses. Parameters
+  represented by predictors use the same joint coefficient draw.
+
+  `fitted_samples()` defaults to distribution parameters; use
+  `quantity = "expectation"` for expected responses. On the response scale,
+  `derivative_samples()` differentiates the expected response, including
+  means that depend on scale, shape or hurdle probabilities.
+
+  Fixed-coefficient response sampling uses the same parameter
+  transformations. Missing predictors or explicit sampling weights produce
+  `NA` response draws consistently.
+
+  For models with several distribution parameters, response generation now
+  reuses model-matrix blocks and constructs the output table once, preserving
+  seeded responses and chain identities.
+
+* **Metropolis–Hastings backends**
+
+  `mh_backend = "gratia"` adds a compiled MH evaluator for common response
+  families in ordinary gam and bam fits with independent observations.
+  Large designs can be evaluated in blocks.
+
+  `mh_backend = "family"` uses the compiled MH loop with the fitted family's
+  likelihood functions, including compatible extended, grouped, and
+  multiple-predictor families. It prepares and reuses a full design
+  matrix, smoothing penalty, and proposal factorisation across chains.
+
+  Smoothing parameters and parameters outside the coefficient vector
+  remain fixed; LSS scale and shape coefficients vary jointly with
+  location. The default backend remains `mgcv::gam.mh()`. The new backends
+  reject BAM fits with nonzero prescribed smooth contributions, where
+  native fitting and prediction use different offsets.
+
+* **Simulated data**
+
+  `data_sim()` accepts descriptive aliases for the original example
+  models, including `"additive"`, `"bivariate_surface"`, `"gu_wahba_f2"`
+  and `"luo_wahba_f6"`. All existing names remain supported and produce
+  identical seeded output.
+
+  `data_sim()` now accepts family objects, explicit predictors and
+  generating parameters for scalar, location-scale, categorical,
+  multivariate and Cox models. Censored families can return observed
+  intervals while retaining complete responses and true distribution
+  parameters. Grouped families can use repeated distributions with
+  separate parameters.
+
+  `data_sim()` gains analytic shape reference functions and fitting
+  recipes for `mgcv::scasm()`, including combined shape constraints,
+  tensor surfaces and Gamma models with constraints on the log mean and
+  log dispersion. The additive Poisson recipe uses 240 observations and
+  `k = 6` for each smooth to avoid fitting errors with mgcv 1.9-4.
+
+* **Accumulated local effects**
+
+  `ale()` computes accumulated local effects for numeric covariates in
+  `mgcv::gam()` and `mgcv::bam()` fits, with link and response scales,
+  distribution parameters, and pointwise or simultaneous intervals.
+  `draw()` plots saved results with parameter labels and a scale caption.
+
+  Prediction blocks can use workers configured by `mirai::daemons()`.
+  Block accumulation order, shared interval draws and caller RNG handling
+  are preserved.
+
+  Custom prediction methods and transformations that require caller
+  functions or S3 methods retain serial prediction. Method checks do not
+  invoke active or lazy caller bindings.
+
+* **Residuals against covariates**
+
+  `residuals_covariate_plot()` and `scalable_residuals_covariate_plot()`
+  plot complete-model residuals against numeric or categorical covariates
+  and pairs of numeric covariates. Exact mgcv smooth labels can select
+  their constituent covariates.
+
+  Grouped displays, mean trends and joint maps help identify remaining
+  mean structure or changes in residual spread. By default, mean trends
+  are fitted only for groups with at most 20,000 observations;
+  `smooth = TRUE` or `FALSE` overrides this limit.
+
+* Optional `bayesplot::pp_check()` methods provide posterior predictive checks
+  for supported GAMs and mixed models (#278, reported by @nicholasjclark).
+  Sampling controls, including chains, are supplied through `sampling_args`.
+  Response draws remain aligned with likelihood draws for leave-one-out plots,
+  including supplied matrices with stored chain and draw identities.
+
+* `log_lik()` and optional `loo::loo()` and `loo::waic()` methods support
+  approximate predictive comparisons for independent GAM/BAM fits
+  (#278, reported by @nicholasjclark).
+  They retain coefficient diagnostics and chain identities. LOO uses stored
+  iteration order for relative effective sample sizes without changing the
+  likelihood draw order; unlabelled supplied draws need explicit efficiency
+  or chain information.
+
+* **Diagnostics supplied by response families**
+
+  Diagnostic plots now support native inlaws families through their
+  supplied `gratia_diagnostics` functions, including grouped-family fits
+  and models with multiple response columns.
+
+  mgcv-compatible families can now supply a `gratia_diagnostics` function
+  for response means, variances, probability bounds and distribution
+  functions. This allows diagnostics for additional count, ordinal,
+  mixture and censored families without adding family-name checks to
+  gratia.
+
+  Traditional simulated reference residuals can apply a supplied
+  observation process. See `?family_diagnostics` for the interface.
+
+* `dharma_residuals()` and `type = "dharma"` in diagnostics calculate
+  simulation-based PIT residuals using gratia's response generators, without
+  requiring DHARMa or mgcViz. `n_dharma` controls the simulation count, and
+  residuals retain zero and one endpoints and are shared across `appraise()`
+  panels. QQ and worm plots use uniform references with approximate
+  pointwise bands for independent responses; dependent responses omit these
+  bands.
+
+* New site articles explain model diagnostics, grouped surveys, glmmTMB and
+  sdmTMB models, prediction comparisons, response distributions, and smooth
+  effects on different spatial domains. They include fitted examples and
+  explain the assumptions behind estimates, intervals and checks.
+
+* **Residual diagnostics and posterior predictive checks**
+
+  Residual diagnostics and posterior predictive checks now cover `lm`,
+  `glm`, `gam`/`bam`, `gamm`/`gamm4`, glmmTMB, univariate GJRM and sdmTMB
+  models using their fitted response distributions. See
+  `?diagnostic_support` for supported families, conditioning choices and
+  limitations.
+
+  Probability integral transform (PIT) residuals map observations to
+  fitted probabilities, randomising over probability mass for discrete
+  responses. Quantile residuals convert those probabilities to
+  standard-normal scores. QQ and worm-plot subtitles distinguish this fixed
+  normal reference from the normal approximation for traditional residuals.
+
+  Prepared diagnostic objects carry the selected conditioning and sdmTMB
+  field choices through residual and plotting methods.
+
+* **Mixed-model diagnostics**
+
+  Mixed-model diagnostics can hold fitted random effects fixed or average
+  over their fitted distribution. Joint response simulations use the
+  fitting packages' generators to retain temporal and spatial covariance
+  and shared random effects. Marginal residuals can use means, variances
+  and ranks from these simulations.
+
+  Direct `nlme::lme()` and `lme4::merMod` fits also support residual and
+  posterior predictive checks. Non-Gaussian `gamm` fits estimated by
+  penalized quasi-likelihood (PQL) support approximate checks when they
+  have no residual working correlation. nlme calculations retain
+  covariance between random effects in block designs, fitted factor
+  contrasts and observation order after subsetting or missing-value
+  removal.
+
+* **sdmTMB diagnostics**
+
+  sdmTMB residual diagnostics now offer four ways to treat random fields:
+  draw fitted fields once from their approximate posterior and hold them
+  fixed (`field_method = "mle-mvn"`, the default), hold field estimates
+  fixed (`field_method = "mle-eb"`), average over fitted-field uncertainty
+  (`field_method = "mle-mvn-integrated"`), or simulate new fields
+  (`conditioning = "marginal"`). Plot labels identify the choice.
+
+  Posterior predictive checks separately include approximate parameter
+  uncertainty. See `?diagnostic_support` for what these checks assess and
+  their limitations.
+
+  Delta-model diagnostics use the response family's dispersion parameter.
+  Fits with a dispersion formula give an explicit error because
+  observation-specific dispersion is not yet supported by these
+  diagnostics.
+
+  Student-t sdmTMB models now support residual diagnostics and posterior
+  predictive plots with fixed or estimated degrees of freedom. Pearson
+  residuals require degrees of freedom above two. Quantile residuals and
+  predictive checks remain available with infinite variance.
+
+  Predictive plots also work for additional native sdmTMB families without
+  requiring an analytic residual distribution.
+
+* **GJRM diagnostics**
+
+  Diagnostic plots now support uncensored univariate `GJRM::gamlss()`
+  models with N, LN, GA, GAi, P, NBI, NBII, BE, LO, WEI, IG, GU and rGU
+  families. Residual plots, response simulation and ordinary and scalable
+  posterior predictive checks use the final fitted distribution.
+
+  Posterior draws retain covariance between distributional equations,
+  including beta's logit-linked scale. They use randomised quantile
+  residuals with a standard-normal reference.
+
+  Observed-versus-fitted panels show response means calculated from the
+  final distribution parameters, including lognormal, Weibull and Gumbel
+  mean corrections. NBII probabilities are calculated from the final
+  fitted likelihood parameters, rather than relying on stored
+  probabilities that can use a Poisson distribution.
+
+* **glmmTMB diagnostics**
+
+  `appraise()`, `qq_plot()` and `worm_plot()` now support native glmmTMB
+  residuals, with conditional response simulation for QQ reference bands.
+  See `?'glmmTMB-methods'` for supported families and current limitations.
+
+  Gaussian predictive draws use glmmTMB's standard-deviation
+  parameterisation. Variances for truncated count distributions are
+  calculated accurately even with tiny means.
+
+* **Grouped-family residual plots**
+
+  Grouped-family diagnostics now support quantile residuals with
+  appropriate standard-normal references and consistent component colours.
+  Traditional residuals use separate facets for each component (#267).
+
+  Pooled histograms use pale fills and solid step outlines in each
+  component's colour, so overlapping distributions remain visible.
+  Ordinary and scalable plots use the same bin edges and calculate each
+  component's density separately.
+
+* **Distribution functions and checks**
+
+  Distribution checks now cover more mgcv families, including `shash()`,
+  `twlss()`, ordinal, `ziP()` and grouped families. The internal
+  `fix_family_qf()` extends mgcv's `fix.family.qf()` with experimental
+  support for `scat()`, `tw()`, `Tweedie()`, `gaulss()`, `gevlss()`,
+  `gumbls()`, `gammals()`, `ziplss()` and `mvn()`. `fix_family_cdf()` adds
+  cumulative distribution functions for `gaulss()`, `gevlss()`,
+  `gumbls()`, `gammals()`, `ziplss()` and `mvn()`, making quantile
+  residuals available.
+
+  For `mvn()`, both helpers use each response's marginal Gaussian
+  distribution with its fitted variance (#183). Categorical CDFs and
+  quantiles for `multinom()` use mgcv's category codes `0, ..., K` as the
+  accumulation order, enabling randomised PIT/quantile residuals and
+  inverse-CDF diagnostic references (#183).
+
+  These helpers and `fix_family_rd()` preserve distribution functions
+  supplied by callers.
+
+  `ziplss()` quantile residuals randomise over the probability mass of
+  each observed count (GRA-007). Quantile helpers retain log probabilities
+  where supported; conversions that cannot represent an extreme
+  probability give an explanatory error rather than a false infinite
+  quantile.
+
+* **Tweedie quantiles and QQ references**
+
+  New Tweedie quantile helpers support uniform QQ diagnostics (#410). They
+  use fast Poisson-Gamma mixtures for `1 < p < 2` and native R distribution
+  functions for the Gamma case (`p = 2`). Expensive numerical inversion is
+  available with `fallback = TRUE` and the optional tweedie package.
+
+  Mixture calculations warn and return available approximations when their
+  work or accuracy limits are reached.
+
+  With `method = NULL`, `appraise()`, `qq_plot()` and `worm_plot()`
+  automatically select simulation for `tw()` and `Tweedie()` models,
+  avoiding numerical quantiles. Other ordinary GAM families prefer
+  `"uniform"`, with fallbacks when a method is unavailable. An explicit
+  method overrides the automatic choice.
+
+* **Censored-model residuals and distribution functions**
+
+  `quantile_residuals()` now supports censored `cnorm()`, `cpois()` and
+  `clog()` models, randomising over censoring intervals for PIT and
+  quantile residuals.
+
+  These families also gain cumulative distribution and quantile helpers,
+  and `fix_family_rd()` provides random generation for their latent,
+  uncensored responses. The `cnorm()` and `clog()` generators use the
+  fitted family scale and prior weights. Tail probabilities are calculated
+  on the logarithmic scale where supported to avoid numerical infinities.
+
+* Inverse Gaussian distribution functions now support PIT/quantile residuals
+  and inverse-CDF QQ/worm plots without additional dependencies. Their
+  calculations account for prior weights.
+
+* Explicit GAM sampling weights override response precision or binomial trial
+  counts.
+
+* `posterior_predictive_plot()` compares observed responses with posterior
+  predictive distributions, using density curves for continuous responses and
+  points with interval bars for discrete responses. Set
+  `appraise(ppcheck = TRUE)` to replace the residual histogram with this
+  check. Plots summarise all draws on a shared grid; discrete responses with
+  more than 512 distinct values use labelled probabilities for 512 bins.
+
+* **Scalable diagnostic plots**
+
+  Five new `scalable_*_plot()` functions provide binned QQ/worm plots,
+  residual-density heatmaps, histograms and observed-versus-fitted
+  heatmaps. They use all observations while keeping plotting data compact.
+  Plot objects store the grid rather than all observations.
+
+  Residual heatmaps estimate the density at each predictor value with
+  `KernSmooth::bkde2D()` by default. A square-root colour scale makes
+  low-density regions easier to see. Use `density_method = "histogram"` for
+  unsmoothed bins, or `bandwidth` to control smoothing on both axes.
+
+  Heatmaps of counts remain unsmoothed.
+
+  KernSmooth is an imported dependency.
+
+* QQ reference calculations now average draws as they are generated, or use
+  temporary files for exact simulated quantiles above the configured memory
+  limit. This reduces memory use without discarding reference draws. Simulated
+  GAM QQ and worm plots are also faster, with unchanged numerical results.
+
+* `residual_correlation()` and `residual_correlation_plot()` provide
+  approximate checks of serial structure, including for BAM models that apply
+  AR1 to working residuals. They omit significance bands based on
+  independence.
+
+* **glmmTMB effects and plots**
+
+  `draw()`, `smooth_estimates()` and smooth coefficient extraction now
+  support glmmTMB models, including conditional, zero-inflation and
+  dispersion smooths where glmmTMB supports them. All smooths are plotted
+  by default, with mgcv-style predictor labels (`s(x)`, `s.1(x)`, etc.)
+  and `select` applying across the model.
+
+  Parametric effects and native random effects are also plotted, including
+  for models without smooths. Native random intercepts and slopes use
+  separate Gaussian QQ panels. Set `ranef_lines = TRUE` to replace a simple
+  `(1 + x | g)` pair with lines showing its random contribution only; more
+  complex terms retain QQ panels.
+
+  Effect intervals use TMB joint covariance. See `?'glmmTMB-methods'` for
+  current limitations.
+
+* **sdmTMB effects and plots**
+
+  `draw()` and `assemble()` support formula smooths and parametric effects
+  from sdmTMB models, including both predictors of delta models, with
+  companion methods for smooth labels, coefficients and effect estimates.
+  Support requires sdmTMB >= 1.2.0 models fitted with the RTMB backend.
+  Smooths use joint RTMB covariance, including tensor smooths with
+  multiple penalties.
+
+  `get_smooth()` extracts sdmTMB smooths by exact name and `n_smooths()`
+  counts them, including both predictors of delta models, without calculating
+  coefficient covariances (#441).
+
+  Breakpoint (`breakpt()`) and logistic (`logistic()`) curves are
+  available through `parametric_terms()` and `parametric_effects()`, and
+  are selected with `terms` in `draw()` and `assemble()`. Their pointwise
+  delta-method intervals include threshold parameter uncertainty and, by
+  default, intercept uncertainty and its covariance with the threshold
+  parameters.
+
+  Time-varying coefficients from `rw`, `rw0` and `ar1` models combine the
+  ordinary coefficient and its temporal deviation where appropriate, with
+  pointwise intervals using their joint covariance. Select trajectories
+  with labels such as `time_varying(temperature)` in `terms`; the
+  corresponding ordinary-effect panels are omitted by default but remain
+  available through explicit selection. Use
+  `time_varying_style = "pointrange"` for points and interval bars instead
+  of the default line, points and ribbon.
+
+* **Model parts in plot subtitles**
+
+  Smooth and parametric plot subtitles now identify the model part or
+  distributional parameter for glmmTMB, sdmTMB, mgcv, `GJRM::gamlss()` and
+  `GJRM::gjrm()` models with multiple linear predictors. Single-predictor
+  models omit these labels, and constant glmmTMB dispersion alone does not
+  trigger them.
+
+  Information about `by` variables, smooth titles, selection and the
+  default of plotting all smooths are retained. Shared terms name every
+  predictor to which they contribute.
+
+  Saved `smooth_estimates()` and `parametric_effects()` retain the labels
+  in an optional `.model` column. Supply `subtitle` to replace the labels,
+  or `subtitle = ""` to suppress them, including on parametric panels.
+  Repeated parametric plot names include equation numbers for GJRM models
+  (#430).
+
+* Soap-film boundary (`bs = "sf"`) and wiggly (`bs = "sw"`) components are now
+  supported, with distinct component types and boundary-aware plots (#375).
+
+* **Grouped-family sampling**
+
+  Grouped-family models fitted with `mgcv::gfam()` now support
+  response-scale `fitted_samples()` with component-specific mean
+  transforms (#269), and `simulate()` with component-specific
+  distributions and parameters (#272). These functions and
+  `posterior_samples()` accept supplied data and `family_index` for
+  component membership without observed responses. Posterior responses
+  preserve joint coefficient draws, component labels, offsets and sampling
+  weights; ordinal response-scale fitted draws remain unsupported.
+
+  Derivative sampling retains family membership when shifting supplied
+  covariates.
+
+* **gamm4 model support**
+
+  Support for classed gamm4 models now covers smooths, parametric effects,
+  predictions, derivatives, simulations, posterior draws and variance
+  components. Smooth and prediction methods describe the population GAM
+  component and exclude additional terms supplied through `random`. Models
+  require gamm4 >= 0.2-7; historical unclassed lists are unsupported.
+
+  See `?gamm4_support` for covariance and sampling limitations, and for
+  the full-model conditioning options used by diagnostics and response
+  draws. Diagnostics, response simulations and posterior predictive checks
+  use the full fitted mixed model with `conditioning = "conditional"` by
+  default. Response references hold fitted smooth and grouping effects
+  fixed; posterior predictive checks include uncertainty in those fitted
+  effects.
+
+  Select `conditioning = "gam_component"` to use only the extracted GAM
+  component. This choice is required when supplying coefficient draws or
+  prediction data to `posterior_samples()`; full-model draws use fitting
+  observations only.
+
+* `parametric_effects()` and `draw()` now support parametric interactions,
+  including higher-order interactions. Numeric interactions use surfaces and
+  conditioning facets; numeric-by-factor interactions use grouped curves;
+  factor interactions use grouped estimates and intervals. Interaction
+  surfaces centre the default diverging palette at zero, using a common fill
+  range across facets; fixed scales expand the fill range as for smooth
+  surfaces (#411).
+
+* **Functions of covariates**
+
+  Smooth evaluation, plotting, bases, sampling and prediction now support
+  functions of covariates such as `s(log(x))`, including transformed
+  offsets and an `envir` argument for local functions and constants.
+  Stored evaluated covariates allow smooth plotting when the original data
+  or functions are unavailable. See the
+  [article on transformed covariates](https://gavinsimpson.github.io/gratia/articles/transformed-covariates.html)
+  for examples.
+
+  Automatic smooth grids retain transformed coordinates, and
+  `derivatives()` and `partial_derivatives()` can differentiate with
+  respect to raw covariates using `wrt = "covariate"`. Evaluation failures
+  at new data produce actionable errors. Parametric effects and data
+  slices recover raw covariates consistently.
+
+  `simulate()` and `add_fitted()` also accept `envir` for local functions
+  in offsets and smooth expressions.
+
+* **Recovering original covariate scales**
+
+  `smooth_estimates(..., back_transform = TRUE)` now recovers raw fitting
+  covariates, generates grids on their original scale and evaluates model
+  expressions on those grids (#412). This supports custom functions such
+  as `foo(x)` and tensor products without needing inverse functions.
+  Smooth grids retain their existing model-scale defaults.
+
+  Drawing precomputed estimates on the original scale requires retained
+  raw coordinates; estimates with only transformed coordinates give an
+  informative error. Parametric effects retain both scales by row,
+  including for many-to-one transformations. Coordinate columns survive
+  confidence-interval calculation and subsetting.
+
+  Typical values of other covariates are not treated as raw axes, and
+  numeric `by` multipliers can share a raw axis name. Drawing uses `envir`
+  to recover observations. Supplied prediction data remain usable when raw
+  observations for rugs or residuals are unavailable.
+
+  Transformed soap-film boundaries cannot be drawn on the original scale
+  and give an explicit error. Irregularly spaced surfaces use rectangles
+  to preserve covariate positions (#412).
+
+* Full and reduced-rank Markov random field (MRF) smooths now support area
+  effect estimates and interval plots (#9). Use `mrf_plot = "qq"` for a
+  descriptive QQ plot.
+
+* `draw()`, `assemble()` and `smooth_estimates()` now support simultaneous
+  bands for individual smooths (#314). `interval = "credible"` is an alias for
+  pointwise `"confidence"` intervals.
+
+* **3D surface plots**
+
+  Numeric smooth and parametric surfaces can now be drawn in 3D with
+  `surface = "3d"`, using the optional ggcube package (#393). The existing
+  RdBu fill palette, theme, conditioning facets, contours and masking are
+  retained. `surface_3d = list(...)` controls the view without applying
+  ggcube's theme.
+
+  Lighting defaults to `backface_scale = 1`; supply a custom `light` through
+  `surface_3d` to override it. Opaque faces, contours and floor
+  observations share depth ordering so hidden features are occluded.
+
+  Set `ci_3d = TRUE` to add translucent lower and upper interval surfaces to
+  smooths and numeric parametric interactions across supported model
+  classes. `ci_3d_alpha` and `ci_3d_col` style the bounds independently of
+  curve ribbons. Interval surfaces retain the estimate's mesh and masking;
+  their heights expand the vertical range without training the continuous
+  fill scale.
+
+* `draw()` and `assemble()` now accept `surface = "tile"` to draw flat smooth
+  surfaces with vector rectangles; the default remains `surface = "raster"`
+  (#308). Bivariate, trivariate, quadvariate, tensor-product and soap-film
+  surfaces use the same rendering options.
+
+* Random-effect tensor-product plots now accept `re_levels` to select factor
+  levels. `n_3d` and `n_4d` also limit the number of factor levels used for
+  conditioning facets (#169).
+
+* `draw()` for penalty matrices now accepts `geom = "tile"` to draw individual
+  rectangles; `geom = "raster"` remains the default (#392).
+
+* `response_derivatives()` now supports delta-method standard errors and
+  pointwise intervals via `uncertainty = "delta"`. Both uncertainty methods
+  return `.se`; posterior simulation remains the default.
+
+* **Conditional differences**
+
+  `conditional_differences()` compares conditional fitted values between
+  factor levels or joint factor combinations on the link or response
+  scale, with pointwise or simultaneous intervals using the delta method
+  or shared posterior simulations. Simultaneous bands can cover each
+  comparison separately or all comparisons jointly via
+  `simultaneous_scope`. `draw()` plots the differences and their intervals
+  (#143, #145).
+
+  Grouping two numeric covariates in the first non-comparison condition
+  evaluates difference surfaces, drawn as raster, tile or optional ggcube
+  3D surfaces. Further conditions supply facets; `ci_3d = TRUE` adds
+  interval surfaces. The default `n_vals = NULL` uses 100 values for curves
+  and 50 along each surface axis.
+
+* `difference_smooths()` now offers simultaneous intervals for differences of
+  smooths at supplied covariate combinations, separately for each pair of
+  factor levels, via `interval = "simultaneous"` (#380). Pointwise intervals
+  remain the default.
+
+* **Fitted-value intervals and diagnostics**
+
+  `fitted_values()` now offers simultaneous intervals for fitted values at
+  supplied covariate combinations via `interval = "simultaneous"` (#4).
+  Pointwise intervals remain the default. Simulation size, parallel
+  sampling and seeds can be controlled, as in `derivatives()` and
+  `partial_derivatives()`.
+
+  `fitted_values()` now emits a message identifying prediction rows with
+  unobserved combinations of known categorical predictor levels (#164).
+
+* `all_levels()` is now an alias of `evenly()` with a name intended for
+  factors (#217).
+
+* `data_slice()` gains a `.by` argument to evaluate slice expressions within
+  observed groups. For example, `x = evenly(x)` can use a separate range for
+  each factor level, which is useful for models with factor `by` smooths
+  (#196).
+
+* `conditional_values()` now accepts `complete = FALSE` to retain only
+  observed combinations of factor conditions while preserving numeric
+  prediction grids (#337).
+
+* `confint.gam()` and `smooth_estimates()` now accept `frequentist = TRUE` to
+  use the frequentist covariance matrix. The default remains `FALSE`.
+  Simultaneous intervals use the selected covariance matrix consistently
+  (GRA-005).
+
+* `get_vcov()` is now exported for extracting a model's covariance matrix.
+
+* gratia now supports the `clognorm()` family from mgcvUtils.
+
+* `link()`, `inv_link()` and other family utilities now support `cpois()`,
+  `clog()` and `bcg()`. These families also work with `fitted_values()`.
+  Single-link families can use their supplied link functions without needing a
+  recognised family name.
+
+## Bug fixes
+
+* `draw()`, `assemble()` and `smooth_estimates()` again work with smooths
+  that provide their own `eval_smooth()` method, such as monotone smooths
+  fitted with mvgam.
+
+* `add_fitted()` no longer emits a tibble deprecation warning for multinomial
+  predictions with unnamed columns. The existing `V1`, `V2`, ... column names
+  are preserved (#443).
+
+* **Response derivatives**
+
+  `response_derivatives()` now retains unavailable prediction rows with
+  missing estimates, standard errors and intervals under both uncertainty
+  methods, while respecting explicit `na.action` requests (#437).
+  Original row order and response identifiers are preserved.
+
+  Delta uncertainty now rejects response-mean derivatives for scaled t
+  families with fitted degrees of freedom at or below one, matching simulation
+  (#437). Means with degrees of freedom between one and two and
+  linear-predictor derivatives remain supported.
+
+* `add_fitted()` now advertises `value = ".fitted"` in its generic and help,
+  matching its established GAM output. Explicit column names are unchanged
+  (#441).
+
+* `confint.fderiv()` rejects missing, empty, non-numeric and non-finite confidence
+  levels, and levels outside the open interval between zero and one. Vectors
+  still warn and use their first value (#441).
+
+* `ref_level()` and `level()` preserve ordered-factor status as well as the
+  original levels and their order (#441).
+
+* **Response simulation**
+
+  `simulate.gam()` validates `nsim` as one finite positive whole number within
+  the supported integer range before prediction or changes to the random-number
+  state, including grouped-family and marginal simulations (#441).
+
+  Explicitly seeded GAM simulations restore the caller's previous random-number
+  state, including its absence, on success and error. Unseeded simulation
+  continues to advance or initialize the random-number state (#441).
+
+* `overview()` now returns the parametric coefficients for GAMs without
+  smooth terms, or an empty overview when `parametric = FALSE` (#438).
+
+* `model_terms()` now returns the coefficient name for intercept-only GAMs
+  and models with a single slope and no intercept (#438).
+
+* `response_derivatives()` rejects `ci_level` and `coverage` with guidance to
+  use `level` for both delta and simulation uncertainty, including when `level`
+  is also supplied. These arguments can no longer silently leave delta intervals
+  at the default coverage (#436).
+
+* Corrected the posterior simulation article's coefficient-posterior and interval
+  explanations, matched uncertainty settings for its smooth and prediction
+  intervals, and updated obsolete sampling argument names. Documentation now
+  reflects SCAM predictive-plot and conditional-comparison support and the
+  uncertainty included in data-slice examples (#439).
+
+* `fitted_values()` retains small ordinal category probabilities and their
+  standard errors at extreme predictor values. Ordinal and multinomial
+  intervals remain defined when probabilities round to zero or one, including
+  for grouped ordinal models (#434). Closely spaced ordinal thresholds and
+  large multinomial predictors retain valid category probabilities.
+
+* `confint(shift = TRUE)` now adds the full intercept of each smooth's own
+  linear predictor, including contributions from shared formula blocks.
+  `model_constant()` returns zero for predictors without an intercept
+  and keeps selected predictor names aligned; `add_fitted()` uses native
+  prediction constants for term predictions (#433).
+
+* `log_lik()` now divides the dispersion by each observation's weight for
+  Gamma and inverse Gaussian densities, including grouped-family components
+  (#432). This corrects their normalising constants and the LOO and WAIC
+  scores calculated from them.
+
+* `response_derivatives()` now summarises each response category and
+  multivariate response separately within each prediction row, including
+  categories in grouped families (#431). This corrects derivative estimates,
+  standard errors and intervals that previously mixed those quantities.
+  Summaries preserve the supplied row order and no longer retain draw,
+  chain or iteration identifiers.
+
+* Bivariate factor-by basis plots now put each basis function in its own
+  panel, instead of drawing their surfaces on top of one another (#428).
+
+* Gumbel LSS fitted location estimates are no longer exponentiated. Natural
+  location is computed separately from the scale-dependent expectation.
+
+* Grouped plots of factor-by smooths now keep different smooth terms and
+  linear predictors separate, including when drawing saved smooth estimates.
+  Models with several factor-by terms no longer fail during plot assembly.
+
+* For GJRM models, `scales = "fixed"` now shares effect ranges without
+  expanding the covariate axes of two-dimensional smooth plots.
+
+* `appraise(rank = TRUE)` now uses within-response or within-family predictor
+  ranks in ordinary diagnostic panels, matching the standalone and scalable
+  plots.
+
+* `partial_residuals()` and `add_partial_residuals()` now give an informative
+  error for models without working residuals or working weights, including
+  mgcv's location-scale families. `draw(residuals = TRUE)` warns once and draws
+  the smooths without partial residuals for these models (#414).
+
+* `draw.difference_smooth()` now uses supplied `xlab` and `caption` values
+  when drawing differences between curves.
+
+* `n_smooths()` now counts smooth terms in glmmTMB models across the
+  conditional, zero-inflation and dispersion predictors, excluding native
+  random effects. Models without smooths return zero (#240).
+
+* B-spline evaluation handles empty data and factor-by calls whose evaluation
+  data omit fitted levels, including constrained tensor products.
+  `smooth_estimates()` retains estimate, standard error and predictor
+  columns and their types when no evaluation rows remain. Nested output
+  keeps each selected smooth with its empty data table.
+
+* **Sampling diagnostics and workers**
+
+  MH acceptance rates are extracted from the correct mgcv return
+  components.
+
+  Workers started for sampling exit cleanly so coverage data can be
+  written completely.
+
+* **Simulated data**
+
+  `data_sim()` now transforms the `eg6` predictor once and returns the
+  predictor used for sampling. The `eg5` and `eg6` examples accept sample
+  sizes not divisible by four.
+
+  Grouped-family simulations respect seeds, parameters, ordinal aliases
+  and repeated family positions; `dist` is ignored throughout that legacy
+  example.
+
+  Explicit seeds restore an absent RNG state, and reference generation
+  forwards the requested Tweedie power. Vector Tweedie parameters now use
+  the correct compound Poisson-Gamma law.
+
+* Large QQ reference simulations now close their file connections before
+  removing temporary files, allowing cleanup to complete on Windows.
+
+* **SCAM estimates, predictions and sampling**
+
+  SCAM smooth estimates and standard errors no longer depend on the other
+  rows in the evaluation grid. Single-row and short-grid evaluations are
+  supported.
+
+  `overall_uncertainty = TRUE` includes intercept variance and its
+  covariance with the smooth; `FALSE` includes smooth uncertainty alone.
+  `unconditional = TRUE` now gives an explicit error because SCAM
+  calculations do not support smoothing-parameter uncertainty.
+
+  Smooth and full-model predictions now share coefficient mappings,
+  including endpoint and local constraints. Formula transformations,
+  offsets and missing training rows retain their fitted meaning.
+
+  The `mifo` smooth is rendered.
+
+  SCAM coefficient draws now sample unrestricted fitting parameters and
+  apply the fitted positivity transformation, preserving the smooth
+  constraints. Singular positive semidefinite covariance matrices are
+  supported; invalid covariance matrices and non-finite transformed draws
+  give explicit errors.
+
+  Gaussian AR1 response simulation now uses fitted correlation and series
+  boundaries instead of drawing independent responses.
+
+  Concurvity excludes basis columns whose coefficients are fixed to zero,
+  restoring the correct calculation for curves that become flat.
+
+* **Soap-film derivatives and sampling**
+
+  Partial derivatives, fitted samples and smooth samples of soap-film
+  smooths include the contribution from known boundary values.
+  Complete-predictor derivative samples also differentiate those fixed
+  values, without adding coefficient uncertainty. Term exclusions retain
+  only the appropriate fixed contributions.
+
+  Separate sampling per smooth now correctly subsets supplied coefficient
+  draws.
+
+* Multinomial fitted samples now honour `scale = "linear_predictor"`, returning
+  log odds relative to the reference category instead of probabilities. Both
+  scales retain all category labels; the reference predictor is zero. Models
+  with one non-reference category also use this output format.
+
+* GJRM smooth selection now uses one order across all model equations.
+  Character selections draw only the equations containing the selected smooths;
+  repeated labels have distinct keys returned by `smooths()`. `wrap = FALSE`
+  returns a flat list of plots.
+
+* Smooth plots drawn with `scales = "fixed"` calculate their shared ranges
+  from finite estimates and interval bounds. Missing soap-film boundary rows
+  no longer cause each component to use a separate colour scale.
+
+* Parametric interaction plots for glmmTMB and sdmTMB retain their term and
+  coordinate information across model components. This prevents factor
+  interactions from being mistaken for numeric effects when drawing rugs.
+
+* Response distributions now correctly account for Gaussian and Gamma
+  dispersion with observation weights, factor-valued Bernoulli responses and
+  numeric binomial trial counts.
+
+* Beta diagnostics now include the probability mass created by clipping native
+  draws at epsilon endpoints. Binomial probabilities immediately below an
+  observed value are calculated more accurately.
+
+* GEV and sinh-arcsinh residuals now use stable means and correct centering
+  and signs. Undefined moments remain unavailable. Invalid sinh-arcsinh
+  deviance contrasts give an explanatory error; PIT/quantile checks remain
+  available.
+
+* Quantile residuals now calculate probabilities on the logarithmic scale in
+  the smaller tail for families that support this calculation, including
+  Poisson and negative binomial. This avoids numerical infinities without
+  clipping probabilities.
+
+* Grouped-binomial quantile residuals now randomise over the probability mass
+  of one success rather than one whole response proportion.
+
+* BAM models using a generalized estimating equations (GEE) approximation
+  for AR1 working residuals retain marginal PIT, quantile and QQ checks,
+  while Gaussian identity-link AR1 response simulation remains supported. QQ
+  plots no longer switch automatically to normal references or use bands
+  that assume independence. The working correlation does not specify a joint
+  response distribution, so joint response simulation and posterior
+  predictive checks are unavailable for these GEE fits.
+
+* QQ bands for dependent responses now use joint simulations when available.
+  Otherwise, the plot explains why the bands are omitted.
+
+* Fitted and posterior response draws, response simulations and diagnostics
+  now retain offsets supplied as fitting arguments for fitting observations,
+  including ordinary `bam()` and extracted `gamm4()` GAM components. Recovery
+  keeps formula offsets, prescribed smooth boundaries and additional group
+  effects separate. Explicit prediction data still follow the fitter's
+  prediction convention and do not inherit argument-only fitting offsets.
+
+* Explicit seeds now preserve the caller's random-number state for coefficient
+  and response draws. `worm_plot()` also honours `seed`, including through
+  `appraise(use_worm = TRUE)`, and restores the caller's random-number state
+  after seeded calls (#407).
+
+* **Missing observations and prediction rows**
+
+  For models fitted with `na.exclude()`, default fitted values, partial
+  residuals, fitted and posterior samples, simulations and
+  `quantile_residuals()` now restore excluded rows as `NA`. Diagnostics
+  align retained observations with predictors, and histogram bin selection
+  handles missing residuals (#349, #402).
+
+  Explicit prediction data preserve row positions by default: missing
+  required predictors yield `NA`, while missing responses alone do not
+  prevent prediction.
+
+  Discrete `bam()` fitted-value intervals restore exclusions once and
+  accept stored fitting frames without relying on tibble subsetting in
+  native prediction.
+
+* `link()`, `inv_link()` and `extract_link()` now reject unsupported
+  parameters consistently. For `twlss()`, `scale`, `sigma` and `phi` select
+  the third linear predictor, and `power` selects the second. Explicit
+  `which_eta` indices for `mvn()` and `multinom()` are now respected and
+  validated.
+
+* Custom smooth labels supplied through `draw(..., subtitle = ...)` and other
+  label arguments now reach the smooth renderer correctly.
+
+* Parametric plot coordinates on the model scale now contain the evaluated
+  predictor rather than its coefficient-weighted partial contribution (#412).
+
+* `typical_values()` and `data_combos()` no longer require an `envir` argument
+  to recover model covariates.
+
+* Automatic surface fill ranges now ignore non-finite estimates and standard
+  errors (#308).
+
+* **Random-effect tensor-product plots**
+
+  Random-effect tensor products now plot curves, categorical estimates and
+  faceted surfaces consistently across `te()`, `ti()` and `t2()` (#169).
+  Two-factor products use points with confidence intervals, faceted by the
+  second factor, rather than empty line plots. Products with one factor
+  use the continuous covariate on the x axis regardless of margin order
+  (#395).
+
+  Three- and four-variable `t2()` smooths with factor margins produce
+  faceted surfaces.
+
+* Spline-on-the-sphere plots now use valid cells at the poles and date line,
+  with orthographic clipping and separate factor-by panels (#277).
+
+* `draw.gamlss()` now sizes its plot layout using the panels actually drawn,
+  including parametric effects, avoiding rendering errors for GJRM models.
+
+* Posterior sampling for GAMs, including the GAM component of `gamm4()` models,
+  now falls back to `mgcv::rmvn()` with a warning if the default sampler's
+  Cholesky decomposition fails (#332).
+
+* `smooth_estimates()` now uses the fitted coefficient order for random-effect
+  interactions fitted with `bam(discrete = TRUE)`, correcting estimates and
+  standard errors (#387).
+
+* `assemble()` and `draw()` now honour `terms` when selecting parametric
+  effects, while retaining the selected smooths (#368).
+
+* `variance_comp()` now handles variance components without confidence
+  intervals, including default GCV fits, and returns a typed empty table when
+  `mgcv::gam.vcomp()` returns no components (#377).
+
+* `rtw()` now assigns Gamma shapes to the correct observations when Tweedie
+  power varies, including in `twlss()` response simulation. Scalar parameters
+  are expanded consistently, and incompatible lengths or non-finite inputs are
+  rejected (#409).
+
+* `data_sim()` now honours custom cut points for ordinal responses and
+  validates that they are finite, strictly increasing and consistent with the
+  requested integer number of categories (#408).
+
+* `draw.rootogram()` now applies the square-root transformation when a custom
+  y-axis label is supplied, keeping plotted frequencies independent of the
+  label (#406).
+
+* `overview()` now reports one degree of freedom per parametric coefficient,
+  avoiding incorrect values and row-length errors for factors and models
+  without an intercept (#405).
+
+* Loading gratia no longer changes `weights()` dispatch for linear models. QQ
+  and worm plots preserve observation weights and excluded rows (#404).
+
+* `fixed_effects()` now excludes smooth coefficients using their model
+  indices, so tensor-product smooth coefficients no longer appear as
+  parametric effects (#403).
+
+* `data_combos()` now honours `complete = FALSE`, returning only observed
+  combinations of factor levels while retaining typical continuous values and
+  variable selection (#400).
+
+* `derivatives()` and `partial_derivatives()` now preserve the correct smooth
+  selection when excluding random-effect or unsupported smooths, avoiding
+  logical-index recycling warnings under R-devel. `partial_derivatives()`
+  aligns focal variables and output labels with the selected multivariate
+  smooths, including when univariate smooths are skipped (#396).
+
+* `derivatives.gam()` now explains when requested smooths are unsupported,
+  with a message if some cannot be handled or an error if none can. This
+  covers multivariate smooths such as `s(x1, x2)`, `te(x1, x2)`, `ti(x1, x2)`
+  and `t2(x1, x2)`, as well as random-effect smooths (#389, reported by
+  @mikeguggis in #362).
+
+* `compare_smooths()` now honours `unconditional = TRUE` when computing
+  standard errors (#397).
+
+* Adding a constant to parametric effects now shifts estimates and confidence
+  intervals together, including when drawing or assembling plots (#398).
+
+* Gaussian rootograms now use response-scale means and standard deviations
+  adjusted for prior weights when computing expected counts. Nonpositive or
+  non-finite prior weights are rejected (#399).
+
+* `fitted_values()` now computes correctly ordered confidence bounds for
+  location-scale-shape, zero-inflated Poisson (`ziplss()`) and Tweedie
+  location-scale-shape (`twlss()`) models. Response-scale intervals retain
+  ordered endpoints for decreasing inverse links, as do transformed intervals
+  from `confint.gam()` (GRA-001).
+
+* `post_draws.default()` and `generate_draws.gam()` no longer use `seed = 0`
+  for every call with `seed = NULL`. They now generate a valid integer seed
+  without modifying the caller's random-number state (GRA-002).
+
+* `derivatives()` now holds numeric `by` variables fixed when computing
+  derivatives of smooths. Previously, finite differences shifted both the
+  smooth covariate and its numeric multiplier, giving incorrect derivatives,
+  standard errors and intervals. Only the current smooth's covariate is now
+  shifted, for supplied data and automatically generated grids (GRA-003).
+
+* `difference_smooths()` now matches smooth covariate combinations across
+  factor levels before computing contrasts. Previously, different row orders
+  in supplied data could silently compare different covariate locations,
+  giving incorrect differences, standard errors and intervals. Duplicate
+  combinations and mismatched grids now produce informative errors;
+  comparisons at a single location also work (GRA-004).
+
+* `confint.gam()` now uses consistent covariance and standard errors for
+  simultaneous intervals: `unconditional = TRUE` includes uncertainty from
+  estimating smoothing parameters in the Bayesian covariance when available,
+  while `frequentist = TRUE` selects the frequentist covariance (GRA-005).
+  Both pointwise and simultaneous intervals respect `overall_uncertainty`,
+  including uncertainty in the overall mean by default for ordinary GAMs;
+  native `scasm()` fits default to `FALSE`. Requesting multiple smooths no longer
+  causes an error (GRA-006).
+
+* `simulate.gamm()` now respects the supplied `data` argument.
+  `smooth_samples.gamm()` and `overview.gamm()` now forward additional
+  arguments to their underlying GAM methods instead of ignoring them
+  (GRA-008).
+
 # gratia 0.11.2
 
 ## User visible changes
@@ -28,6 +1490,9 @@
 * `model_terms()` returns the names of all terms in a model. #388
 
 ## Bug fixes
+
+* `parametric_effects()` now excludes interactions in models with multiple linear
+  predictors, matching the existing single-predictor behaviour (#369).
 
 * `conditional_values()` would fail if supplied a numeric vector of data to 
   condition on via the `condition` argument. #366
@@ -188,7 +1653,8 @@ citation previously created by `citation()`:
   effect surfaces for multivariate smooths.
 
 * `quantile_residuals()` computes probability integral transform (PIT) and
-  randomised quantile residuals for some GAMs and GLMs. Currently only models fitted with a `gaussian()`, `binomial()`, `Gamma()`, or `poisson()` family
+  randomised quantile residuals for some GAMs and GLMs. Currently only models
+  fitted with a `gaussian()`, `binomial()`, `Gamma()`, or `poisson()` family
   are supported.
 
 * `residuals_linpred_plot()` and `residuals_hist_plot()` can now use PIT or

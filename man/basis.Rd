@@ -21,7 +21,10 @@ basis(object, ...)
   n_3d = 16,
   n_4d = 4,
   partial_match = FALSE,
-  ...
+  envir = NULL,
+  ...,
+  variables = NULL,
+  unweighted = FALSE
 )
 
 \method{basis}{scam}(
@@ -34,7 +37,9 @@ basis(object, ...)
   n_3d = 16,
   n_4d = 4,
   partial_match = FALSE,
-  ...
+  ...,
+  variables = NULL,
+  unweighted = FALSE
 )
 
 \method{basis}{gamm}(
@@ -47,7 +52,9 @@ basis(object, ...)
   n_3d = 16,
   n_4d = 4,
   partial_match = FALSE,
-  ...
+  ...,
+  variables = NULL,
+  unweighted = FALSE
 )
 
 \method{basis}{gamm4}(
@@ -60,7 +67,9 @@ basis(object, ...)
   n_3d = 16,
   n_4d = 4,
   partial_match = FALSE,
-  ...
+  ...,
+  variables = NULL,
+  unweighted = FALSE
 )
 
 \method{basis}{default}(
@@ -71,12 +80,14 @@ basis(object, ...)
   at = NULL,
   diagonalize = FALSE,
   coefficients = NULL,
-  ...
+  envir = NULL,
+  ...,
+  variables = NULL
 )
 }
 \arguments{
 \item{object}{a smooth specification, the result of a call to one of
-\code{\link[mgcv:s]{mgcv::s()}}., \code{\link[mgcv:te]{mgcv::te()}}, \code{\link[mgcv:te]{mgcv::ti()}}, or \code{\link[mgcv:t2]{mgcv::t2()}}, or a fitted
+\code{\link[mgcv:s]{mgcv::s()}}., \code{\link[mgcv:te]{mgcv::te()}}, \code{\link[mgcv:ti]{mgcv::ti()}}, or \code{\link[mgcv:t2]{mgcv::t2()}}, or a fitted
 GAM(M) model.}
 
 \item{...}{other arguments passed to \code{\link[mgcv:smoothCon]{mgcv::smoothCon()}}.}
@@ -89,10 +100,13 @@ renamed \code{select}}
 \item{data}{a data frame containing the variables used in \code{smooth}.}
 
 \item{n}{numeric; the number of points over the range of the covariate at
-which to evaluate the smooth.}
+which to evaluate a univariate smooth.}
 
-\item{n_2d}{numeric; the number of new observations for each dimension of a
-bivariate smooth. Not currently used; \code{n} is used for both dimensions.}
+\item{n_2d}{numeric; the number of points along each of the first two axes
+of a smooth surface, including surface panels of higher-dimensional smooths.
+The default is 50 in plotting and plot-preparation functions. If \code{NULL},
+use \code{n} instead. Ignored when evaluation \code{data} are supplied. Factor levels
+are retained, and curves with only one continuous covariate use \code{n}.}
 
 \item{n_3d}{numeric; the number of new observations to generate for the third
 dimension of a 3D smooth.}
@@ -105,6 +119,20 @@ new observations.}
 \item{partial_match}{logical; in the case of character \code{select}, should
 \code{select} match partially against \code{smooths}? If \code{partial_match = TRUE},
 \code{select} must only be a single string, a character vector of length 1.}
+
+\item{envir}{an optional environment supplying functions and constants used
+in model expressions. The available model formula environment is used when
+\code{NULL}. Covariate observations should be supplied in \code{data}.}
+
+\item{variables}{character; smooth covariates in plotting order. Supply every
+covariate exactly once. The first two define surface axes and the remaining
+covariates define conditioning facets. Selected smooths must have the same
+covariates. If \code{NULL}, use the usual smooth plotting order.}
+
+\item{unweighted}{logical; for fitted models, return basis functions without
+multiplying by fitted coefficients? The default, \code{FALSE}, returns the
+coefficient-weighted contributions. With \code{TRUE}, \code{\link[=draw]{draw()}} shows the shared
+basis once for each factor-by set.}
 
 \item{knots}{a list or data frame with named components containing
 knots locations. Names must match the covariates for which the basis
@@ -125,12 +153,23 @@ the penalty null space.}
 basis functions.}
 }
 \value{
-A tibble.
+A tibble with class \code{basis}. Its \code{plot_variables} attribute stores
+covariate orders by smooth label for subsequent plotting. When the basis
+is shared across factor levels, \code{factor_by_groups} records the smooth
+labels that \code{\link[=draw]{draw()}} combines. The returned rows retain each level.
 }
 \description{
 Basis expansions from a definition of a smoother using the syntax of \emph{mgcv}'s
-smooths via \code{\link[mgcv:s]{mgcv::s()}}., \code{\link[mgcv:te]{mgcv::te()}}, \code{\link[mgcv:te]{mgcv::ti()}}, and \code{\link[mgcv:t2]{mgcv::t2()}}, or
+smooths via \code{\link[mgcv:s]{mgcv::s()}}., \code{\link[mgcv:te]{mgcv::te()}}, \code{\link[mgcv:ti]{mgcv::ti()}}, and \code{\link[mgcv:t2]{mgcv::t2()}}, or
 directly from a fitted GAM(M).
+}
+\details{
+When evaluating a fitted smooth at explicit data, missing covariates required
+by that smooth produce \code{NA} basis values. Missing values in other model
+variables do not discard otherwise evaluable rows.
+The covariate order chosen by \code{variables} also determines which automatically
+generated axes use \code{n_2d}, \code{n_3d}, and \code{n_4d}. Supplied \code{data} or \code{at} values
+are unchanged. Set a resolution argument to \code{NULL} to use \code{n} instead.
 }
 \examples{
 load_mgcv()

@@ -6,7 +6,7 @@
 \usage{
 residuals_linpred_plot(
   model,
-  type = c("deviance", "pearson", "response", "pit", "quantile"),
+  type = NULL,
   ylab = NULL,
   xlab = NULL,
   title = NULL,
@@ -15,27 +15,28 @@ residuals_linpred_plot(
   point_col = "grey20",
   point_alpha = 1,
   line_col = "red",
-  seed = NULL
+  seed = NULL,
+  by_family = NULL,
+  rank = NULL,
+  conditioning = NULL,
+  ...,
+  n_dharma = 250L
 )
 }
 \arguments{
-\item{model}{a fitted model. Currently only class \code{"gam"}.}
+\item{model}{a fitted model supported by \link{diagnostic_support}.}
 
-\item{type}{character; type of residuals to use. One of \code{"deviance"},
-\code{"response"}, \code{"pearson"}, \code{"pit"}, and \code{"quantile"} residuals are
-allowed. \code{"pit"} uses probability integral transform (PIT) residuals,
-which, if the model is correct should be approximately uniformly
-distributed, while \code{"quantile"} transforms the PIT residuals through
-application of the inverse CDF of the standard normal, and therefore the
-quantile residuals should be approximately normally distributed (mean = 0,
-sd = 1) if the model is correct. PIT and quantile residuals are not yet
-available for most families that can be handled by \code{gam()}, but most
-standard families are supported, e.g. those used by \code{glm()}.}
+\item{type}{character or \code{NULL}; residual type: \code{"deviance"}, \code{"pearson"},
+\code{"response"}, \code{"pit"}, \code{"quantile"}, \code{"dharma"}, or \code{"surrogate"} (for
+\code{\link[mgcv:ocat]{mgcv::ocat()}} or \code{\link[mgcv:multinom]{mgcv::multinom()}} GAMs). Grouped models automatically use
+quantile residuals when all active components are supported, otherwise all
+use deviance residuals with a message. Ordinary models retain deviance
+residuals by default. See \code{\link[=appraise]{appraise()}} for distributional support.}
 
 \item{ylab}{character or expression; the label for the y axis. If not
 supplied, a suitable label will be generated.}
 
-\item{xlab}{character or expression; the label for the y axis. If not
+\item{xlab}{character or expression; the label for the x axis. If not
 supplied, a suitable label will be generated.}
 
 \item{title}{character or expression; the title for the plot. See
@@ -47,17 +48,52 @@ supplied, a suitable label will be generated.}
 \item{caption}{character or expression; the plot caption. See
 \code{\link[ggplot2:labs]{ggplot2::labs()}}.}
 
-\item{point_col}{colour used to draw points in the plots. See
-\code{\link[graphics:par]{graphics::par()}} section \strong{Color Specification}. This is passed to
-the individual plotting functions, and therefore affects the points of
-all plots.}
+\item{point_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Constant point colour when components are not mapped to
+colour. Pooled grouped diagnostics instead colour points by component.}
 
-\item{point_alpha}{numeric; alpha transparency for points in plots.}
+\item{point_alpha}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Numeric; alpha transparency for points in plots.}
 
-\item{line_col}{colour specification for 1:1 line.}
+\item{line_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specification for 1:1 line.}
 
-\item{seed}{integer; random seed to use for PIT or quantile residuals.}
+\item{seed}{integer; random seed to use for PIT, quantile, surrogate or
+DHARMa-style residuals.}
+
+\item{by_family}{logical or \code{NULL}; separate indexed grouped-family components
+into facets. The default pools quantile residuals with component colours
+and facets traditional residuals. \code{TRUE} and \code{FALSE} explicitly select the
+layout. In \code{\link[=appraise]{appraise()}}, observed-versus-fitted values always use component
+facets. Standalone \code{observed_fitted_plot()} facets by default and permits
+explicit pooling. Ignored for ordinary models.}
+
+\item{rank}{logical or \code{NULL}; use within-component ranks on the horizontal
+axis of residual-versus-predictor plots. The default ranks pooled grouped
+plots and retains original predictors in facets. \code{TRUE} or \code{FALSE} overrides
+this independently of the residual type and layout. Only finite observations
+included in each component determine its ranks; average ties are used.}
+
+\item{conditioning}{character or \code{NULL}; \code{"conditional"} holds fitted random
+effects fixed, \code{"marginal"} averages over new effects, and \code{"gam_component"}
+uses the extracted GAM. Availability and defaults depend on the model; see
+\link{diagnostic_support}.}
+
+\item{...}{optional arguments passed to model preparation, such as the
+sdmTMB \code{field_method}. For grouped-family GAMs and joint GJRM models,
+\code{response = NULL} uses every response and an integer selects one; see
+\code{\link[=appraise]{appraise()}}. Selection leaves \code{by_family} independent.}
+
+\item{n_dharma}{positive integer; number of response simulations for
+\code{type = "dharma"}. This is separate from \code{n_simulate}, which controls
+traditional QQ reference calculations. Defaults to 250.}
 }
 \description{
 Plot of residuals versus linear predictor values
+}
+\details{
+The default subtitle identifies the response family. Conditioning
+and field choices appear in the caption where relevant. Supply \code{caption}
+to replace this text, or \code{caption = ""} to omit it. The scalable version
+uses the same labels.
 }

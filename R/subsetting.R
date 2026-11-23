@@ -1,4 +1,22 @@
 #' @export
+#' @keywords internal
+#' @noRd
+`[.basis` <- function(x, i, j, drop = FALSE) {
+  orders <- attr(x, "plot_variables")
+  groups <- attr(x, "factor_by_groups")
+  x <- NextMethod()
+  if (is.data.frame(x)) {
+    attr(x, "plot_variables") <- if (".smooth" %in% names(x)) {
+      orders[intersect(names(orders), unique(x$.smooth))]
+    } else NULL
+    attr(x, "factor_by_groups") <- if (".smooth" %in% names(x)) {
+      groups[intersect(names(groups), unique(x$.smooth))]
+    } else NULL
+  }
+  x
+}
+
+#' @export
 #' @importFrom rlang has_name
 `[.smooth_samples` <- function(x, i, j, drop = FALSE) {
   cls <- class(x)
@@ -39,7 +57,14 @@
 #' @export
 #' @importFrom rlang has_name
 `[.smooth_estimates` <- function(x, i, j, drop = FALSE) {
+  shape_constraints <- attr(x, "shape_constraints")
+  scam_info <- attr(x, "scam_smooth_info")
+  interval_info <- attr(x, "interval_info")
+  plot_info <- attr(x, "tensor_plot_info")
+  plot_variables <- attr(x, "plot_variables")
+  support <- attr(x, "surface_support")
   cls <- class(x)
+  coordinate_info <- attr(x, "coordinate_info")
   tensor_term_order <- attr(x, "tensor_term_order")
   class(x) <- class(x)[-c(1:2)]
   x <- NextMethod()
@@ -47,10 +72,41 @@
   if (has_name(x, ".smooth")) {
     take <- unique(x[[".smooth"]])
     tensor_term_order <- tensor_term_order[take]
+    order <- attr(coordinate_info, "smooth_variables")
+    order <- order[intersect(names(order), take)]
+    if (length(order)) {
+      coordinate_info <- coordinate_info[intersect(names(coordinate_info),
+        unique(unlist(order)))]
+      attr(coordinate_info, "smooth_variables") <- order
+    } else coordinate_info <- NULL
   } else {
     tensor_term_order <- NA
+    coordinate_info <- NULL
   }
   attr(x, "tensor_term_order") <- tensor_term_order
+  attr(x, "coordinate_info") <- coordinate_info
+  attr(x, "tensor_plot_info") <- if (".smooth" %in% names(x)) {
+    plot_info[intersect(names(plot_info), unique(x$.smooth))]
+  } else NULL
+  attr(x, "plot_variables") <- if (".smooth" %in% names(x)) {
+    plot_variables[intersect(names(plot_variables), unique(x$.smooth))]
+  } else NULL
+  attr(x, "surface_support") <- if (".smooth" %in% names(x)) {
+    support[intersect(names(support), unique(x$.smooth))]
+  } else NULL
+  if (!is.null(interval_info$curves)) {
+    interval_info$curves <- if (".smooth" %in% names(x)) interval_info$curves[vapply(interval_info$curves,
+      function(record) record$identity %in% x$.smooth, logical(1))] else list()
+  }
+  attr(x, "interval_info") <- interval_info
+  attr(x, "shape_constraints") <- if (!is.null(shape_constraints) &&
+    ".smooth" %in% names(x)) {
+    scasm_shape_subset(shape_constraints, x)
+  } else NULL
+  attr(x, "scam_smooth_info") <- if (!is.null(scam_info) &&
+    ".smooth" %in% names(x)) {
+    scasm_shape_subset(scam_info, x)
+  } else NULL
   x
 }
 
@@ -59,6 +115,9 @@
 #' @importFrom vctrs vec_slice
 #' @importFrom dplyr filter reframe pull
 `[.parametric_effects` <- function(x, i, j, drop = FALSE) {
+  info <- attr(x, "term_info")
+  axes <- attr(x, "axis_info")
+  back_transform <- attr(x, "back_transform")
   cls <- class(x)
   f_levels <- attr(x, "factor_levels")
   class(x) <- class(x)[-c(1:2)]
@@ -75,6 +134,13 @@
     f_levels <- NA
   }
   attr(x, "factor_levels") <- f_levels
+  attr(x, "term_info") <- if (".term" %in% names(x)) {
+    info[intersect(names(info), unique(x$.term))]
+  } else NULL
+  attr(x, "axis_info") <- if (".term" %in% names(x)) {
+    axes[intersect(names(axes), unique(x$.term))]
+  } else NULL
+  attr(x, "back_transform") <- back_transform
   x
 }
 

@@ -63,15 +63,18 @@ no differentiation is made between periods of significant increase or
 decrease. If \code{"sizer"}, the periods of increase and decrease are
 differentiated in the resulting plot.}
 
-\item{alpha}{numeric; alpha transparency for confidence or simultaneous
+\item{alpha}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Numeric; alpha transparency for confidence or simultaneous
 interval.}
 
-\item{change_col, decrease_col, increase_col}{colour specifications to use for
+\item{change_col, decrease_col, increase_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specifications to use for
 indicating periods of change. \code{col_change} is used when
 \code{change_type = "change"}, while \code{col_decrease} and \code{col_increase} are used
 when `change_type = "sizer"``.}
 
-\item{lwd_change}{numeric; the \code{linewidth} to use for the change indicators.}
+\item{lwd_change}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Numeric; the \code{linewidth} to use for the change indicators.}
 
 \item{ncol, nrow}{numeric; the numbers of rows and columns over which to
 spread the plots}
@@ -92,15 +95,21 @@ factor(s) are used to define groups and mapped to the colour aesthetic.}
 \description{
 Plot derivatives of smooths
 }
-\examples{
+\section{Label layout}{
 
+Pass \code{label_control = draw_label_control(...)} to \code{draw()} to wrap discrete
+axis labels and legend text, stagger discrete tick labels, or adjust legend
+and colour-bar layout. Settings apply to each panel, including unwrapped
+plot lists. See \code{\link[=draw_label_control]{draw_label_control()}} for the available settings.
+}
+
+\examples{
 load_mgcv()
-dat <- data_sim("eg1", n = 800, dist = "normal", scale = 2, seed = 42)
+# Simulate an additive Gaussian response and fit a GAM
+dat <- data_sim("eg1", n = 200, scale = 1, seed = 42)
 mod <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 
-## first derivative of all smooths
-df <- derivatives(mod, type = "central")
+# Estimate and plot the rate of change of one smooth
+df <- derivatives(mod, select = "s(x2)", type = "central")
 draw(df)
-## fixed axis scales
-draw(df, scales = "fixed")
 }

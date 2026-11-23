@@ -38,26 +38,6 @@
       10 s(x0)   s(x0) TPRS  <NA>      2     5 -1.76  0.0117 
       # i 490 more rows
 
-# smooth_samples works for a simple GAM multi rng calls
-
-    Code
-      sm
-    Output
-      # A tibble: 500 x 8
-         .smooth .term .type .by    .row .draw .value      x0
-         <chr>   <chr> <chr> <chr> <int> <int>  <dbl>   <dbl>
-       1 s(x0)   s(x0) TPRS  <NA>      1     1  -1.85 0.00162
-       2 s(x0)   s(x0) TPRS  <NA>      1     2  -2.36 0.00162
-       3 s(x0)   s(x0) TPRS  <NA>      1     3  -2.14 0.00162
-       4 s(x0)   s(x0) TPRS  <NA>      1     4  -2.28 0.00162
-       5 s(x0)   s(x0) TPRS  <NA>      1     5  -1.93 0.00162
-       6 s(x0)   s(x0) TPRS  <NA>      2     1  -1.73 0.0117 
-       7 s(x0)   s(x0) TPRS  <NA>      2     2  -2.22 0.0117 
-       8 s(x0)   s(x0) TPRS  <NA>      2     3  -2.08 0.0117 
-       9 s(x0)   s(x0) TPRS  <NA>      2     4  -2.19 0.0117 
-      10 s(x0)   s(x0) TPRS  <NA>      2     5  -1.82 0.0117 
-      # i 490 more rows
-
 # fitted_samples example output doesn't change
 
     Code
@@ -66,16 +46,16 @@
       # A tibble: 5,000 x 4
           .row .draw .parameter .fitted
          <int> <int> <chr>        <dbl>
-       1     1     1 location      4.94
-       2     2     1 location      5.68
-       3     3     1 location      4.19
-       4     4     1 location     11.0 
-       5     5     1 location     11.2 
-       6     6     1 location      4.48
-       7     7     1 location      5.84
-       8     8     1 location      6.72
-       9     9     1 location      9.68
-      10    10     1 location      7.29
+       1     1     1 mean          4.94
+       2     2     1 mean          5.68
+       3     3     1 mean          4.19
+       4     4     1 mean         11.0 
+       5     5     1 mean         11.2 
+       6     6     1 mean          4.48
+       7     7     1 mean          5.84
+       8     8     1 mean          6.72
+       9     9     1 mean          9.68
+      10    10     1 mean          7.29
       # i 4,990 more rows
 
 # smooth_samples example output doesn't change

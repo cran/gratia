@@ -131,3 +131,16 @@
   }
   !is.null(theta_fun)
 }
+
+`betar_eps` <- function(x) {
+  # x is a family
+  stop_if_not_family(x)
+  if (!identical(family_type(x), "beta_regression")) {
+    stop("'x' is not a 'betar()' family.")
+  }
+  # Read epsilon from the family's parameter environment, where it is available
+  # even before an inverse CDF has been added.
+  e <- environment(x$getTheta)
+  key <- if (exists(".betarEps", envir = e, inherits = TRUE)) ".betarEps" else ".betaEps"
+  get(key, envir = e, inherits = TRUE)
+}

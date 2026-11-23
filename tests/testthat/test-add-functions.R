@@ -24,6 +24,34 @@ test_that("add_fitted works for a GAM with se.fit = TRUE", {
   expect_named(df, c("y", "x0", "x1", "x2", "x3", ".fitted"))
 })
 
+test_that("add_fitted preserves unnamed multinomial predictions without warnings", {
+  withr::local_options(lifecycle_verbosity = "error")
+  data <- multinom_df[c(5L, 2L, 10L), ]
+
+  for (type in c("response", "link")) {
+    expected <- predict(m_multinom, newdata = data, type = type)
+    pred_names <- paste0("V", seq_len(ncol(expected)))
+
+    for (se in c(FALSE, TRUE)) {
+      expect_silent(df <- add_fitted(data, m_multinom, type = type, se.fit = se))
+      expect_s3_class(df, "tbl_df")
+      expect_named(df, c(names(data), pred_names))
+      expect_equal(df[names(data)], data)
+      expect_equal(unname(as.matrix(df[pred_names])), unname(expected))
+    }
+  }
+})
+
+test_that("add_fitted preserves named multinomial term predictions", {
+  data <- multinom_df[c(5L, 2L, 10L), ]
+  expected <- predict(m_multinom, newdata = data, type = "terms")
+
+  expect_silent(df <- add_fitted(data, m_multinom, type = "terms"))
+  expect_named(df, c(names(data), ".constant", colnames(expected)))
+  expect_equal(df[names(data)], data)
+  expect_equal(as.vector(as.matrix(df[colnames(expected)])), as.vector(expected))
+})
+
 test_that("add_residuals works for a GAM", {
   expect_silent(df <- add_residuals(add_data, m_gam, type = "pearson"))
   expect_s3_class(df, "tbl_df")
@@ -64,8 +92,6 @@ test_that("add_residuals works for a GAM with NA in data", {
 })
 
 test_that("add_partial_residuals works for a GAM with NA in data", {
-  skip_on_cran()
-  # skip("This needs fixing")
   expect_error(add_partial_residuals(add_data, m_na),
     "Length of model residuals not equal to number of rows in 'data'",
     fixed = TRUE
@@ -105,21 +131,13 @@ test_that("add_confint works for smooth_estimates", {
 
 test_that("add_confint.default fails is no est and se", {
   expect_error(
-    add_confint(typical_values(m_gam,
-      data = su_eg1, envir = teardown_env()
-    )),
+    add_confint(typical_values(m_gam)),
     "'object' does not contain one or both of '.estimate' or '.se'."
   )
 })
 
 test_that("add_constant works for parametric_effects", {
-  expect_message(
-    pe <- parametric_effects(m_para_sm,
-      data = df_2_fac,
-      envir = teardown_env()
-    ),
-    "Interaction terms are not currently supported."
-  )
+  expect_silent(pe <- parametric_effects(m_para_sm))
   expect_silent(pe <- add_constant(pe, constant = 10))
   expect_error(pe <- add_constant(pe, constant = "a"),
     "'constant' must be numeric: supplied <a>",
@@ -194,7 +212,7 @@ test_that("add_sizer smooth_estimates method works", {
 ## add  methods for posterior samplers
 test_that("add_fitted_samples works", {
   expect_silent(fs <- quick_eg1 |>
-    add_fitted_samples(m_gam, seed = 2, n = 2))
+    add_fitted_samples(m_gam, seed = 2, n_draws = 2))
   expect_identical(nrow(fs), 600L) # 300 data by 2 samples
   expect_named(fs, c(names(quick_eg1), ".row", ".draw", ".parameter", ".fitted"))
   expect_snapshot(print(fs))
@@ -202,7 +220,7 @@ test_that("add_fitted_samples works", {
 
 test_that("add_predicted_samples works", {
   expect_silent(ps <- quick_eg1 |>
-    add_predicted_samples(m_gam, seed = 2, n = 2))
+    add_predicted_samples(m_gam, seed = 2, n_draws = 2))
   expect_identical(nrow(ps), 600L) # 300 data by 2 samples
   expect_named(ps, c(names(quick_eg1), ".row", ".draw", ".response"))
   expect_snapshot(print(ps))
@@ -210,7 +228,7 @@ test_that("add_predicted_samples works", {
 
 test_that("add_posterior_samples works", {
   expect_silent(ps <- quick_eg1 |>
-    add_posterior_samples(m_gam, seed = 2, n = 2))
+    add_posterior_samples(m_gam, seed = 2, n_draws = 2))
   expect_identical(nrow(ps), 600L) # 300 data by 2 samples
   expect_named(ps, c(names(quick_eg1), ".row", ".draw", ".response"))
   expect_snapshot(print(ps))
@@ -218,7 +236,7 @@ test_that("add_posterior_samples works", {
 
 test_that("add_smooth_samples works", {
   expect_silent(ss <- quick_eg1 |>
-    add_smooth_samples(m_gam, seed = 2, n = 2))
+    add_smooth_samples(m_gam, seed = 2, n_draws = 2))
   expect_identical(nrow(ss), 2400L) # 300 data by 4 smooths by 2 samples
   expect_named(ss, c(names(quick_eg1), ".row", ".smooth", ".term", ".draw",
     ".value"))
@@ -227,7 +245,7 @@ test_that("add_smooth_samples works", {
 
 test_that("add_smooth_samples works for selected smooth", {
   expect_silent(ss <- quick_eg1 |>
-    add_smooth_samples(m_gam, seed = 2, n = 2, select = "s(x2)"))
+    add_smooth_samples(m_gam, seed = 2, n_draws = 2, select = "s(x2)"))
   expect_identical(nrow(ss), 600L) # 300 data by 1 smooth by 2 samples
   expect_named(ss, c(names(quick_eg1), ".row", ".smooth", ".term", ".draw",
     ".value"))

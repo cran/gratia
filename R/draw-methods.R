@@ -5,19 +5,36 @@
 #' @title Generic plotting via `ggplot2`
 #' @param object and R object to plot.
 #' @param ... arguments passed to other methods.
+#' @param label_control Optional layout settings created by
+#'   [draw_label_control()]. These apply across drawing methods without
+#'   changing their default appearance.
+#'
+#' @section Label layout:
+#' Pass `label_control = draw_label_control(...)` to `draw()` to wrap discrete
+#' axis labels and legend text, stagger discrete tick labels, or adjust legend
+#' and colour-bar layout. Settings apply to each panel, including unwrapped
+#' plot lists. See [draw_label_control()] for the available settings.
 #'
 #' @return A [ggplot2::ggplot()] object.
 #'
 #' @author Gavin L. Simpson
 #'
 #' @export
-`draw` <- function(object, ...) {
+`draw` <- function(object, ..., label_control = NULL) {
+  if (!is.null(label_control)) {
+    control <- validate_draw_label_control(label_control)
+    value <- withVisible(draw(object, ...))
+    result <- apply_draw_label_control(value$value, control)
+    if (!value$visible) return(invisible(result))
+    return(result)
+  }
   UseMethod("draw")
 }
 
 #' Plot derivatives of smooths
 #'
-#' @param alpha numeric; alpha transparency for confidence or simultaneous
+#' @param alpha Deprecated; use [gratia_theme_get()] theme
+#'   settings instead. Numeric; alpha transparency for confidence or simultaneous
 #'   interval.
 #' @param add_change logical; should the periods of significant change be
 #'   highlighted on the plot?
@@ -25,11 +42,13 @@
 #'   no differentiation is made between periods of significant increase or
 #'   decrease. If `"sizer"`, the periods of increase and decrease are
 #'   differentiated in the resulting plot.
-#' @param change_col,decrease_col,increase_col colour specifications to use for
+#' @param change_col,decrease_col,increase_col Deprecated; use [gratia_theme_get()] theme
+#'   settings instead. Colour specifications to use for
 #'   indicating periods of change. `col_change` is used when
 #'   `change_type = "change"`, while `col_decrease` and `col_increase` are used
 #'   when `change_type = "sizer"``.
-#' @param lwd_change numeric; the `linewidth` to use for the change indicators.
+#' @param lwd_change Deprecated; use [gratia_theme_get()] theme
+#'   settings instead. Numeric; the `linewidth` to use for the change indicators.
 #' @param differentiate_factor_smooths logical; should colour be used to
 #'   differentiate the levels of the factors involved in  random factor smooths
 #'   (`bs = "fs"`) or constrained factor smooths (`bs = "sz"`)? If `TRUE`, the
@@ -43,16 +62,15 @@
 #' @export
 #'
 #' @examples
-#'
 #' load_mgcv()
-#' dat <- data_sim("eg1", n = 800, dist = "normal", scale = 2, seed = 42)
+#' # Simulate an additive Gaussian response and fit a GAM
+#' dat <- data_sim("eg1", n = 200, scale = 1, seed = 42)
 #' mod <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 #'
-#' ## first derivative of all smooths
-#' df <- derivatives(mod, type = "central")
+#' # Estimate and plot the rate of change of one smooth
+#' df <- derivatives(mod, select = "s(x2)", type = "central")
 #' draw(df)
-#' ## fixed axis scales
-#' draw(df, scales = "fixed")
+#' @inheritSection draw Label layout
 `draw.derivatives` <- function(
   object,
   select = NULL,
@@ -70,6 +88,8 @@
   differentiate_factor_smooths = TRUE,
   ...
 ) {
+  tube_check_saved_controls(names(match.call(expand.dots = FALSE)$...))
+  gratia_plot_arguments(c("change_col", "decrease_col", "increase_col", "lwd_change", "alpha"), environment())
   scales <- match.arg(scales)
   change_type <- match.arg(change_type)
 
@@ -89,68 +109,41 @@
   for (i in seq_along(sm)) {
     take <- object[[".smooth"]] == sm[i]
     df <- object[take, ]
-    xvar <- vars_from_label(unique(df[[".smooth"]])) # unique(df[['var']])
-    plt <- if (!all(is.na(df$.fs))) {
+    xvar <- vars_from_label(unique(df[[".smooth"]]))
+    group_var <- colour_var <- NULL
+    if (!all(is.na(df$.fs))) {
       fs_col_lab <- unique(df$.fs)
-      fs_var <- fs_col_lab |>
-        stringr::str_split(":") |> unlist()
-      xvar <- xvar[!xvar %in% fs_var] # xvar[1L]
+      fs_var <- fs_col_lab |> stringr::str_split(":") |> unlist()
+      xvar <- xvar[!xvar %in% fs_var]
       if (length(fs_var) > 1L) {
-        df <- df |>
-          mutate(
-            ..fs_interact.. = do.call("interaction", args = df[fs_var])
-          )
+        df <- df |> mutate(
+          ..fs_interact.. = do.call("interaction", args = df[fs_var]))
         fs_var <- "..fs_interact.."
       }
+      group_var <- fs_var
       if (differentiate_factor_smooths) {
-        ggplot(df, aes(
-          x = .data[[xvar]], # .data$data,
-          y = .data$.derivative,
-          group = .data[[fs_var]],
-          colour = .data[[fs_var]]
-        ))
-      } else {
-        ggplot(df, aes(
-          x = .data[[xvar]], # .data$data,
-          y = .data$.derivative,
-          group = .data[[fs_var]]
-        ))
+        colour_var <- fs_var
       }
-    } else {
-      ggplot(df, aes(
-        x = .data[[xvar]], # .data$data,
-        y = .data$.derivative
-      )) +
-        geom_ribbon(aes(
-          ymin = .data$.lower_ci,
-          ymax = .data$.upper_ci,
-          y = NULL
-        ), alpha = alpha)
     }
-    plt <- plt +
-      geom_line() +
-      guides(x = guide_axis(angle = angle))
-    plt <- if (differentiate_factor_smooths && !all(is.na(df$.fs))) {
-      plt + labs(
-        title = sm[i], x = xvar, y = "Derivative", colour = fs_col_lab
-      )
-    } else {
-      plt + labs(title = sm[i], x = xvar, y = "Derivative")
-    }
+    labels <- labs(title = sm[i], x = xvar, y = "Derivative")
+    if (!is.null(colour_var)) labels$colour <- fs_col_lab
+    plt <- prepare_derivative_plot(df, x_var = xvar, y_var = ".derivative",
+      group_var = group_var, colour_var = colour_var, labels = labels,
+      interval = all(is.na(df$.fs)), alpha = alpha, angle = angle)
     if (isTRUE(add_change)) {
       plt <- if (identical(change_type, "change")) {
         plt +
-          geom_line(aes(x = .data[[xvar]], y = .data$.change),
+          geom_gratia_change_line(aes(x = .data[[xvar]], y = .data$.change),
             linewidth = lwd_change, na.rm = TRUE,
             colour = change_col
           )
       } else {
         plt +
-          geom_line(aes(x = .data[[xvar]], y = .data$.increase),
+          geom_gratia_increase_line(aes(x = .data[[xvar]], y = .data$.increase),
             colour = increase_col, linewidth = lwd_change,
             na.rm = TRUE
           ) +
-          geom_line(aes(x = .data[[xvar]], y = .data$.decrease),
+          geom_gratia_decrease_line(aes(x = .data[[xvar]], y = .data$.decrease),
             colour = decrease_col, linewidth = lwd_change,
             na.rm = TRUE
           )
@@ -159,23 +152,8 @@
     plotlist[[i]] <- plt
   }
 
-  if (isTRUE(identical(scales, "fixed"))) {
-    ylims <- range(object[[".lower_ci"]], object[[".upper_ci"]])
-
-    for (i in seq_along(plotlist)) {
-      plotlist[[i]] <- plotlist[[i]] + lims(y = ylims)
-    }
-  }
-  ## return
-  n_plots <- length(plotlist)
-  if (is.null(ncol) && is.null(nrow)) {
-    ncol <- ceiling(sqrt(n_plots))
-    nrow <- ceiling(n_plots / ncol)
-  }
-  wrap_plots(plotlist,
-    byrow = TRUE, ncol = ncol, nrow = nrow,
-    guides = guides, ...
-  )
+  wrap_interval_plots(plotlist, object, scales = scales,
+    ncol = ncol, nrow = nrow, guides = guides, ...)
 }
 
 #' @export
@@ -187,6 +165,7 @@
                                        guides = "keep",
                                        angle = NULL,
                                        ...) {
+  gratia_plot_arguments(c("alpha"), environment())
   scales <- match.arg(scales)
 
   ## how many smooths
@@ -201,49 +180,16 @@
     take <- object[[".smooth"]] == sm[i]
     df <- object[take, ]
     xvar <- unique(df[[".focal"]])
-    plt <- if (!all(is.na(df$.fs))) {
-      ggplot(df, aes(
-        x = .data[[xvar]],
-        y = .data$.partial_deriv,
-        group = .data$.fs
-      ))
-    } else {
-      ggplot(df, aes(
-        x = .data[[xvar]],
-        y = .data$.partial_deriv
-      )) +
-        geom_ribbon(aes(
-          ymin = .data$.lower_ci,
-          ymax = .data$.upper_ci,
-          y = NULL
-        ), alpha = alpha)
-    }
-    plotlist[[i]] <- plt +
-      geom_line() +
-      labs(
-        title = sm[i], x = xvar,
-        y = paste("Partial derivative with respect to", xvar)
-      ) +
-      guides(x = guide_axis(angle = angle))
+    plotlist[[i]] <- prepare_derivative_plot(df,
+      x_var = xvar, y_var = ".partial_deriv",
+      group_var = if (!all(is.na(df$.fs))) ".fs" else NULL,
+      interval = all(is.na(df$.fs)), alpha = alpha, angle = angle,
+      labels = labs(title = sm[i], x = xvar,
+        y = paste("Partial derivative with respect to", xvar)))
   }
 
-  if (isTRUE(identical(scales, "fixed"))) {
-    ylims <- range(object[[".lower_ci"]], object[[".upper_ci"]])
-
-    for (i in seq_along(plotlist)) {
-      plotlist[[i]] <- plotlist[[i]] + lims(y = ylims)
-    }
-  }
-  ## return
-  n_plots <- length(plotlist)
-  if (is.null(ncol) && is.null(nrow)) {
-    ncol <- ceiling(sqrt(n_plots))
-    nrow <- ceiling(n_plots / ncol)
-  }
-  wrap_plots(plotlist,
-    byrow = TRUE, ncol = ncol, nrow = nrow,
-    guides = guides, ...
-  )
+  wrap_interval_plots(plotlist, object, scales = scales,
+    ncol = ncol, nrow = nrow, guides = guides, ...)
 }
 
 #' Plot basis functions
@@ -289,6 +235,7 @@
 #'
 #' bf <- basis(s(x2, by = fac, bs = "bs"), data = df)
 #' draw(bf)
+#' @inheritSection draw Label layout
 `draw.mgcv_smooth` <- function(object,
                                legend = FALSE,
                                use_facets = TRUE,
@@ -307,12 +254,12 @@
   }
 
   ## basis plot
-  plt <- ggplot(object, aes(
+  plt <- gratia_plot(object, aes(
     x = .data[[smooth_var]],
     y = .data[["value"]],
     colour = .data[["bf"]]
   )) +
-    geom_line() +
+    geom_gratia_basis_line() +
     guides(x = guide_axis(angle = angle))
 
   ## default labels if none supplied
@@ -374,6 +321,25 @@
 #' @param ... arguments passed to other methods. Not used by this method.
 #'
 #' @inheritParams draw.gam
+#' @inheritParams basis
+#'
+#' @details
+#' For smooths of three or four covariates, each basis function has its own
+#' plot. The first two covariates define the surface axes. Three-covariate
+#' smooths have wrapped facets for the third covariate; four-covariate smooths
+#' have the third covariate in rows and the fourth in columns. `ncol` and `nrow`
+#' control the outer arrangement of plots. Fill scales share a range within
+#' each smooth. Use `variables` in [basis()] to choose the axes before grid
+#' generation, or here to rearrange existing evaluations without resampling.
+#' Surface plots include contour lines by default, matching [draw.gam()].
+#' Use `contour = FALSE` to draw surfaces without contour lines.
+#'
+#' Factor-by bases from smooth specifications are drawn once for the whole
+#' factor-by set, using evaluations from all available levels. For fitted
+#' models, `basis(model)` returns coefficient-weighted contributions, which
+#' remain separate for each level. Use `basis(model, unweighted = TRUE)` to
+#' draw the shared basis once. Subsetting the basis before drawing restricts
+#' the plot to the retained evaluations and basis functions.
 #'
 #' @return A `patchwork` object.
 #'
@@ -381,20 +347,19 @@
 #'
 #' @importFrom purrr map map_lgl
 #' @importFrom patchwork wrap_plots
-#' @importFrom dplyr group_split
 #'
 #' @export
 #'
 #' @examples
 #' load_mgcv()
-#' df <- data_sim("eg1", n = 400, seed = 42)
+#' # Simulate an additive Gaussian response and fit a GAM
+#' df <- data_sim("eg1", n = 200, seed = 42)
 #' m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df, method = "REML")
 #'
-#' bf <- basis(m)
+#' # Plot the coefficient-weighted basis functions for one smooth
+#' bf <- basis(m, select = "s(x2)")
 #' draw(bf)
-#'
-#' bf <- basis(m, "s(x2)")
-#' draw(bf)
+#' @inheritSection draw Label layout
 `draw.basis` <- function(object,
                          legend = FALSE,
                          labeller = NULL,
@@ -404,12 +369,12 @@
                          ncol = NULL, nrow = NULL,
                          angle = NULL,
                          guides = "keep",
-                         contour = FALSE,
+                         contour = TRUE,
                          n_contour = 10,
                          contour_col = "black",
-                         ...) {
-  sm <- unique(object[[".smooth"]])
-  sm_l <- group_split(object, factor(.data$.smooth, levels = sm))
+                         ..., variables = NULL) {
+  gratia_plot_arguments(c("contour_col"), environment())
+  sm_l <- basis_plot_groups(object)
   sm_plts <- map(sm_l,
     plot_basis,
     legend = legend,
@@ -422,7 +387,7 @@
     contour = contour,
     n_contour = n_contour,
     contour_col = contour_col,
-    ...
+    ..., variables = variables
   )
 
   # filter out NULLs as those are types of smooths we can't plot (yet)
@@ -434,16 +399,45 @@
     return(invisible())
   }
 
+  # Higher-dimensional bases return one faceted plot per basis function.
+  sm_plts <- do.call(c, lapply(sm_plts, function(x) {
+    if (inherits(x, "ggplot")) list(x) else x
+  }))
+
   # return
   n_plots <- length(sm_plts)
-  if (is.null(ncol) && is.null(nrow)) {
-    ncol <- ceiling(sqrt(n_plots))
-    nrow <- ceiling(n_plots / ncol)
-  }
+  layout <- prepare_plot_layout(n_plots, ncol = ncol, nrow = nrow)
+  ncol <- layout$ncol
+  nrow <- layout$nrow
   wrap_plots(sm_plts,
     byrow = TRUE, ncol = ncol, nrow = nrow,
     guides = guides, ...
   )
+}
+
+# Combine only bases marked as shared when they were constructed. Older
+# objects and fitted coefficient-weighted bases keep their separate smooths.
+basis_plot_groups <- function(object) {
+  labels <- unique(object$.smooth)
+  groups <- stats::setNames(labels, labels)
+  shared <- attr(object, "factor_by_groups")
+  take <- intersect(labels, names(shared))
+  groups[take] <- shared[take]
+  lapply(unique(unname(groups)), function(group) {
+    members <- names(groups)[groups == group]
+    data <- object[object$.smooth %in% members, ]
+    if (any(members %in% take)) {
+      order <- basis_plot_variables(object[object$.smooth == members[1L], ])
+      by_var <- unique(data$.by)
+      data[by_var] <- NULL
+      data$.by <- NA_character_
+      data$.smooth <- group
+      data <- unique(data)
+      attr(data, "plot_variables") <- stats::setNames(list(order), group)
+      attr(data, "factor_by_groups") <- NULL
+    }
+    data
+  })
 }
 
 #' @importFrom ggplot2 ggplot aes labs geom_line guides facet_wrap label_both
@@ -457,9 +451,9 @@
                          contour = TRUE,
                          n_contour = 10,
                          contour_col = "black",
-                         ...) {
-  ## capture the univariate smooth variable
-  smooth_var <- vars_from_label(unique(object[[".smooth"]]))
+                         ..., variables = NULL) {
+  smooth_var <- basis_plot_variables(object, variables)
+  if (is.null(title)) title <- unique(object$.smooth)
   n_sms <- length(smooth_var)
 
   plt <- switch(n_sms,
@@ -467,15 +461,25 @@
       legend = legend,
       labeller = labeller, xlab = xlab, ylab = ylab,
       title = title, subtitle = subtitle, caption = caption,
-      angle = angle, ...
+      angle = angle, ..., variables = smooth_var
     ),
     plot_bivariate_basis(object,
       legend = legend,
       labeller = labeller, xlab = xlab, ylab = ylab,
       title = title, subtitle = subtitle, caption = caption,
       angle = angle, contour = contour, n_contour = n_contour,
-      contour_col = contour_col, ...
-    )
+      contour_col = contour_col, ..., variables = smooth_var
+    ),
+    plot_multivariate_basis(object, variables = smooth_var,
+      legend = legend, labeller = labeller, xlab = xlab, ylab = ylab,
+      title = title, subtitle = subtitle, caption = caption,
+      angle = angle, contour = contour, n_contour = n_contour,
+      contour_col = contour_col, ...),
+    plot_multivariate_basis(object, variables = smooth_var,
+      legend = legend, labeller = labeller, xlab = xlab, ylab = ylab,
+      title = title, subtitle = subtitle, caption = caption,
+      angle = angle, contour = contour, n_contour = n_contour,
+      contour_col = contour_col, ...)
   )
 
   plt
@@ -488,60 +492,20 @@
                                     title = NULL, subtitle = NULL,
                                     caption = NULL,
                                     angle = NULL,
-                                    ...) {
-  sm_lab <- unique(object[[".smooth"]])
-  smooth_var <- vars_from_label(sm_lab)
-
-  ## default labeller
-  if (is.null(labeller)) {
-    labeller <- prefix_label_both
-  }
-
-  ## basis plot
-  plt <- ggplot(object, aes(
-    x = .data[[smooth_var]],
-    y = .data[[".value"]],
-    colour = .data[[".bf"]]
-  )) +
-    geom_line() +
-    guides(x = guide_axis(angle = angle))
-
-  ## default labels if none supplied
-  if (is.null(xlab)) {
-    xlab <- smooth_var
-  }
-  if (is.null(ylab)) {
-    ylab <- "Value"
-  }
-  if (is.null(title)) {
-    title <- attr(object, "smooth_object")
-    # if still null then this came from a model & we don't have the call
-    if (is.null(title)) {
-      title <- sm_lab
-    }
-  }
-
-  ## fixup for by variable smooths, facet for factor by smooths
-  if (all(!is.na(object[[".by"]]))) {
-    by_var_name <- unique(object[[".by"]])
-    by_var <- object[[by_var_name]]
-    if (is.character(by_var) || is.factor(by_var)) {
-      plt <- plt + facet_wrap(by_var_name, labeller = labeller)
-    }
-  }
-
-  ## add labelling to plot
-  plt <- plt + labs(
-    x = xlab, y = ylab, title = title, subtitle = subtitle,
-    caption = caption, colour = "Basis\nfunction"
-  )
-
-  ## draw a guide?
+                                    ..., variables = NULL) {
+  smooth_var <- basis_plot_variables(object, variables)
+  plt <- add_curve_interval(gratia_plot(object,
+    aes(x = .data[[smooth_var]], y = .data[[".value"]],
+      colour = .data[[".bf"]]))) +
+    guides(x = guide_axis(angle = angle)) +
+    prepare_basis_facet(object, smooth_var, labeller = labeller) +
+    prepare_basis_labels(object, smooth_var, xlab = xlab, ylab = ylab,
+      title = title, subtitle = subtitle, caption = caption)
   if (!legend) {
     plt <- plt + guides(colour = "none")
   }
-
   plt
+
 }
 
 #' @importFrom ggplot2 scale_fill_distiller guides guide_axis facet_wrap vars labs geom_contour coord_equal
@@ -555,84 +519,87 @@
                                    contour = TRUE,
                                    n_contour = 10,
                                    contour_col = "black",
-                                   ...) {
-  sm_lab <- unique(object[[".smooth"]])
-  smooth_var <- vars_from_label(sm_lab)
-
-  ## default labeller
-  if (is.null(labeller)) {
-    labeller <- prefix_label_both
-  }
-
-  ## basis plot
-  plt <- ggplot(object, aes(
-    x = .data[[smooth_var[1]]],
-    y = .data[[smooth_var[2]]],
-    fill = .data[[".value"]],
-    group = .data[[".bf"]]
-  )) +
-    geom_raster() +
-    guides(x = guide_axis(angle = angle, check.overlap = TRUE)) +
-    scale_fill_distiller(palette = "RdBu", type = "div")
-
-  ## default labels if none supplied
-  if (is.null(xlab)) {
-    xlab <- smooth_var[1]
-  }
-  if (is.null(ylab)) {
-    ylab <- smooth_var[2]
-  }
-  flab <- "value"
-  if (is.null(title)) {
-    title <- attr(object, "smooth_object")
-    # if still null then this came from a model & we don't have the call
-    if (is.null(title)) {
-      title <- sm_lab
-    }
-  }
-
-  ## fixup for by variable smooths, facet for factor by smooths
-  if (all(!is.na(object[[".by"]]))) {
-    by_var_name <- unique(object[[".by"]])
-    by_var <- object[[by_var_name]]
-    if (is.character(by_var) || is.factor(by_var)) {
-      # FIXME: this can't possibly work right
-      # We are plotting a surface for each function, but only facetting
-      # on the by variable here
-      plt <- plt + facet_wrap(by_var_name, labeller = labeller)
-    }
-  } else {
-    plt <- plt + facet_wrap(vars(.data[[".bf"]]), labeller = labeller)
-  }
-
-  ## add labelling to plot
-  plt <- plt + labs(
-    x = xlab, y = ylab, title = title, subtitle = subtitle,
-    caption = caption, fill = flab
-  )
-
-  ## draw a guide?
+                                   ..., variables = NULL, fill_limits = NULL) {
+  smooth_var <- basis_plot_variables(object, variables)
+  coord <- if (str_detect(object[[".type"]][1L], "TPRS")) coord_equal() else NULL
+  plt <- prepare_surface_plot(object,
+    x_var = smooth_var[1], y_var = smooth_var[2], fill_var = ".value",
+    fill_limits = fill_limits,
+    mapping = aes(x = .data[[smooth_var[1]]], y = .data[[smooth_var[2]]],
+      fill = .data[[".value"]], group = .data[[".bf"]]),
+    labels = prepare_basis_labels(object, smooth_var, xlab = xlab, ylab = ylab,
+      title = title, subtitle = subtitle, caption = caption),
+    facet = prepare_basis_facet(object, smooth_var, labeller = labeller),
+    coord = coord, contour = contour, contour_col = contour_col,
+    n_contour = n_contour,
+    contour_stat = StatBasisContour,
+    contour_mapping = aes(z = .data[[".value"]],
+      group = .data[[".bf"]], fill = NULL),
+    axis_guide = guide_axis(angle = angle, check.overlap = TRUE),
+    fill_guide = NULL, legend_position = NULL)
   if (!legend) {
     plt <- plt + guides(fill = "none")
   }
+  plt
 
-  if (isTRUE(contour)) {
-    plt <- plt + geom_contour(
-      mapping = aes(
-        z = .data[[".value"]],
-        group = .data[[".bf"]], fill = NULL
-      ),
-      colour = contour_col,
-      bins = n_contour,
-      na.rm = TRUE
+}
+
+# A basis slice may be constant or contain none of the shared contour levels.
+# Keep ggplot2's contour calculation and levels, but allow an empty result.
+StatBasisContour <- ggplot2::ggproto("StatBasisContour", ggplot2::StatContour,
+  compute_group = function(data, scales, z.range, bins = NULL,
+    binwidth = NULL, breaks = NULL, na.rm = FALSE) {
+    values <- data$z[is.finite(data$z)]
+    if (length(values) < 2L ||
+        diff(range(values)) <= sqrt(.Machine$double.eps) * max(abs(values))) {
+      return(data.frame())
+    }
+    empty <- FALSE
+    withCallingHandlers(
+      ggplot2::StatContour$compute_group(data, scales, z.range = z.range,
+        bins = bins, binwidth = binwidth, breaks = breaks, na.rm = na.rm),
+      warning = function(cnd) {
+        msg <- conditionMessage(cnd)
+        if (grepl("Zero contours were generated", msg, fixed = TRUE)) {
+          empty <<- TRUE
+          invokeRestart("muffleWarning")
+        }
+        if (empty && msg %in% c(
+          "no non-missing arguments to min; returning Inf",
+          "no non-missing arguments to max; returning -Inf")) {
+          invokeRestart("muffleWarning")
+        }
+      }
     )
   }
+)
 
-  if (str_detect(object[[".type"]][1L], "TPRS")) {
-    plt <- plt + coord_equal()
+# Resolve saved orders before falling back to labels for older basis objects.
+basis_plot_variables <- function(object, variables = NULL) {
+  label <- unique(object$.smooth)
+  order <- attr(object, "plot_variables")[[label]]
+  if (is.null(order)) order <- vars_from_label(label)
+  resolved <- validate_plot_variables(variables, order)
+  if (!is.null(variables)) validate_plot_variable_types(resolved, object)
+  if (identical(unique(object$.type), "SOS") &&
+      !identical(unname(resolved), unname(order))) {
+    cli::cli_abort("`variables` cannot reorder latitude and longitude in a spline on the sphere.")
   }
+  resolved
+}
 
-  plt
+# Each basis function has its own conditioning facets and a shared fill range.
+plot_multivariate_basis <- function(object, variables, subtitle = NULL, ...) {
+  finite <- object$.value[is.finite(object$.value)]
+  limits <- if (length(finite)) range(finite) else NULL
+  bfs <- levels(object$.bf)
+  bfs <- bfs[bfs %in% unique(object$.bf)]
+  lapply(bfs, function(bf) {
+    data <- object[object$.bf == bf, ]
+    plot_bivariate_basis(data, variables = variables, fill_limits = limits,
+      subtitle = if (is.null(subtitle)) paste("Basis function", bf) else subtitle,
+      ...)
+  })
 }
 
 #' Plot posterior smooths
@@ -640,9 +607,11 @@
 #' @param n_samples numeric; if not `NULL`, sample `n_samples` from the
 #'   posterior draws for plotting.
 #' @param seed numeric; random seed to be used to if sampling draws.
-#' @param alpha numeric; alpha transparency for confidence or simultaneous
+#' @param alpha Deprecated; use [gratia_theme_get()] theme
+#'   settings instead. Numeric; alpha transparency for confidence or simultaneous
 #'   interval.
-#' @param colour The colour to use to draw the posterior smooths. Passed to
+#' @param colour Deprecated; use [gratia_theme_get()] theme
+#'   settings instead. The colour to use to draw the posterior smooths. Passed to
 #'   [ggplot2::geom_line()] as argument `colour`.
 #' @param contour logical; should contour lines be added to smooth surfaces?
 #' @param xlab character or expression; the label for the x axis. If not
@@ -673,35 +642,15 @@
 #'
 #' @examples
 #' load_mgcv()
-#' dat1 <- data_sim("eg1", n = 400, dist = "normal", scale = 1, seed = 1)
-#' ## a single smooth GAM
-#' m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat1, method = "REML")
-#' ## posterior smooths from m1
-#' sm1 <- smooth_samples(m1, n = 15, seed = 23478)
-#' ## plot
-#' draw(sm1, alpha = 0.7)
-#' ## plot only 5 randomly smapled draws
-#' draw(sm1, n_samples = 5, alpha = 0.7)
+#' # Simulate an additive Gaussian response and fit a GAM
+#' dat <- data_sim("eg1", n = 200, scale = 1, seed = 1)
+#' m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 #'
-#' ## A factor-by smooth example
-#' dat2 <- data_sim("eg4", n = 400, dist = "normal", scale = 1, seed = 1)
-#' ## a multi-smooth GAM with a factor-by smooth
-#' m2 <- gam(y ~ fac + s(x2, by = fac) + s(x0), data = dat2, method = "REML")
-#' ## posterior smooths from m1
-#' sm2 <- smooth_samples(m2, n = 15, seed = 23478)
-#' ## plot, this time selecting only the factor-by smooth
-#' draw(sm2, select = "s(x2)", partial_match = TRUE, alpha = 0.7)
-#'
-#' \donttest{
-#' ## A 2D smooth example
-#' dat3 <- data_sim("eg2", n = 400, dist = "normal", scale = 1, seed = 1)
-#' ## fit a 2D smooth
-#' m3 <- gam(y ~ te(x, z), data = dat3, method = "REML")
-#' ## get samples
-#' sm3 <- smooth_samples(m3, n = 10)
-#' ## plot just 6 of the draws, with contour line overlays
-#' draw(sm3, n_samples = 6, contour = TRUE, seed = 42)
-#' }
+#' # Draw 15 possible curves for the smooth of x2 on a 100-point grid
+#' sm <- smooth_samples(m, select = "s(x2)", n_grid = 100,
+#'   n_draws = 15, seed = 23478)
+#' draw(sm)
+#' @inheritSection draw Label layout
 `draw.smooth_samples` <- function(object,
                                   select = NULL,
                                   n_samples = NULL, seed = NULL,
@@ -717,6 +666,7 @@
                                   angle = NULL,
                                   ncol = NULL, nrow = NULL,
                                   guides = "keep", ...) {
+  gratia_plot_arguments(c("contour_col", "alpha", "colour"), environment())
   scales <- match.arg(scales)
 
   ## select smooths
@@ -756,10 +706,9 @@
 
   ## return
   n_plots <- length(plts)
-  if (is.null(ncol) && is.null(nrow)) {
-    ncol <- ceiling(sqrt(n_plots))
-    nrow <- ceiling(n_plots / ncol)
-  }
+  layout <- prepare_plot_layout(n_plots, ncol = ncol, nrow = nrow)
+  ncol <- layout$ncol
+  nrow <- layout$nrow
   wrap_plots(plts,
     byrow = TRUE, ncol = ncol, nrow = nrow, guides = guides,
     ...
@@ -861,12 +810,10 @@
                                         colour = "black", angle = NULL) {
   smooth_var <- vars_from_label(object[1L, ".smooth"])
 
-  plt <- ggplot(object, aes(
-    x = .data[[smooth_var]],
-    y = .data[[".value"]],
-    group = .data[[".draw"]]
-  )) +
-    geom_line(alpha = alpha, colour = colour) +
+  plt <- add_curve_interval(
+    gratia_plot(object, aes(x = .data[[smooth_var]], y = .data[[".value"]],
+      group = .data[[".draw"]])),
+    line_alpha = alpha, line_colour = colour, curve_role = "sample") +
     guides(x = guide_axis(angle = angle))
 
   ## default axis labels if none supplied
@@ -896,7 +843,7 @@
 
   ## add rug?
   if (isTRUE(rug)) {
-    plt <- plt + geom_rug(
+    plt <- plt + geom_gratia_rug(
       data = distinct(object, .data[[smooth_var]]),
       mapping = aes(x = .data[[smooth_var]]),
       inherit.aes = FALSE, sides = "b", alpha = 0.5
@@ -940,53 +887,18 @@
     }
   }
 
-  ## plot
-  plt <- ggplot(object, aes(
-    x = .data[[xvars[1L]]],
-    y = .data[[xvars[2L]]]
-  )) +
-    geom_raster(aes(fill = .data[[".value"]])) +
-    guides(x = guide_axis(angle = angle))
+  coord <- if (any(str_detect(unique(object$.type),
+    c("^TPRS", "^Duchon", "^GP", "^SOS")))) coord_equal() else NULL
+  prepare_surface_plot(object,
+    x_var = xvars[1], y_var = xvars[2], fill_var = ".value",
+    fill_limits = c(-1, 1) * max(abs(object[[".value"]])),
+    fill_title = "Partial effect",
+    labels = labs(title = title, x = xlab, y = ylab, subtitle = subtitle,
+      caption = caption),
+    contour = contour, contour_col = contour_col, n_contour = n_contour,
+    contour_na_rm = FALSE, angle = angle, facet = facet_wrap(~.draw),
+    coord = coord, legend_position = NULL)
 
-  if (contour) {
-    plt <- plt + geom_contour(aes(z = .data[[".value"]]),
-      bins = n_contour,
-      colour = contour_col
-    )
-  }
-
-  plt <- plt +
-    labs(
-      title = title, x = xlab, y = ylab, subtitle = subtitle,
-      caption = caption
-    )
-
-  plt <- plt + scale_fill_distiller(palette = "RdBu", type = "div")
-
-  # facet by the draw column
-  plt <- plt + facet_wrap(~.draw)
-
-  ## Set the limits for the fill
-  guide_limits <- c(-1, 1) * max(abs(object[[".value"]]))
-  plt <- plt + expand_limits(fill = guide_limits)
-
-  # add guide
-  plt <- plt +
-    guides(fill = guide_colourbar(
-      title = "Partial effect",
-      direction = "vertical"#,
-      #barheight = grid::unit(0.25, "npc")
-    ))
-
-  # if isotropic smooth, fix aspect ratio
-  if (any(str_detect(
-    unique(object$.type),
-    c("^TPRS", "^Duchon", "^GP", "^SOS")
-  ))) {
-    plt <- plt + coord_equal()
-  }
-
-  plt
 }
 
 `draw_3d_posterior_smooths` <- function(object, xvars,
@@ -1008,18 +920,27 @@
 #' @param rug logical;
 #' @param ref_line logical;
 #' @param contour logical; should contour lines be added to smooth surfaces?
-#' @param ci_alpha numeric; alpha transparency for confidence or simultaneous
+#' @param ci_alpha Deprecated; use [gratia_theme_get()] theme
+#'   settings instead. Numeric; alpha transparency for confidence or simultaneous
 #'   interval.
-#' @param ci_col colour specification for the confidence/credible intervals
+#' @param ci_col Deprecated; use [gratia_theme_get()] theme
+#'   settings instead. Colour specification for the confidence/credible intervals
 #'   band. Affects the fill of the interval.
-#' @param smooth_col colour specification for the the smooth or difference line.
-#' @param line_col colour specification for drawing reference lines
+#' @param smooth_col Deprecated; use [gratia_theme_get()] theme
+#'   settings instead. Colour specification for the the smooth or difference line.
+#' @param line_col Deprecated; use [gratia_theme_get()] theme
+#'   settings instead. Colour specification for drawing reference lines
 #' @param ncol,nrow numeric; the numbers of rows and columns over which to
 #'   spread the plots
 #' @param xlab,ylab,title,subtitle,caption character; labels with which to
 #'   annotate plots
 #' @param guides character; one of `"keep"` (the default), `"collect"`, or
 #'   `"auto"`. Passed to [patchwork::plot_layout()]
+#' @param variables character vector; every covariate of the selected smooth,
+#'   in plotting order. The first two are the x and y axes; the third defines
+#'   facets for three covariates, or facet rows for four covariates; the fourth
+#'   defines facet columns. `NULL` uses the order saved with the estimates.
+#'   Drawing rearranges evaluated points without generating a new grid.
 #' @inheritParams draw.gam
 #'
 #' @importFrom ggplot2 ggplot geom_ribbon aes geom_line labs lims
@@ -1028,16 +949,16 @@
 #' @export
 #'
 #' @examples
-#'
 #' load_mgcv()
-#' # simulate some data; a factor smooth example
-#' df <- data_sim("eg4", seed = 42)
-#' # fit GAM
-#' m <- gam(y ~ fac + s(x2, by = fac) + s(x0), data = df, method = "REML")
+#' # Fit separate smooths for two groups from a simulated data set.
+#' dat <- data_sim("eg4", n = 120, seed = 42)
+#' dat <- droplevels(subset(dat, fac %in% c("1", "2")))
+#' model <- gam(y ~ fac + s(x2, by = fac, k = 5), data = dat, method = "REML")
 #'
-#' # calculate the differences between pairs of smooths the f_j(x2) term
-#' diffs <- difference_smooths(m, select = "s(x2)")
-#' draw(diffs)
+#' # Plot the estimated difference between the two smooths.
+#' differences <- difference_smooths(model, select = "s(x2)", n = 40)
+#' draw(differences)
+#' @inheritSection draw Label layout
 `draw.difference_smooth` <- function(object,
                                      select = NULL,
                                      rug = FALSE,
@@ -1057,7 +978,10 @@
                                      title = NULL,
                                      subtitle = NULL,
                                      caption = NULL,
-                                     angle = NULL, ...) {
+                                     angle = NULL, ...,
+                                     variables = NULL) {
+  tube_check_saved_controls(names(match.call(expand.dots = FALSE)$...))
+  gratia_plot_arguments(c("contour_col", "ci_alpha", "ci_col", "smooth_col", "line_col"), environment())
   scales <- match.arg(scales)
 
   ## how many smooths
@@ -1066,11 +990,34 @@
   select <- check_user_select_smooths(smooths = sm, select = select)
   sm <- sm[select]
 
-  plotlist <- vector("list", length = length(sm))
-
-  df_list <- split(object,
-    f = paste(object$.level_1, object$.level_2, sep = "-")
-  )
+  orders <- attr(object, "plot_variables")
+  tensor_orders <- attr(object, "tensor_term_order")
+  object <- object[object$.smooth %in% sm, , drop = FALSE]
+  attr(object, "plot_variables") <- orders
+  attr(object, "tensor_term_order") <- tensor_orders
+  if (!is.null(variables)) {
+    for (label in sm) {
+      validate_plot_variables(variables, difference_plot_variables(object, label))
+    }
+  }
+  # Match comparison tuples without joining factor labels into strings.
+  comparison <- vctrs::vec_group_id(object[c(".smooth", ".level_1", ".level_2")])
+  df_list <- split(object, f = factor(comparison, levels = unique(comparison)))
+  df_list <- lapply(df_list, function(x) {
+    attr(x, "plot_variables") <- orders
+    attr(x, "tensor_term_order") <- tensor_orders
+    x
+  })
+  dimensions <- vapply(df_list, function(x) {
+    label <- unique(x$.smooth)
+    length(difference_plot_variables(x, label))
+  }, integer(1L))
+  surface_limits <- if (scales == "fixed" && any(dimensions > 1L)) {
+    values <- unlist(lapply(df_list[dimensions > 1L], `[[`, ".diff"))
+    c(-1, 1) * max(c(0, abs(values[is.finite(values)])))
+  } else {
+    NULL
+  }
 
   plotlist <- map(df_list, draw_difference,
     ci_alpha = ci_alpha,
@@ -1083,26 +1030,35 @@
     contour_col = contour_col,
     n_contour = n_contour,
     xlab = xlab, ylab = ylab, title = title,
-    subtitle = subtitle, caption = caption, angle = angle
+    subtitle = subtitle, caption = caption, angle = angle,
+    variables = variables, fill_limits = surface_limits
   )
 
-  if (isTRUE(identical(scales, "fixed"))) {
-    ylims <- range(object[[".lower_ci"]], object[[".upper_ci"]])
-
-    for (i in seq_along(plotlist)) {
-      plotlist[[i]] <- plotlist[[i]] + lims(y = ylims)
-    }
+  if (scales == "fixed" && any(dimensions == 1L)) {
+    curves <- bind_rows(df_list[dimensions == 1L])
+    limits <- range(curves$.lower_ci, curves$.upper_ci)
+    plotlist[dimensions == 1L] <- lapply(plotlist[dimensions == 1L],
+      function(p) p + lims(y = limits))
   }
+  wrap_interval_plots(plotlist, object, scales = "free",
+    ncol = ncol, nrow = nrow, guides = guides, ...)
+}
 
-  n_plots <- length(plotlist)
-  if (is.null(ncol) && is.null(nrow)) {
-    ncol <- ceiling(sqrt(n_plots))
-    nrow <- ceiling(n_plots / ncol)
+difference_plot_variables <- function(object, label) {
+  variables <- attr(object, "plot_variables")[[label]]
+  if (is.null(variables)) {
+    variables <- attr(object, "tensor_term_order")
+    if (is.list(variables)) variables <- variables[[label]]
   }
-  wrap_plots(plotlist,
-    byrow = TRUE, ncol = ncol, nrow = nrow,
-    guides = guides, ...
-  )
+  if (is.null(variables)) variables <- vars_from_label(label)
+  variables
+}
+
+difference_value_label <- function(object) {
+  info <- attr(object, "derivative_info", exact = TRUE)
+  if (is.null(info)) return("Difference")
+  paste0(if (info$order == 1L) "First" else "Second",
+    " derivative of difference\nwith respect to ", info$focal)
 }
 
 `draw_difference` <- function(object,
@@ -1117,9 +1073,12 @@
                               n_contour = NULL,
                               xlab = NULL, ylab = NULL,
                               title = NULL, subtitle = NULL, caption = NULL,
-                              angle = NULL) {
-  xvars <- unique(object[[".smooth"]])
-  xvars <- vars_from_label(xvars)
+                              angle = NULL, variables = NULL,
+                              fill_limits = NULL) {
+  label <- unique(object[[".smooth"]])
+  xvars <- validate_plot_variables(variables,
+    difference_plot_variables(object, label))
+  if (!is.null(variables)) validate_plot_variable_types(xvars, object)
   n_xvars <- length(xvars)
   plt <- if (identical(n_xvars, 1L)) {
     draw_1d_difference(object, xvars,
@@ -1136,7 +1095,7 @@
       contour_col = contour_col, n_contour = n_contour,
       xlab = xlab, ylab = ylab,
       title = title, subtitle = subtitle,
-      caption = caption, angle = angle
+      caption = caption, angle = angle, fill_limits = fill_limits
     )
   } else if (identical(n_xvars, 3L)) {
     draw_3d_difference(object, xvars,
@@ -1144,7 +1103,7 @@
       contour_col = contour_col, n_contour = n_contour,
       xlab = xlab, ylab = ylab,
       title = title, subtitle = subtitle,
-      caption = caption, angle = angle
+      caption = caption, angle = angle, fill_limits = fill_limits
     )
   } else if (identical(n_xvars, 4L)) {
     draw_4d_difference(object, xvars,
@@ -1152,7 +1111,7 @@
       contour_col = contour_col, n_contour = n_contour,
       xlab = xlab, ylab = ylab,
       title = title, subtitle = subtitle,
-      caption = caption, angle = angle
+      caption = caption, angle = angle, fill_limits = fill_limits
     )
   } else {
     message("Can't plot differences for smooths of more than 4 variables.")
@@ -1186,7 +1145,7 @@
     subtitle
   }
   y_label <- if (is.null(ylab)) {
-    "Difference"
+    difference_value_label(object)
   } else {
     ylab
   }
@@ -1196,32 +1155,26 @@
     title
   }
 
-  plt <- ggplot(object, aes(
+  plt <- gratia_plot(object, aes(
     x = .data[[xvars[1L]]],
     y = .data$.diff
   )) +
     guides(x = guide_axis(angle = angle))
 
   if (isTRUE(ref_line)) {
-    plt <- plt + geom_hline(yintercept = 0, colour = line_col)
+    plt <- plt + geom_gratia_reference_hline(yintercept = 0, colour = line_col)
   }
-  plt <- plt +
-    geom_ribbon(
-      aes(
-        ymin = .data$.lower_ci,
-        ymax = .data$.upper_ci,
-        y = NULL
-      ),
-      alpha = ci_alpha, fill = ci_col, colour = NA
-    ) +
-    geom_line(colour = smooth_col) +
+  plt <- add_curve_interval(plt,
+    lower_var = ".lower_ci", upper_var = ".upper_ci",
+    ribbon_mapping = aes(y = NULL), ribbon_alpha = ci_alpha,
+    ribbon_fill = ci_col, ribbon_colour = NA, line_colour = smooth_col) +
     labs(
-      title = plt_title, x = xvars, y = y_label,
-      subtitle = plt_subtitle
+      title = plt_title, x = if (is.null(xlab)) xvars else xlab, y = y_label,
+      subtitle = plt_subtitle, caption = caption
     )
 
   if (isTRUE(rug)) {
-    plt <- plt + geom_rug(sides = "b", alpha = 0.5)
+    plt <- plt + geom_gratia_rug(sides = "b", alpha = 0.5)
   }
   plt
 }
@@ -1237,7 +1190,8 @@
                                  ylab = NULL,
                                  title = NULL,
                                  subtitle = NULL,
-                                 caption = NULL, angle = NULL) {
+                                 caption = NULL, angle = NULL,
+                                 fill_limits = NULL) {
   if (is.null(xlab)) {
     xlab <- xvars[1]
   }
@@ -1258,52 +1212,37 @@
   } else {
     subtitle
   }
-
-  plt <- ggplot(object, aes(
-    x = .data[[xvars[1L]]],
-    y = .data[[xvars[2L]]]
-  )) +
-    geom_raster(aes(fill = .data$.diff)) +
-    guides(x = guide_axis(angle = angle))
-
-  if (contour) {
-    plt <- plt + geom_contour(aes(z = .data$.diff),
-      bins = n_contour,
-      colour = contour_col
-    )
+  if (is.null(fill_limits)) {
+    fill_limits <- c(-1, 1) * max(abs(object[[".diff"]]))
   }
 
-  plt <- plt +
-    labs(
-      title = plt_title, x = xlab, y = ylab, subtitle = plt_subtitle,
-      caption = caption
-    )
+  prepare_surface_plot(object,
+    x_var = xvars[1], y_var = xvars[2], fill_var = ".diff",
+    fill_limits = fill_limits,
+    fill_title = difference_value_label(object),
+    labels = labs(title = plt_title, x = xlab, y = ylab,
+      subtitle = plt_subtitle, caption = caption),
+    contour = contour, contour_col = contour_col, n_contour = n_contour,
+    contour_na_rm = FALSE, angle = angle, legend_position = NULL)
 
-  plt <- plt + scale_fill_distiller(palette = "RdBu", type = "div")
-
-  ## Set the limits for the fill
-  guide_limits <- c(-1, 1) * max(abs(object[[".diff"]]))
-  plt <- plt + expand_limits(fill = guide_limits)
-
-  plt <- plt +
-    guides(fill = guide_colourbar(
-      title = "Difference",
-      direction = "vertical"#,
-      #barheight = grid::unit(0.25, "npc")
-    ))
-
-  plt
 }
 
+#' @importFrom ggplot2 facet_wrap facet_grid label_both
+#' @importFrom dplyr vars
 `draw_3d_difference` <- function(object, xvars, contour = FALSE,
                                  contour_col = "black", n_contour = NULL,
                                  xlab = NULL,
                                  ylab = NULL,
                                  title = NULL,
                                  subtitle = NULL,
-                                 caption = NULL, angle = NULL) {
-  warning("Plotting differences of 3D smooths is not yet implemented")
-  return(NULL)
+                                 caption = NULL, angle = NULL,
+                                 fill_limits = NULL) {
+  if (is.null(fill_limits)) fill_limits <- surface_fill_limits(object$.diff)
+  draw_2d_difference(object, xvars, contour = contour,
+    contour_col = contour_col, n_contour = n_contour,
+    xlab = xlab, ylab = ylab, title = title, subtitle = subtitle,
+    caption = caption, angle = angle, fill_limits = fill_limits) +
+    facet_wrap(vars(.data[[xvars[3L]]]), labeller = label_both)
 }
 
 `draw_4d_difference` <- function(object, xvars, contour = FALSE,
@@ -1312,16 +1251,26 @@
                                  ylab = NULL,
                                  title = NULL,
                                  subtitle = NULL,
-                                 caption = NULL, angle = NULL) {
-  warning("Plotting differences of 4D smooths is not yet implemented")
-  return(NULL)
+                                 caption = NULL, angle = NULL,
+                                 fill_limits = NULL) {
+  if (is.null(fill_limits)) fill_limits <- surface_fill_limits(object$.diff)
+  draw_2d_difference(object, xvars, contour = contour,
+    contour_col = contour_col, n_contour = n_contour,
+    xlab = xlab, ylab = ylab, title = title, subtitle = subtitle,
+    caption = caption, angle = angle, fill_limits = fill_limits) +
+    facet_grid(rows = vars(.data[[xvars[3L]]]),
+      cols = vars(.data[[xvars[4L]]]), labeller = label_both)
 }
 
-#' Display penalty matrices of smooths using `ggplot`
+#' Display penalty matrices of smooths using [ggplot2::ggplot()]
 #'
-#' Displays the penalty matrices of smooths as a heatmap using `ggplot`
+#' Displays the penalty matrices of smooths as a heatmap using [ggplot2::ggplot()]
 #'
-#' @param normalize logical; normalize the penalty to the range -1, 1?
+#' @param geom character; either `"raster"` (the default) or `"tile"`.
+#'   Raster rendering uses an image for the matrix, which can keep large PDF
+#'   plots compact. Tile rendering uses individual rectangles, providing vector
+#'   cells in PDF and SVG output, but can increase file size for large matrices.
+#' @param normalize logical; normalise the penalty to the range -1, 1?
 #' @param as_matrix logical; how should the plotted penalty matrix be oriented?
 #'   If `TRUE` row 1, column 1 of the penalty matrix is draw in the upper left,
 #'   whereas, if `FALSE` it is drawn in the lower left of the plot.
@@ -1349,16 +1298,13 @@
 #'
 #' @examples
 #' load_mgcv()
-#' dat <- data_sim("eg4", n = 400, seed = 42)
-#' m <- gam(y ~ s(x0) + s(x1, bs = "cr") + s(x2, bs = "bs", by = fac),
-#'   data = dat, method = "REML"
-#' )
+#' # Fit a cubic regression spline to simulated data.
+#' dat <- data_sim("eg1", n = 80, seed = 42)
+#' model <- gam(y ~ s(x0, bs = "cr", k = 6), data = dat, method = "REML")
 #'
-#' ## produce a multi-panel plot of all penalties
-#' draw(penalty(m))
-#'
-#' # for a specific smooth
-#' draw(penalty(m, select = "s(x2):fac1"))
+#' # Plot the smooth's penalty matrix.
+#' draw(penalty(model))
+#' @inheritSection draw Label layout
 `draw.penalty_df` <- function(object,
                               normalize = FALSE,
                               as_matrix = TRUE,
@@ -1370,15 +1316,18 @@
                               caption = NULL,
                               ncol = NULL, nrow = NULL,
                               guides = "keep",
+                              geom = c("raster", "tile"),
                               ...) {
+  geom <- match.arg(geom)
+
   ## if non-specified fill set our default
   if (is.null(continuous_fill)) {
-    continuous_fill <- scale_fill_gradient2(
+    continuous_fill <- gratia_default_scale(scale_fill_gradient2(
       low = "#2166AC",
       high = "#B2182B",
       mid = "white",
       midpoint = 0
-    )
+    ))
   }
 
   plt_list <- split(object, f = object[[".penalty"]])
@@ -1387,6 +1336,7 @@
     plt_list[[i]] <- plot_penalty(plt_list[[i]],
       normalize = normalize,
       as_matrix = as_matrix,
+      geom = geom,
       continuous_fill = continuous_fill,
       xlab = rep(xlab, n_plots),
       ylab = rep(ylab, n_plots),
@@ -1397,10 +1347,9 @@
   }
 
   ## return
-  if (is.null(ncol) && is.null(nrow)) {
-    ncol <- ceiling(sqrt(n_plots))
-    nrow <- ceiling(n_plots / ncol)
-  }
+  layout <- prepare_plot_layout(n_plots, ncol = ncol, nrow = nrow)
+  ncol <- layout$ncol
+  nrow <- layout$nrow
   wrap_plots(plt_list,
     byrow = TRUE, ncol = ncol, nrow = nrow,
     guides = guides,
@@ -1419,7 +1368,10 @@
                            ylab = NULL,
                            title = NULL,
                            subtitle = NULL,
-                           caption = NULL) {
+                           caption = NULL,
+                           geom = c("raster", "tile")) {
+  geom <- match.arg(geom)
+
   ## fix ordering of levels so the heatmap matches a matrix
   ## Don't reverse the cols!!
   row_levs <- if (isTRUE(as_matrix)) {
@@ -1438,7 +1390,7 @@
   }
 
   ## base plot
-  plt <- ggplot(
+  plt <- gratia_plot(
     object,
     aes(
       x = .data$.col,
@@ -1446,7 +1398,10 @@
       fill = .data$.value
     )
   ) +
-    geom_raster()
+    switch(geom,
+      raster = geom_gratia_surface_raster(interpolate = FALSE),
+      tile = geom_gratia_surface_tile(width = 1, height = 1, colour = NA)
+    )
 
   ## add the scale
   plt <- plt + continuous_fill

@@ -4,7 +4,19 @@
 \alias{add_fitted.gam}
 \title{Add fitted values from a GAM to a data frame}
 \usage{
-\method{add_fitted}{gam}(data, model, value = ".fitted", type = "response", ...)
+\method{add_fitted}{gam}(
+  data,
+  model,
+  value = ".fitted",
+  type = "response",
+  ...,
+  envir = NULL,
+  marginalise = NULL,
+  integration = c("quadrature", "monte_carlo"),
+  n_quad = 40L,
+  n_integrate = 5000L,
+  seed = NULL
+)
 }
 \arguments{
 \item{data}{a data frame containing values for the variables used to fit the
@@ -20,6 +32,37 @@ will be stored.}
 \code{\link[mgcv:predict.gam]{mgcv::predict.gam()}} for options.}
 
 \item{...}{additional arguments passed to \code{\link[mgcv:predict.gam]{mgcv::predict.gam()}}.}
+
+\item{envir}{environment or \code{NULL}; functions and constants needed to
+evaluate model expressions in prediction data. With \code{NULL}, use the
+model's formula environment. Supply raw covariates in \code{data}.}
+
+\item{marginalise}{\code{NULL} retains the usual predictions. \code{TRUE} selects all
+supported \code{re} and \code{fs} terms; character vectors select exact smooth labels.
+Fitted predictions integrate response means over new zero-mean Gaussian
+effects. Response samplers draw new effects before sampling responses.
+Smoothing parameters and dispersion remain fixed. Only ordinary \code{\link[mgcv:gam]{mgcv::gam()}}
+and \code{\link[mgcv:bam]{mgcv::bam()}} fits with a scalar response mean are supported.}
+
+\item{integration}{Integration method when \code{marginalise} is supplied:
+\code{"quadrature"} (the default) or \code{"monte_carlo"}. Both integrate
+over the Gaussian distribution of the selected effects at each row.}
+
+\item{n_quad}{Initial Gauss-Hermite point count, between 2 and 1000.
+Successive doubled orders, up to four times this count, and an interlaced
+rule with one fewer point must agree within
+\code{1e-8 + 1e-6 * abs(value)} for means and derivatives. Where the random-effect
+variance exceeds one, an independent adaptive rule also checks agreement.
+Failure to agree reports an error.
+Identity, log and probit links use their closed-form Gaussian integrals;
+their metadata records zero quadrature points and zero integration error.}
+
+\item{n_integrate}{Number of Monte Carlo integration draws, at least two.
+These are shared across rows and posterior coefficient draws. This count
+is separate from \code{n_draws}. Ignored for quadrature.}
+
+\item{seed}{Optional integer seed. An explicit seed preserves the caller's
+random-number state; \code{NULL} advances the current state.}
 }
 \value{
 A data frame (tibble) formed from \code{data} and predictions from

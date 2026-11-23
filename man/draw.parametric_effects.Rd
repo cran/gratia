@@ -19,29 +19,41 @@
   ...,
   ncol = NULL,
   nrow = NULL,
-  guides = "keep"
+  guides = "keep",
+  contour = TRUE,
+  contour_col = "black",
+  n_contour = NULL,
+  surface = c("raster", "tile", "3d"),
+  surface_3d = list(),
+  ci_3d = FALSE,
+  ci_3d_alpha = 0.15,
+  ci_3d_col = "grey60",
+  continuous_fill = NULL,
+  discrete_colour = NULL,
+  discrete_fill = NULL,
+  back_transform = FALSE,
+  time_varying_style = c("ribbon", "pointrange"),
+  subtitle = NULL
 )
 }
 \arguments{
-\item{object}{a fitted GAM, the result of a call to \code{\link[mgcv:gam]{mgcv::gam()}}.}
+\item{object}{A \code{parametric_effects} object, optionally nested.}
 
-\item{scales}{character; should all univariate smooths be plotted with the
-same y-axis scale? If \code{scales = "free"}, the default, each univariate
-smooth has its own y-axis scale. If \code{scales = "fixed"}, a common y axis
-scale is used for all univariate smooths.
-
-Currently does not affect the y-axis scale of plots of the parametric
-terms.}
+\item{scales}{Use a common effect-axis range for curves and points (\code{fixed}),
+or separate ranges (\code{free}). Surface covariate axes are not affected.}
 
 \item{ci_level}{numeric between 0 and 1; the coverage of credible interval.}
 
-\item{ci_col}{colour specification for the confidence/credible intervals
+\item{ci_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specification for the confidence/credible intervals
 band. Affects the fill of the interval.}
 
-\item{ci_alpha}{numeric; alpha transparency for confidence or simultaneous
+\item{ci_alpha}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Numeric; alpha transparency for confidence or simultaneous
 interval.}
 
-\item{line_col}{colour specification used for regression lines of linear
+\item{line_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specification used for regression lines of linear
 continuous terms.}
 
 \item{constant}{numeric; a constant to add to the estimated values of the
@@ -50,7 +62,9 @@ before the confidence band is computed.}
 
 \item{fun}{function; a function that will be applied to the estimated values
 and confidence interval before plotting. Can be a function or the name of a
-function. Function \code{fun} will be applied after adding any \code{constant}, if
+function. For simultaneous bands it must be monotone over the entire band;
+endpoint transformation alone does not preserve non-monotone band coverage.
+Function \code{fun} will be applied after adding any \code{constant}, if
 provided.}
 
 \item{rug}{logical; draw a rug plot at the bottom of each plot for 1-D
@@ -69,7 +83,100 @@ spread the plots}
 
 \item{guides}{character; one of \code{"keep"} (the default), \code{"collect"}, or
 \code{"auto"}. Passed to \code{\link[patchwork:plot_layout]{patchwork::plot_layout()}}}
+
+\item{contour}{logical; should contours be draw on the plot using
+\code{\link[ggplot2:geom_contour]{ggplot2::geom_contour()}}.}
+
+\item{contour_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specification for contour lines.}
+
+\item{n_contour}{numeric; the number of contour bins. Will result in
+\code{n_contour - 1} contour lines being drawn. See \code{\link[ggplot2:geom_contour]{ggplot2::geom_contour()}}.}
+
+\item{surface}{character; one of \code{"raster"} (the default), \code{"tile"}, or
+\code{"3d"}. Raster surfaces keep large PDF plots compact; tiles are borderless
+vector rectangles. Three-dimensional surfaces use the optional \code{ggcube}
+package, with the displayed partial effect as height and fill. Numeric
+smooth and parametric surfaces, including conditioning facets and soap
+films, are supported. Curves and factor estimates keep their usual display;
+spherical smooths retain their geographic rendering.
+Covariate scale changes that produce irregular spacing use rectangles
+bounded by adjacent coordinate midpoints for flat surfaces.}
+
+\item{surface_3d}{named list of view options passed to \code{\link[ggcube:coord_3d]{ggcube::coord_3d()}},
+for example \code{list(yaw = 45, persp = FALSE)}. The default \code{\link[base:list]{base::list()}} uses the
+default view with \code{ggcube::light(backface_scale = 1)}, preserving equal
+horizontal units for isotropic smooths. Supply \code{light = ggcube::light(...)}
+in this list to override lighting; \code{ggcube::light(method = "none")} disables
+it. An explicitly supplied \code{light} replaces the entire default light.
+Only the coordinate system is used; ggcube's theme settings are not applied.
+These options affect all 3D panels in a call. For different views per term,
+modify individual plots returned by \code{\link[=assemble]{assemble()}}. The \code{dist} entry here
+controls perspective; the top-level \code{dist} argument controls masking.}
+
+\item{ci_3d}{logical; add lower and upper interval surfaces to numeric
+smooth and parametric effect panels when \code{surface = "3d"}? Defaults to
+\code{FALSE}. Applies across supported model classes and conditioning facets.
+Other panel types, including standard errors, retain their usual display.
+Smooth bounds follow \code{interval}; parametric bounds remain pointwise.}
+
+\item{ci_3d_alpha}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Numeric between 0 and 1; opacity of both interval
+surfaces, independent of \code{ci_alpha}. Defaults to \code{0.15}.}
+
+\item{ci_3d_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. One R colour; fill of both interval surfaces, independent
+of \code{ci_col} and the estimate's continuous fill scale. Defaults to \code{"grey60"}.}
+
+\item{continuous_fill}{a suitable fill scale to be used when plotting
+continuous variables.}
+
+\item{discrete_colour}{a suitable colour scale to be used when plotting
+discrete variables.}
+
+\item{discrete_fill}{a suitable fill scale to be used when plotting
+discrete variables.}
+
+\item{back_transform}{logical; plot covariates on their original scale?
+Defaults to \code{FALSE}, using model coordinates such as \code{log(x)} for a term
+containing \code{log(x)}. With \code{TRUE}, recover the raw covariates, generate a
+grid on their original scale and evaluate the model expressions forwards.
+Applies to axes, rugs, partial-residual locations and conditioning facets,
+including tensor products and parametric interactions. Each smooth axis
+must depend on one distinct original model covariate. Functions such as
+\code{foo(x)} are supported when their raw inputs and functions can be recovered;
+no inverse function is needed. Missing raw data or unavailable functions
+produce an error; supply \code{data} or \code{envir} as appropriate.
+With supplied prediction \code{data}, unavailable raw fitting observations
+omit rugs and partial residuals; prediction rows are never used as observations.
+For precomputed smooth estimates, prepare raw grids with
+\code{smooth_estimates(model, back_transform = TRUE)} before drawing with
+\code{back_transform = TRUE}. Raw inputs supplied through \code{data} also retain
+their coordinates. Transformed-only estimates cannot be relabelled on the
+raw scale, including grids carrying typical values from \code{include_all = TRUE}.
+Transformed soap-film boundaries lack retained raw coordinates and must
+be drawn with \code{back_transform = FALSE}.
+Parametric estimates retain both scales; multi-column basis
+expansions retain raw axes on either setting. Does not transform estimated
+effects or their intervals; use \code{fun} for that.}
+
+\item{time_varying_style}{Display sdmTMB time-varying coefficients using
+a line, points and interval ribbon (\code{"ribbon"}, the default), or points
+and interval bars with a connecting line (\code{"pointrange"}). Other model
+terms keep their usual displays.}
+
+\item{subtitle}{Character or expression; replace the automatic predictor
+subtitle on every panel. \code{NULL} uses the automatic label and \code{""}
+suppresses it.}
 }
 \description{
 Plot estimated effects for model parametric terms
 }
+\section{Label layout}{
+
+Pass \code{label_control = draw_label_control(...)} to \code{draw()} to wrap discrete
+axis labels and legend text, stagger discrete tick labels, or adjust legend
+and colour-bar layout. Settings apply to each panel, including unwrapped
+plot lists. See \code{\link[=draw_label_control]{draw_label_control()}} for the available settings.
+}
+

@@ -16,7 +16,7 @@
 #'   or the first level (sorted as per the vector returned by [base::levels()]
 #'   if several levels are observed the same number of times.
 #'
-#' These values are already computed when calling `gam()` or `bam()` for example
+#' These values are already computed when calling [mgcv::gam()] or [mgcv::bam()] for example
 #' and can be found in the `var.summary` component of the fitted model. Function
 #' [typical_values()] will extract these values for you if you are interested.
 #'
@@ -38,6 +38,24 @@
 #'   those combinations. If `FALSE`, no filtering is done. If `.observed_only`
 #'   is a character vector, on those variables named in the vector are used to
 #'   in the comparison with the combinations in `object`.
+#'
+#' @param .by <[`tidy-select`][dplyr::dplyr_tidy_select]> Optional grouping
+#'   variables. With `.by = NULL` (the default), expressions are evaluated over
+#'   the full data set. Otherwise, expressions are evaluated separately within
+#'   each observed group and the resulting grids are combined. Grouping variables
+#'   are included automatically; expressions for these variables in `...` select
+#'   groups and are evaluated once over the full data set. Unobserved combinations
+#'   are omitted, and selecting no observed groups is an error.
+#'
+#' @details With `.by`, unspecified covariates retain their overall representative
+#' values. Specify an expression such as `z = mean(z)` to use a group-specific
+#' value instead. Factor levels and ordered status are preserved, and the result
+#' is an ungrouped tibble. `.observed_only` filters exact matches within each
+#' group; interpolated values need not match observed values.
+#'
+#' Grouping limits the default range of [evenly()] to each group's marginal
+#' range. It does not ensure joint support for multiple continuous covariates.
+#' Explicit values or `lower` and `upper` bounds can still request extrapolation.
 #'
 #' @seealso The convenience functions [evenly()], [ref_level()], and [level()].
 #' [typical_values()] for extracting the representative values used for
@@ -65,59 +83,22 @@
 `data_slice.data.frame` <- function(
   object,
   ...,
-  .observed_only = FALSE
+  .observed_only = FALSE,
+  .by = NULL
 ) {
-  # deal with ...
   exprs <- rlang::enquos(...)
-  slice_vars <- user_vars <- purrr::map(exprs, rlang::eval_tidy, data = object)
-
-  # check now if there are elements of slice_vars that aren't in the object
+  by <- data_slice_by(rlang::enquo(.by), object)
   vars <- names(object)
-  nms <- names(slice_vars)
-  if (any(i <- !nms %in% vars)) {
-    message(
-      "Some specified variable(s) not used in `object``:\n",
-      paste(" * ", nms[i], collapse = "\n", sep = ""),
-      "\n"
-    )
-  }
-
-  # typical values, only needed ones that aren't
-  need_tv <- setdiff(vars, names(slice_vars))
-  if (length(need_tv) > 0L) {
-    tv <- typical_values(object)
-    slice_vars <- append(slice_vars, tv[need_tv])
-  }
-
-  out <- expand_grid(!!!{
-    slice_vars
-  })
-
-  # filter out combinations that aren't in object
-  # decide what we are doing, all or selected
-  if (
-    (is.logical(.observed_only) && isTRUE(.observed_only)) ||
-      is.character(.observed_only)
-  ) {
-    filter_vars <- if (is.logical(.observed_only)) {
-      nms
-    } else {
-      .observed_only
-    }
-    out <- out |>
-      semi_join(
-        object |> distinct(across(all_of(filter_vars))),
-        by = filter_vars
-      )
-  }
-
-  # return
-  out
+  need_tv <- setdiff(vars, union(names(exprs), by))
+  data_slice_grid(object, exprs, vars, by, .observed_only,
+    typical_values(object, vars = all_of(need_tv)),
+    source = "`object`"
+  )
 }
 
 #' @param data an alternative data frame of values containing all the variables
 #'   needed to fit the model. If `NULL`, the default, the data used to fit the
-#'   model will be recovered using `model.frame`. User-supplied expressions
+#'   model will be recovered using [stats::model.frame()]. User-supplied expressions
 #'   passed in `...` will be evaluated in `data`.
 #' @param envir the environment within which to recreate the data used to fit
 #'   `object`.
@@ -155,60 +136,89 @@
 #' ds <- data_slice(m, x2 = evenly(x2, n = 50), x1 = mean(x1))
 `data_slice.gam` <- function(object, ..., data = NULL,
                              envir = NULL,
-                             .observed_only = FALSE) {
-  # if envir is NULL, set it to the formula of the object
-  if (is.null(envir)) {
-    envir <- environment(formula(object))
-  }
-  # prep data
+                             .observed_only = FALSE, .by = NULL) {
+  # Share environment resolution with expression evaluation and data recovery.
+  object <- with_model_envir(object, envir)
+  envir <- model_envir(object)
+  # Only recover raw inputs used by the slice expressions. A constant offset
+  # supplied by the caller must not require its original training vector.
   odata <- data
-  data <- data_slice_data(object, data = data)
-
-  # deal with ...
   exprs <- rlang::enquos(...)
-  slice_vars <- purrr::map(exprs, rlang::eval_tidy, data = data)
-
-  # check now if there are elements of slice_vars that aren't in the model
   vars <- model_vars(object)
-  nms <- names(slice_vars)
+  # Stored summaries provide names and classes without recovering unused inputs.
+  by <- data_slice_by(rlang::enquo(.by),
+    if (is.null(data)) object[["var.summary"]] else data
+  )
+  needed <- unique(unlist(lapply(exprs, function(x) all.vars(rlang::get_expr(x)))))
+  needed <- union(intersect(needed, vars), by)
+  if (is.character(.observed_only)) needed <- union(needed, .observed_only)
+  if (isTRUE(.observed_only)) needed <- union(needed, names(exprs))
+  data <- data_slice_data(object, data = data, envir = envir, vars = needed)
+
+  data_slice_grid(data, exprs, vars, by, .observed_only,
+    typical_values(object, data = odata), source = "model"
+  )
+}
+
+# Resolve grouping selections before recovering the data needed by GAM slices.
+data_slice_by <- function(expr, data) {
+  pos <- tidyselect::eval_select(expr, data = data, allow_rename = FALSE)
+  names(pos)
+}
+
+# Evaluate and expand each group separately; the ungrouped path uses the same
+# builder and retains the original expression and column ordering.
+data_slice_grid <- function(data, exprs, vars, by, observed_only, tv, source) {
+  nms <- names(exprs)
   if (any(i <- !nms %in% vars)) {
     message(
-      "Some specified variable(s) not used in model:\n",
-      paste(" * ", nms[i], collapse = "\n", sep = ""),
-      "\n"
+      "Some specified variable(s) not used in ", source, ":\n",
+      paste(" * ", nms[i], collapse = "\n", sep = ""), "\n"
     )
   }
+  need_tv <- setdiff(vars, union(nms, by))
+  typical <- if (length(need_tv)) as.list(tv[need_tv]) else list()
+  filter_vars <- if (isTRUE(observed_only)) nms else observed_only
+  filter_observed <- isTRUE(observed_only) || is.character(observed_only)
 
-  # typical values, only needed ones that aren't
-  need_tv <- setdiff(vars, names(slice_vars))
-  if (length(need_tv) > 0L) {
-    tv <- typical_values(object, data = odata, envir = envir)
-    slice_vars <- append(slice_vars, tv[need_tv])
-  }
-
-  out <- expand_grid(!!!{
-    slice_vars
-  })
-
-  # filter out combinations that aren't in object
-  # decide what we are doing, all or selected
-  if (
-    (is.logical(.observed_only) && isTRUE(.observed_only)) ||
-      is.character(.observed_only)
-  ) {
-    filter_vars <- if (is.logical(.observed_only)) {
-      nms
-    } else {
-      .observed_only
+  build <- function(group, key = list()) {
+    values <- purrr::map(exprs[!nms %in% by], rlang::eval_tidy,
+      data = group
+    )
+    values <- c(values, as.list(key))
+    if (length(by)) values <- values[union(nms, by)]
+    out <- tidyr::expand_grid(!!!c(values, typical))
+    if (filter_observed) {
+      out <- dplyr::semi_join(out, group, by = union(by, filter_vars))
     }
-    out <- out |>
-      semi_join(
-        data |> distinct(across(all_of(filter_vars))),
-        by = filter_vars
-      )
+    out
   }
-  # return
-  out
+  if (!length(by)) return(build(data))
+
+  # Group expressions select levels once in the full data mask. Never evaluate
+  # evenly(fac) inside a group: it intentionally returns all declared levels.
+  selected <- purrr::map(exprs[intersect(nms, by)], rlang::eval_tidy,
+    data = data
+  )
+  rows <- rep(TRUE, nrow(data))
+  for (nm in names(selected)) rows <- rows & data[[nm]] %in% selected[[nm]]
+  data <- dplyr::ungroup(data)[rows, , drop = FALSE]
+  if (!nrow(data)) {
+    cli::cli_abort("No observed groups remain for {.arg .by}.")
+  }
+  groups <- vctrs::vec_group_loc(data[by])
+  out <- lapply(seq_len(nrow(groups)), function(i) {
+    key <- groups$key[i, , drop = FALSE]
+    group <- data[groups$loc[[i]], , drop = FALSE]
+    tryCatch(build(group, key), error = function(err) {
+      label <- paste(paste(by, vapply(key, as.character, character(1)),
+        sep = " = "), collapse = ", ")
+      cli::cli_abort("Cannot create data slice for group {.val {label}}.",
+        parent = err
+      )
+    })
+  })
+  dplyr::bind_rows(out)
 }
 
 #' @export
@@ -219,14 +229,8 @@
 
 #' @export
 #' @rdname data_slice
-`data_slice.list` <- function(object, ...) { # for gamm4 lists only
-  ## Is this list likely to be a gamm4 list?
-  if (!is_gamm4(object)) {
-    stop("`object` does not appear to a `gamm4` model object",
-      call. = FALSE
-    )
-  }
-  data_slice(object[["gam"]], ...)
+`data_slice.gamm4` <- function(object, ...) {
+  data_slice(gamm4_gam(object), ...)
 }
 
 #' @export
@@ -235,48 +239,9 @@
   data_slice.gam(object, ...)
 }
 
-`data_slice_data` <- function(object, data = NULL) {
-  is_mf <- FALSE # is a data a model frame
-  if (is.null(data)) {
-    # get data from object$model
-    data <- object[["model"]]
-    is_mf <- TRUE
-  } else {
-    if (!is.null(attr(data, "terms"))) {
-      is_mf <- TRUE
-    }
-  }
-
-  # find the response if there
-  tt <- terms(object)
-  resp_i <- attr(tt, "response")
-  y_var <- names(attr(tt, "dataClasses"))[resp_i]
-  all_vars <- all.vars(tt)
-  data_names <- names(data)
-  # if the response variable is named in data, delete it
-  y_in_data <- data_names %in% y_var
-  if (any(y_in_data)) {
-    data <- data[!y_in_data]
-  }
-
-  # handle offsets; if we generated the data from the model, then set
-  # offset variable(s) to 1
-  # But note that this is only for the data object that we'll eval into
-  # The offset will get set to whatever is the typical value for those offset
-  # variable(s). As with any other variable you'll need to provide a value
-  # for each offset if you want to use that value
-  if (is_mf) {
-    # are there any offsets
-    offsets <- attr(tt, "offset")
-    if (length(offsets)) {
-      # when selected from data, remember we deleted the response already
-      # offsets will be shifted 1 col to left
-      data[, offsets - 1] <- 1
-      names(data)[offsets - 1] <- all_vars[offsets]
-    }
-  }
-
-  data
+# Return raw covariates for user slice expressions, never renamed transforms.
+`data_slice_data` <- function(object, data = NULL, envir = NULL, vars = model_vars(object)) {
+  recover_raw_data(object, data, envir, vars)
 }
 
 #' @importFrom stats median quantile
@@ -406,18 +371,16 @@
 #' @rdname typical_values
 #' @param vars terms to include or exclude from the returned object. Uses
 #'   tidyselect principles.
-#' @param envir the environment within which to recreate the data used to fit
-#'   `object`.
-#' @param data an optional data frame of data used to fit the model if
-#'   reconstruction of the data from the model doesn't work.
+#' @param data an optional data frame supplying covariate classes. By default,
+#'   these are taken from the stored model frame; typical values come from
+#'   the fitted model's covariate summaries.
 #'
 #' @export
 #' @importFrom rlang enquo
 #' @importFrom tidyselect eval_select
 #' @importFrom stats model.frame formula
 `typical_values.gam` <- function(
-    object, vars = everything(),
-    envir = environment(formula(object)), data = NULL, ...) {
+    object, vars = everything(), data = NULL, ...) {
   # extract the summary from the fitted GAM
   # summ is a named list
   summ <- object[["var.summary"]]
@@ -434,24 +397,13 @@
   # dc <- data_class(summ) # mgcv doesn't store logicals as logicals
   # so we need to extract the data classes ourselves
   # try to recover the data
-  mf <- model.frame(object)
-  if (is.null(data)) {
-    # simon sets the $formula component to have env .GlobalEnv
-    # so this can fail to find the thing we want, which would be fine,
-    # but worse it can find something with the same name as data somewhere
-    # else. An example is `data = df`, which can find `df()` in some settings,
-    # like when pkgdown is running examples.
-    data <- eval(object$call$data, envir)
-    # check that `data` is a data frame or list and set it to NULL if it isn't
-    if (!(inherits(data, "data.frame") || is.list(data))) {
-      data <- NULL
-    }
-  }
-  if (is.null(data)) {
-    data <- mf
-  }
-  data <- data[names(summ)] # take only vars mgcv thinks we need
-  dc <- data_class(data)
+  # Stored summaries supply values; raw data supply their actual classes.
+  if (is.null(data)) data <- model.frame(object)
+  # Numeric summaries remain usable when only a transformed column survived.
+  # Stored raw columns retain logical and factor classes where available.
+  dc <- data_class(summ)
+  available <- intersect(names(summ), names(data))
+  dc[available] <- data_class(data[available])
 
   # if any logicals extract them as per numeric (2nd value) and convert to
   # logical. do this before extracting the numerics
@@ -554,24 +506,20 @@
   UseMethod("data_combos")
 }
 
-#' @param envir the environment within which to recreate the data used to fit
-#'   `object`.
-#' @param data an optional data frame of data used to fit the model if
-#'   reconstruction of the data from the model doesn't work.
+#' @inheritParams typical_values
 #'
 #' @inheritParams factor_combos
 #' @export
 #' @rdname data_combos
 `data_combos.gam` <- function(object, vars = everything(),
                               complete = TRUE,
-                              envir = environment(formula(object)),
                               data = NULL, ...) {
-  tv <- typical_values(object, envir = envir, data = data)
+  tv <- typical_values(object, data = data)
   is_fac <- vapply(tv, is.factor, logical(1L))
   if (any(is_fac)) { # drop factor from typical values
     tv <- tv[, !is_fac]
   }
-  fc <- factor_combos(object)
+  fc <- factor_combos(object, complete = complete)
   tbl <- expand_grid(fc, tv)
 
   # include/exclude any terms?

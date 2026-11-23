@@ -31,7 +31,8 @@
 
 \item{warn_limits}{logical; draw Tukey's warning limit lines at +/- 1?}
 
-\item{fitted_colour, bar_colour, bar_fill, ref_line_colour, warn_line_colour}{colours used to draw the respective element of the rootogram.}
+\item{fitted_colour, bar_colour, bar_fill, ref_line_colour, warn_line_colour}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme settings instead. Colours used
+to draw the respective element of the rootogram.}
 
 \item{xlab, ylab}{character; labels for the x and y axis of the rootogram.
 May be missing (\code{NULL}), in which case suitable labels will be used.
@@ -53,20 +54,20 @@ are obtained by grouping the data into bins. The rootogram is drawn using
 \code{\link[ggplot2:ggplot]{ggplot2::ggplot()}} graphics. The design closely follows Kleiber & Zeileis
 (2016).
 }
+\section{Label layout}{
+
+Pass \code{label_control = draw_label_control(...)} to \code{draw()} to wrap discrete
+axis labels and legend text, stagger discrete tick labels, or adjust legend
+and colour-bar layout. Settings apply to each panel, including unwrapped
+plot lists. See \code{\link[=draw_label_control]{draw_label_control()}} for the available settings.
+}
+
 \examples{
-load_mgcv()
-df <- data_sim("eg1", n = 1000, dist = "poisson", scale = 0.1, seed = 6)
-
-# A poisson example
-m <- gam(y ~ s(x0, bs = "cr") + s(x1, bs = "cr") + s(x2, bs = "cr") +
-  s(x3, bs = "cr"), family = poisson(), data = df, method = "REML")
-rg <- rootogram(m)
-
-# plot the rootogram
-draw(rg)
-
-# change the type of rootogram
-draw(rg, type = "suspended")
+# Fit a Poisson model for the counts under each spray treatment.
+m <- mgcv::gam(count ~ spray, family = poisson(),
+  data = InsectSprays, method = "REML")
+# Draw a suspended rootogram to show the differences from fitted frequencies.
+draw(rootogram(m), type = "suspended")
 }
 \references{
 Kleiber, C., Zeileis, A., (2016) Visualizing Count Data

@@ -4,6 +4,16 @@
 #'   class `"gam"` (or that inherit from that class) are supported.
 #' @param ... arguments passed to other methods.
 #'
+#' @details
+#' With [stats::na.exclude()], excluded observations are restored as `NA` partial
+#' residuals, in fitting order after any `subset`. With [stats::na.omit()], only retained
+#' observations are returned. Computation uses aligned working residuals,
+#' working weights and term predictions before restoring excluded positions.
+#'
+#' Partial residuals require working residuals and working weights from the
+#' fitted model. Families that do not provide these, including the location-scale
+#' families in `mgcv`, are not supported, even for terms in the location predictor.
+#'
 #' @export
 `partial_residuals` <- function(object, ...) {
   UseMethod("partial_residuals")
@@ -72,7 +82,9 @@
   sms <- sms[take] # subset to selected smooths
 
   ## compute partial resids
-  p_resids <- compute_partial_residuals(object, terms = sms)
+  p_resids <- restore_model_rows(
+    compute_partial_residuals(object, terms = sms), object
+  )
 
   ## cast as a tibble --- do something with the column names?
   ##  - they are non-standard: `s(x)` for example
@@ -87,123 +99,162 @@
 }
 
 #' @export
-`partial_residuals.list` <- function(object, ...) {
-  if (!is_gamm4(object)) {
-    stop("'object' is not a `gamm4()` fit. Can't handle general lists.")
+`partial_residuals.gamm4` <- function(object, ...) {
+  partial_residuals(gamm4_gam(object), ...)
+}
+
+# Check the stored working quantities, not default residuals or prior weights.
+# General families can provide the latter without supporting partial residuals.
+check_partial_residuals <- function(object, warn = FALSE) {
+  if (!is.null(object[["residuals"]]) && !is.null(object[["weights"]])) {
+    return(TRUE)
   }
-  partial_residuals(object[["gam"]], ...)
+  msg <- paste0("Partial residuals are not available for family <",
+    family_name(family(object)), ">: working residuals and working weights ",
+    "are required.")
+  if (warn) {
+    warning(msg, " Drawing smooths without partial residuals.", call. = FALSE)
+    return(FALSE)
+  }
+  stop(msg, call. = FALSE)
 }
 
 ## Internal function to compute weighted residuals for use by other functions
 #' @importFrom stats residuals weights
 #' @importFrom tibble as_tibble
 `compute_partial_residuals` <- function(object, terms = NULL, data = NULL) {
-  ## weighted working residuals..., see #273
-  ## need the working weights too, see #273 for further discussion
-  w <- weights(object, type = "working")
-  ## need as.numeric for gamm() objects
-  w_resid <- as.numeric(residuals(object, "working")) * sqrt(w)
-
-  ## if data is null, just grab the $model out of object
-  if (is.null(data)) {
-    data <- object[["model"]]
-  } else {
-    ## check size of data
-    if (nrow(data) != length(w_resid)) {
-      stop("Length of model residuals not equal to number of rows in 'data'",
-        call. = FALSE
-      )
-    }
-  }
-  ## get the contributions for each selected smooth
-  p_terms <- if (is.null(terms)) {
-    predict(object, type = "terms", newdata = data)
-  } else {
-    predict(object, type = "terms", terms = terms, newdata = data)
-  }
-  attr(p_terms, "constant") <- NULL # remove intercept attribute
-  ## and compute partial residuals
+  check_partial_residuals(object)
+  used <- model_used_rows(object)
+  w <- weights(used, type = "working")
+  w_resid <- as.numeric(residuals(used, "working")) * sqrt(w)
+  # Evaluate terms on the same retained observations as the residuals.
+  p_terms <- predict_model(used, type = "terms", terms = terms,
+                     newdata = used$model)
+  attr(p_terms, "constant") <- NULL
   p_resids <- p_terms + w_resid
+  if (!is.null(data)) {
+    p_resids <- residual_rows(p_resids, object, data, partial = TRUE)
+  }
 
   as_tibble(p_resids)
 }
 
 # -- quantile residuals -------------------------------------------------------
-#' Randomised residuals
+#' PIT and randomised quantile residuals
+#'
+#' Map observations to probabilities under the fitted response distribution.
+#' These probability integral transform (PIT) residuals have a uniform reference
+#' distribution under a correctly specified continuous model with known
+#' parameters. Quantile residuals transform them to standard-normal scores.
+#' Discrete observations require randomisation over their probability mass.
 #'
 #' @param model a fitted model object.
-#' @param type character; which type of randomised residual to return
-#' @param seed integer; the random seed to use when generating randomised
-#'   residuals. Can be missing, in which case the current state residuals are
-#'   computed using the current state of the random number generator.
+#' @param type character; `"pit"` returns probabilities and `"quantile"` returns
+#'   standard-normal scores.
+#' @param seed integer or `NULL`; random seed for randomised residuals. With
+#'   `NULL`, calculations use the current random-number state. An explicit seed
+#'   preserves the caller's state, including when none was previously initialised.
 #' @param ... arguments passed to other methods.
+#' @param conditioning character or `NULL`; hold fitted random effects fixed
+#'   (`"conditional"`), average over new effects (`"marginal"`), or use the
+#'   extracted GAM (`"gam_component"`), where supported. See [diagnostic_support].
+#' @param component character; which delta sdmTMB component to check; see
+#'   [appraise()].
+#' @param response `NULL` uses all responses; a single integer selects one.
+#'   For [mgcv::gfam()] models, the integer indexes the family list and selects
+#'   observations assigned to that component. For joint GJRM models, it selects
+#'   a response in model order. All-response GJRM residuals form a matrix with
+#'   one column per response; selecting one returns a vector. Grouped-family
+#'   residuals are always vectors.
+#' @details
+#' With [stats::na.exclude()], excluded observations are restored as `NA` residuals;
+#' with [stats::na.omit()], only observations used for fitting are returned. Selecting a
+#' grouped-family component with `response` returns only its retained fitting
+#' observations, without placeholders for excluded rows whose component
+#' membership is unavailable.
+#'
+#' For [mgcv::cnorm()], [mgcv::clog()] and [mgcv::cpois()] models, censored
+#' observations have PIT residuals sampled uniformly between `F(l)` and `F(u)`.
+#' Here `l` and `u` bound the censoring interval and `F` is the fitted cumulative
+#' distribution function (CDF) of the underlying response. Left and right
+#' censoring use probabilities zero and one for the unbounded end, respectively.
+#' Quantile residuals apply [stats::qnorm()] to these PIT values. Uncensored continuous
+#' observations use `F(y)`; uncensored Poisson observations are randomised between
+#' `F(y - 1)` and `F(y)`. Use non-integer censoring limits for [mgcv::cpois()], as
+#' recommended by mgcv.
+#'
+#' For grouped-family GAMs fitted with [mgcv::gfam()], each observation uses its
+#' component's CDF, fitted nuisance parameters, dispersion and weights. Residuals
+#' are returned in fitting order. `response = NULL` uses all components; an
+#' integer selects observations assigned to that family-list position. Repeated
+#' families retain distinct indices. With an explicit seed, selected residuals
+#' match the corresponding rows of an all-component call whenever all
+#' components support the calculation. All selected active components must supply supported
+#' CDFs and probability limits for discrete or censored observations. Unsupported
+#' components give an error; [appraise()] can instead select deviance residuals
+#' automatically. See [appraise()] for supported families. Tweedie zeros have
+#' positive probability mass: their PITs are randomised between `F(0-) = 0` and
+#' `F(0)`. Positive observations use `F(y)`.
+#'
+#' When a CDF can calculate log probabilities in both tails, quantile residuals
+#' use the log probability in the smaller tail directly. This avoids infinities
+#' caused by rounding probabilities to zero or one. Probabilities are not
+#' clipped, so true zero-probability tails still give infinite residuals for
+#' ordinary models; grouped diagnostics report non-finite residuals as errors.
+#' PITs are returned as ordinary probabilities and may still round to zero or
+#' one in extreme tails. Applying [stats::qnorm()] to returned PITs can therefore be
+#' less accurate than requesting quantile residuals directly. CDFs without log
+#' probabilities retain ordinary-probability calculations.
+#'
+#' For [mgcv::multinom()] models, probabilities accumulate in the existing
+#' category coding order `0, ..., K`. If category `j` has probability `p_j`,
+#' its PIT is `F(j - 1) + V * p_j`, where `V` is uniform on `(0, 1)`.
+#' This uses one categorical response, rather than a vector of trial counts.
+#' The coding does not change the multinomial likelihood into an ordinal model.
+#' Each fixed enumeration gives a uniform randomised transform under the true
+#' model, but changing the enumeration can change individual residuals and
+#' which departures from the model are easiest to detect.
+#'
+#' Marginal checks may calculate residuals from ranks in joint response
+#' simulations when no analytic marginal CDF is available. See
+#' [diagnostic_support] for the rank definition, conditioning choices and
+#' limitations after fitting.
+#'
 #' @export
 `quantile_residuals` <- function(
-  model, type = c("pit", "quantile"), seed = NULL, ...
+  model, type = c("pit", "quantile"), seed = NULL, ..., response = NULL
 ) {
+  diagnostic_response_selection(model, response)
   UseMethod("quantile_residuals")
 }
 
 #' @importFrom stats qnorm
 #' @export
 #' @rdname quantile_residuals
-`quantile_residuals.gam` <- function(
-  model, type = c("pit", "quantile"), seed = NULL, ...
-) {
-  # random seed stuff
-  if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
-    runif(1)
-  }
-  if (is.null(seed)) {
-    RNGstate <- get(".Random.seed", envir = .GlobalEnv)
+quantile_residuals.gam <- function(model, type = c("pit", "quantile"),
+                                    seed = NULL, conditioning = NULL, ..., response = NULL) {
+  model <- gfam_select_diagnostics(model, response, supplied = !missing(response), seed = seed)
+  check_distribution_conditioning(conditioning)
+  type <- match.arg(type)
+  model <- gfam_cache_selected_residuals(model, type, seed)
+  cached <- attr(model, "gratia.diagnostics")
+  if (!is.null(attr(model, "gratia.gfam.original", exact = TRUE)) && identical(cached$type, type))
+    return(cached$residuals)
+  used <- model_used_rows(model)
+  if (is_gfam_family(stats::family(used))) {
+    r <- diagnostic_seed(seed, gfam_quantile_residuals(gfam_diagnostic_context(used), type))
   } else {
-    R.seed <- get(".Random.seed", envir = .GlobalEnv)
-    set.seed(seed)
-    RNGstate <- structure(seed, kind = as.list(RNGkind()))
-    on.exit(assign(".Random.seed", R.seed, envir = .GlobalEnv))
+    r <- distribution_quantile_residuals(response_distribution(used), used$y,
+      type = type, seed = seed)
   }
-
-  r <- do_quantile_residuals(
-    y = model$y,
-    fv = model$fitted.values,
-    wt = model$prior.weights,
-    scale = model$sig2,
-    fam = family(model),
-    type = type
-  )
-
-  # return
-  r
+  restore_model_rows(r, model)
 }
 
 #' @export
 #' @rdname quantile_residuals
-`quantile_residuals.glm` <- function(
-  model, type = c("pit", "quantile"), seed = NULL, ...
-) {
-  # random seed stuff
-  if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
-    runif(1)
-  }
-  if (is.null(seed)) {
-    RNGstate <- get(".Random.seed", envir = .GlobalEnv)
-  } else {
-    R.seed <- get(".Random.seed", envir = .GlobalEnv)
-    set.seed(seed)
-    RNGstate <- structure(seed, kind = as.list(RNGkind()))
-    on.exit(assign(".Random.seed", R.seed, envir = .GlobalEnv))
-  }
-
-  r <- do_quantile_residuals(
-    y = model$y,
-    fv = model$fitted.values,
-    wt = model$prior.weights,
-    scale = summary(model)$dispersion,
-    fam = family(model),
-    type = type
-  )
-
-  r
+quantile_residuals.glm <- function(model, type = c("pit", "quantile"),
+                                    seed = NULL, ...) {
+  quantile_residuals.gam(model, type = type, seed = seed, ...)
 }
 
 `do_quantile_residuals` <- function(
@@ -224,40 +275,160 @@
     stop("Quantile residuals are not available for this family.")
   }
 
-  # for now, use the internal fitted.values but that isn't going to work in the
-  # long term as often those values are not a vector and not for mu (IIRC)
-  r <- fam$cdf(
-    q = y,
-    mu = fv,
-    wt = wt,
-    scale = scale,
-    log_p = FALSE # not log scale as 0s become -Inf on the log scale
-  )
-
-  discrete_dist <- c("poisson", "binomial", "negative binomial")
-  fn <- family_name(fam)
-  if (grepl("^Negative Binomial", fn)) {
-    fn <- "negative binomial"
-  }
-  if (fn %in% discrete_dist) {
-    # residual for CDF at previous y value
-    r0 <- fam$cdf(
-      q = y - 1L,
-      mu = fv,
-      wt = wt,
-      scale = scale,
-      log_p = FALSE # not log scale as 0s become -Inf on the log scale
-    )
-    # choose a random value between r0 and r
-    r <- runif(n = length(y), min = r0, max = r)
+  ft <- family_type(fam)
+  if (ft %in% c("cnorm", "clog", "cpois")) {
+    bounds <- censored_response_bounds(y, discrete = ft == "cpois")
+  } else {
+    lower <- y
+    if (ft %in% c("poisson", "negative_binomial", "ziplss", "multinom")) {
+      lower <- y - 1
+    } else if (ft == "tweedie") {
+      # Compound Poisson Tweedie responses have a probability atom at zero.
+      # Its left limit is F(0-) = 0, rather than F(0) used for positive values.
+      lower[which(y == 0)] <- -Inf
+    } else if (ft == "binomial") {
+      # The fitted response is a proportion; subtract one success, not one
+      # whole proportion. Zero-weight rows have a degenerate distribution.
+      lower <- y - 1 / pmax(wt, 1)
+    }
+    bounds <- list(lower = lower, upper = y)
   }
 
-  # finish off the residuals; if PIT resids we don't need to do anything
-  # and if quantile, we push the resids through the standard normal inv CDF
+  if ("lower_tail" %in% names(formals(fam$cdf))) {
+    return(log_tail_residuals(bounds, fv, wt, scale, fam$cdf, type))
+  }
+
+  # Preserve support for CDFs without native log-tail evaluation (including
+  # user-supplied CDFs). Their accuracy remains limited by ordinary probabilities.
+  r <- fam$cdf(bounds$upper, mu = fv, wt = wt, scale = scale, log_p = FALSE)
+  random <- which(bounds$lower != bounds$upper)
+  if (length(random)) {
+    r0 <- fam$cdf(bounds$lower, mu = fv, wt = wt, scale = scale, log_p = FALSE)
+    r[random] <- runif(length(random), min = r0[random], max = r[random])
+  }
   if (type == "quantile") {
-    r <- qnorm(r, log.p = FALSE)
+    r <- qnorm(r)
+  }
+  r
+}
+
+# Compute both tails directly, retaining tiny probabilities through the chosen
+# quantile transformation. The same uniform draw must be used for both tails.
+log_tail_residuals <- function(bounds, mu, wt, scale, cdf, type,
+                               quantile_function = stats::qnorm) {
+  log_u <- if (is.function(bounds$cdf_upper))
+    bounds$cdf_upper(log_p = TRUE, lower_tail = TRUE) else
+    cdf(bounds$upper, mu, wt, scale, log_p = TRUE, lower_tail = TRUE)
+  log_s <- if (is.function(bounds$cdf_upper))
+    bounds$cdf_upper(log_p = TRUE, lower_tail = FALSE) else
+    cdf(bounds$upper, mu, wt, scale, log_p = TRUE, lower_tail = FALSE)
+  random <- which(bounds$lower != bounds$upper | (bounds$left_limit %||% FALSE))
+  if (length(random)) {
+    # runif() historically returned unnamed randomized residuals.
+    log_u <- unname(log_u)
+    log_s <- unname(log_s)
+    log_f0 <- if (is.function(bounds$cdf_lower))
+      bounds$cdf_lower(log_p = TRUE, lower_tail = TRUE) else
+      cdf(bounds$lower, mu, wt, scale, log_p = TRUE, lower_tail = TRUE)
+    log_s0 <- if (is.function(bounds$cdf_lower))
+      bounds$cdf_lower(log_p = TRUE, lower_tail = FALSE) else
+      cdf(bounds$lower, mu, wt, scale, log_p = TRUE, lower_tail = FALSE)
+    v <- runif(length(random))
+    log_v <- log(v)
+    log_1mv <- log1p(-v)
+    log_u[random] <- logspace_add(
+      log_1mv + log_f0[random], log_v + log_u[random]
+    )
+    log_s[random] <- logspace_add(
+      log_1mv + log_s0[random], log_v + log_s[random]
+    )
   }
 
-  # return
+  # Choose the smaller tail, which avoids loss of precision near probability 1.
+  lower <- log_u <= log_s
+  if (type == "quantile") {
+    r <- log_u
+    r[] <- NA_real_
+    idx <- which(lower)
+    r[idx] <- quantile_function(log_u[idx], log.p = TRUE)
+    upper <- which(!lower)
+    r[upper] <- quantile_function(log_s[upper], lower.tail = FALSE, log.p = TRUE)
+  } else {
+    r <- exp(log_u)
+    upper <- which(!lower)
+    r[upper] <- -expm1(log_s[upper])
+  }
   r
+}
+
+# Vectorized log(exp(a) + exp(b)), including two zero probabilities.
+logspace_add <- function(a, b) {
+  m <- pmax(a, b)
+  out <- m + log1p(exp(pmin(a, b) - m))
+  out[which(m == -Inf)] <- -Inf
+  out
+}
+
+# Convert mgcv's response encoding to bounds for CDF evaluation. The fitted
+# response is a vector with a "censor" attribute; the original is a matrix.
+censored_response_bounds <- function(y, discrete = FALSE) {
+  censor <- attr(y, "censor")
+  if (is.matrix(y)) {
+    censor <- y[, 2L]
+    y <- y[, 1L]
+  }
+  y <- as.numeric(y)
+  if (is.null(censor)) {
+    censor <- y
+  }
+
+  lower <- pmin(y, censor)
+  upper <- pmax(y, censor)
+  # An exact count occupies the CDF jump (F(y - 1), F(y)). Censoring
+  # intervals instead use F(l) and F(u), with non-integer limits for cpois.
+  exact <- censor == y
+  if (discrete) {
+    lower[exact] <- y[exact] - 1
+  }
+  list(lower = lower, upper = upper)
+}
+
+
+#' @export
+#' @rdname quantile_residuals
+quantile_residuals.lm <- function(model, type = c("pit", "quantile"), seed = NULL, ...) {
+  quantile_residuals.gam(prepare_lm_diagnostics(model), type, seed, ...)
+}
+
+#' @export
+#' @rdname quantile_residuals
+quantile_residuals.default <- function(model, type = c("pit", "quantile"),
+                                       seed = NULL, conditioning = NULL, ...) {
+  type <- match.arg(type)
+  source <- diagnostic_data(model, type = "response", conditioning = conditioning)$source
+  r <- distribution_quantile_residuals(response_distribution(source), source$y,
+    type = type, seed = seed)
+  restore_model_rows(r, source)
+}
+
+#' @export
+#' @rdname quantile_residuals
+quantile_residuals.glmmTMB <- function(model, type = c("pit", "quantile"),
+                                       seed = NULL, conditioning = NULL, ...) {
+  type <- match.arg(type)
+  source <- glmmtmb_diagnostic_model(model, type = type, conditioning = conditioning)
+  r <- distribution_quantile_residuals(response_distribution(source), source$y,
+    type = type, seed = seed)
+  restore_model_rows(r, source)
+}
+
+#' @export
+#' @rdname quantile_residuals
+quantile_residuals.gratia_glmmtmb_diagnostic <- function(model,
+    type = c("pit", "quantile"), seed = NULL, conditioning = NULL, ...) {
+  type <- match.arg(type)
+  model <- diagnostic_plot_source(model, type, seed, conditioning, ...)
+  r <- distribution_quantile_residuals(response_distribution(model), model$y,
+    type = type, seed = seed)
+  restore_model_rows(r, model)
 }

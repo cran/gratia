@@ -9,14 +9,15 @@
 #'   vector of terms. If missing, all parameters are considered.
 #' @param level numeric, `0 < level < 1`; the confidence level of the
 #'   point-wise or simultaneous interval. The default is `0.95` for a 95%
-#'   interval.
+#'   interval. It must be finite. If a vector is supplied, the first value is
+#'   used with a warning.
 #' @param type character; the type of interval to compute. One of `"confidence"`
 #'   for point-wise intervals, or `"simultaneous"` for simultaneous intervals.
 #' @param nsim integer; the number of simulations used in computing the
 #'   simultaneous intervals.
 #' @param ncores number of cores for generating random variables from a
 #'   multivariate normal distribution. Passed to [mvnfast::rmvn()].
-#'   Parallelization will take place only if OpenMP is supported (but appears
+#'   Parallelisation will take place only if OpenMP is supported (but appears
 #'   to work on Windows with current `R`).
 #' @param ... additional arguments for methods
 #'
@@ -33,7 +34,10 @@
 #' @examples
 #' load_mgcv()
 #' \dontshow{
-#' op <- options(pillar.sigfig = 2, cli.unicode = FALSE)
+#' op <- options(
+#'   pillar.sigfig = 2, cli.unicode = FALSE,
+#'   lifecycle_verbosity = "quiet"
+#' )
 #' }
 #' dat <- data_sim("eg1", n = 1000, dist = "normal", scale = 2, seed = 2)
 #' mod <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
@@ -99,14 +103,10 @@
     ))
     level <- rep(level, length.out = 1L)
   }
-  if (!is.numeric(level)) {
-    stop(paste("`level` should be numeric, but supplied:", level))
-  }
-  if (!(0 < level) && (level < 1)) {
-    stop(paste(
-      "`level` should lie in interval [0,1], but supplied:",
-      level
-    ))
+  if (length(level) != 1L || !is.numeric(level) || is.complex(level) ||
+      !is.finite(level) || level <= 0 || level >= 1) {
+    stop("`level` must be a finite number strictly between 0 and 1.",
+      call. = FALSE)
   }
 
   ## which type of interval is required
@@ -207,28 +207,49 @@
 #' @param n numeric; the number of points to evaluate smooths at.
 #' @param type character; the type of interval to compute. One of `"confidence"`
 #'   for point-wise intervals, or `"simultaneous"` for simultaneous intervals.
+#'   `"credible"` aliases `"confidence"`, for approximate Bayesian credible
+#'   intervals using the default covariance.
 #' @param nsim integer; the number of simulations used in computing the
 #'   simultaneous intervals.
-#' @param shift logical; should the constant term be add to the smooth?
+#' @param shift logical; should the intercept of the smooth's linear predictor
+#'   be added to the smooth? Predictors without an intercept are shifted by zero.
+#'   Only the intercept is added; other parametric effects, including factor
+#'   effects associated with a factor `by` smooth, are excluded. For full fitted
+#'   values and their confidence intervals, use [fitted_values()].
 #' @param transform logical; should the smooth be evaluated on a transformed
 #'   scale? For generalised models, this involves applying the inverse of the
 #'   link function used to fit the model. Alternatively, the name of, or an
 #'   actual, function can be supplied to transform the smooth and it's
 #'   confidence interval.
-#' @param unconditional logical; if `TRUE` (and `freq == FALSE`) then the
-#'   Bayesian smoothing parameter uncertainty corrected covariance matrix is
-#'   returned, if available.
 #' @param ncores number of cores for generating random variables from a
 #'   multivariate normal distribution. Passed to [mvnfast::rmvn()].
-#'   Parallelization will take place only if OpenMP is supported (but appears
+#'   Parallelisation will take place only if OpenMP is supported (but appears
 #'   to work on Windows with current `R`).
 #' @param partial_match logical; should matching `parm` use a partial match or
 #'   an exact match? Can only be used if `length(parm)` is `1`.
-#' @param ... additional arguments for methods
+#' @param ... additional arguments passed to [smooth_estimates()], including
+#'   `interval_method` to select Gaussian, stored [mgcv::scasm()] bootstrap, or
+#'   shape-enforced intervals, and `shape_source` to choose their initial source.
+#'   `simultaneous_method`, `simultaneous_domain`, and `tube_control` request
+#'   and configure continuous-interval tube bands; see [simultaneous_bands].
 #' @param newdata DEPRECATED! data frame; containing new values of the
 #'   covariates used in the model fit. The selected smooth(s) will be evaluated
 #'   at the supplied values.
 #'
+#' @inheritParams get_vcov
+#' @inheritParams smooth_estimates
+#' 
+#' @note `overall_uncertainty` applies to both pointwise and simultaneous
+#'   intervals. Each simultaneous band covers the evaluation points of one
+#'   fitted smooth by default, or its continuous domain with tube calibration;
+#'   separate smooths do not form a joint coverage set.
+#'   Native [mgcv::scasm()] fits default to `overall_uncertainty = FALSE` and use stored
+#'   bootstrap draws for pointwise intervals when available, as in
+#'   [smooth_estimates()]. Shifting and transforming a smooth preserves its
+#'   interval limits, including asymmetric bootstrap limits.
+#'   Shape-enforced intervals describe unshifted smooth components on the
+#'   model scale; `shift = TRUE` and effect transformations are unsupported.
+#' 
 #' @return a tibble with components:
 #' 1. `.smooth`; character indicating to which term each row relates,
 #' 2. `.type`; the type of smooth,
@@ -238,7 +259,8 @@
 #' 5. zero or more variables containing values of the by variable,
 #' 6. `.estimate`; estimated value of the smooth,
 #' 7. `.se`; standard error of the estimated value of the smooth,
-#' 8. `.crit`; critical value for the `100 * level`% confidence interval.
+#' 8. `.crit`; critical value for the `100 * level`% confidence interval;
+#'    `NA` for bootstrap limits.
 #' 9. `.lower_ci`; lower limit of the confidence or simultaneous interval,
 #' 10. `.upper_ci`; upper limit of the confidence or simultaneous interval,
 #'
@@ -278,12 +300,27 @@
 #' \dontshow{
 #' options(op)
 #' }
-`confint.gam` <- function(object, parm, level = 0.95, data = newdata, n = 100,
-                          type = c("confidence", "simultaneous"), nsim = 10000,
-                          shift = FALSE, transform = FALSE,
-                          unconditional = FALSE,
-                          ncores = 1, partial_match = FALSE,
-                          ..., newdata = NULL) {
+`confint.gam` <- function(
+  object,
+  parm,
+  level = 0.95,
+  data = newdata,
+  n = 100,
+  type = c("confidence", "simultaneous"),
+  nsim = 10000,
+  shift = FALSE,
+  transform = FALSE,
+  unconditional = FALSE,
+  frequentist = FALSE,
+  overall_uncertainty = TRUE,
+  ncores = 1,
+  partial_match = FALSE,
+  ...,
+  newdata = NULL
+) {
+  if (missing(overall_uncertainty) && is_scasm_model(object)) {
+    overall_uncertainty <- FALSE
+  }
   S <- smooths(object)
   ## select smooths
   select <- check_user_select_smooths(
@@ -298,113 +335,39 @@
       call. = FALSE
     )
   }
-  take <- select & (smooth_dim(object) <= 2L)
-  S <- S[take]
+  if (!is.null(newdata)) newdata_deprecated()
+  type <- normalize_smooth_interval(type)
+  out <- list(smooth_estimates(object,
+    select = which(select), n = n, data = data,
+    partial_match = partial_match, unconditional = unconditional,
+    frequentist = frequentist, overall_uncertainty = overall_uncertainty,
+    interval = type, ci_level = level, n_sim = nsim, n_cores = ncores, ...))
 
-  ## look to see if smooth is a by variable
-  by_levs <- NULL
-  is_by <- vapply(object[["smooth"]][take], is_by_smooth, logical(1L))
-  if (any(is_by)) {
-    # S <- vapply(strsplit(S, ":"), `[[`, character(1L), 1L)
-    by_levs <- vapply(object[["smooth"]][take], by_level, character(1L))
-    by_var <- vapply(object[["smooth"]][take], by_variable, character(1L))
-  }
-  ## unique smooths (counts all levels of a by factor as a single smooth)
-  uS <- unique(S)
-
-  # warn if user uses newdata
-  if (!is.null(newdata)) {
-    newdata_deprecated()
-  }
-
-  ## how many data points if data supplied
-  if (!is.null(data)) {
-    n <- NROW(data)
-  }
-
-  ilink <- if (is.logical(transform)) { # transform is logical
-    if (isTRUE(transform)) { # transform == TRUE
-      family(object)$linkinv
-    } else { # transform == FALSE
-      function(eta) {
-        eta
-      }
-    }
-  } else if (!is.null(transform)) { # transform is a fun
-    match.fun(transform)
-  }
-
-  ## which type of confidence interval
-  type <- match.arg(type)
-  ## list to hold results
-  out <- vector("list", length = length(uS)) # list for results
-
-  if (isTRUE(type == "confidence")) {
-    for (i in seq_along(out)) {
-      out[[i]] <- smooth_estimates(object,
-        select = uS[i],
-        n = n, data = data, partial_match = partial_match
-      )
-      out[[i]][[".crit"]] <- coverage_normal(level)
-    }
-  } else {
-    ## function to do simultaneous intervals for a smooth
-    ## this should be outlined as an actual function...
-    ## @param smooth list; the individual smooth to work on
-    ## @param level numeric; the confidence level
-    ## @param data dataframe; values to compute confidence interval at
-    sim_interval <- function(smooth, level, data) {
-      start <- smooth[["first.para"]]
-      end <- smooth[["last.para"]]
-      para.seq <- start:end
-      Cg <- PredictMat(smooth, data)
-      simDev <- Cg %*% t(buDiff[, para.seq])
-      absDev <- abs(sweep(simDev, 1L, data[[".se"]], FUN = "/"))
-      masd <- apply(absDev, 2L, max)
-      unname(quantile(masd, probs = level, type = 8))
-    }
-    ## need VCOV for simultaneous intervals
-    V <- get_vcov(object, unconditional = unconditional)
-    ## simulate un-biased deviations given bayesian covar matrix
-    buDiff <- mvnfast::rmvn(
-      n = nsim, mu = rep(0, nrow(V)), sigma = V,
-      ncores = ncores
-    )
-    ## loop over smooths
-    for (i in seq_along(out)) {
-      ## evaluate smooth
-      out[[i]] <- smooth_estimates(object,
-        select = uS[i],
-        n = n, data = data, partial_match = partial_match
-      )
-
-      # if this is a by var smooth, we need to do this for each level of
-      # by var
-      # I think this can now be simplified to just be the code in the
-      # else branch as smooth_estimates knows how to handle very specific
-      # smooth names FIXME
-      if (is.null(by_levs)) { # not by variable smooth
-        smooth <- get_smooth(object, parm) # get the specific smooth
-        crit <- sim_interval(smooth, level = level, data = out[[i]])
-      } else { # is a by variable smooth
-        smooth <- old_get_smooth(object, uS[i])
-        crit <- sim_interval(smooth, level = level, data = out[[i]])
-      }
-      out[[i]][[".crit"]] <- crit # add on the critical value
+  interval_info <- attr(out[[1L]], "interval_info")
+  if (identical(interval_info$method, "shape")) {
+    validate_shape_flag(shift, "shift")
+    if (shift || !identical(transform, FALSE)) {
+      cli::cli_abort("Shape intervals describe the unshifted smooth on the model scale; shift and transform are unsupported.")
     }
   }
 
-  if (shift) {
-    const <- coef(object)
-    nms <- names(const)
-    test <- grep("Intercept", nms)
-    const <- ifelse(length(test) == 0L, 0, const[test])
-  } else {
-    const <- 0
-  }
+  ilink <- if (is.logical(transform)) {
+    if (isTRUE(transform)) family(object)$linkinv else identity
+  } else if (!is.null(transform)) match.fun(transform)
 
   ## simplify to a data frame for return
+  metadata <- lapply(out, attr, "coordinate_info")
+  smooth_variables <- do.call("c", lapply(metadata, attr, "smooth_variables"))
+  coordinate_info <- do.call("c", metadata)
+  if (!is.null(coordinate_info)) {
+    coordinate_info <- coordinate_info[!duplicated(names(coordinate_info))]
+    attr(coordinate_info, "smooth_variables") <-
+      smooth_variables[!duplicated(names(smooth_variables))]
+  }
+  tensor_term_order <- do.call("c", lapply(out, attr, "tensor_term_order"))
   out <- bind_rows(out)
+  attr(out, "coordinate_info") <- coordinate_info
+  attr(out, "tensor_term_order") <- tensor_term_order
 
   # This was needed with `[.evaluated_smooth` before switching to
   # NextMethod() to call the next S3 `[` method.
@@ -413,25 +376,30 @@
   # is not currently well documented.
   # class(out) <- class(out)[-(1:2)]
 
-  ## using se and crit, compute the lower and upper intervals
-  # out <- add_column(out,
-  #   .lower_ci = out$.estimate - (out$.crit * out$.se),
-  #   .upper_ci = out$.estimate + (out$.crit * out$.se)
-  # )
+  const <- 0
+  if (shift) {
+    constants <- model_constant(object)
+    eta_idx <- lss_eta_index(object)
+    smooth_constants <- vapply(get_smooths_by_id(object, which(select)), function(sm) {
+      belongs <- vapply(eta_idx, function(idx) {
+        all(smooth_coef_indices(sm) %in% idx)
+      }, logical(1))
+      constants[which(belongs)[1L]]
+    }, numeric(1))
+    const <- smooth_constants[match(out$.smooth, S[select])]
+  }
 
+  # Shift the stored limits directly: bootstrap limits need not be symmetric.
   out <- mutate(out,
-    .estimate = .data$.estimate + const
-  ) |>
-    mutate(
-      .lower_ci = .data$.estimate - (.data$.crit * .data$.se),
-      .upper_ci = .data$.estimate + (.data$.crit * .data$.se)
-    )
+    across(all_of(c(".estimate", ".lower_ci", ".upper_ci")), ~ .x + const)
+  )
 
   ## transform
   out <- out |>
     mutate(across(all_of(c(".estimate", ".lower_ci", ".upper_ci")),
       .fns = ilink
-    ))
+    )) |>
+    order_interval_bounds()
 
   # smooth_estimates has columns in different places, relocate them to match
   # old output as much as possible
@@ -440,6 +408,7 @@
   )), .after = last_col())
 
   ## prepare for return
+  attr(out, "interval_info") <- interval_info
   class(out) <- c("confint.gam", class(out))
   out # return
 }
@@ -458,11 +427,6 @@
 #' @importFrom stats confint
 #'
 #' @export
-`confint.list` <- function(object, ...) {
-  if (!is_gamm4(object)) {
-    stop("`object` does not appear to a `gamm4` model object",
-      call. = FALSE
-    )
-  }
-  confint(object[["gam"]], ...)
+`confint.gamm4` <- function(object, ...) {
+  confint(gamm4_gam(object), ...)
 }

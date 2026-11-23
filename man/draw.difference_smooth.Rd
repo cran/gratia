@@ -26,7 +26,8 @@
   subtitle = NULL,
   caption = NULL,
   angle = NULL,
-  ...
+  ...,
+  variables = NULL
 )
 }
 \arguments{
@@ -46,20 +47,25 @@ stored.}
 
 \item{contour}{logical; should contour lines be added to smooth surfaces?}
 
-\item{contour_col}{colour specification for contour lines.}
+\item{contour_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specification for contour lines.}
 
 \item{n_contour}{numeric; the number of contour bins. Will result in
 \code{n_contour - 1} contour lines being drawn. See \code{\link[ggplot2:geom_contour]{ggplot2::geom_contour()}}.}
 
-\item{ci_alpha}{numeric; alpha transparency for confidence or simultaneous
+\item{ci_alpha}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Numeric; alpha transparency for confidence or simultaneous
 interval.}
 
-\item{ci_col}{colour specification for the confidence/credible intervals
+\item{ci_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specification for the confidence/credible intervals
 band. Affects the fill of the interval.}
 
-\item{smooth_col}{colour specification for the the smooth or difference line.}
+\item{smooth_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specification for the the smooth or difference line.}
 
-\item{line_col}{colour specification for drawing reference lines}
+\item{line_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specification for drawing reference lines}
 
 \item{scales}{character; should all univariate smooths be plotted with the
 same y-axis scale? If \code{scales = "free"}, the default, each univariate
@@ -82,19 +88,32 @@ annotate plots}
 drawn passed to the \code{angle} argument of \code{\link[ggplot2:guide_axis]{ggplot2::guide_axis()}}.}
 
 \item{...}{additional arguments passed to \code{\link[patchwork:wrap_plots]{patchwork::wrap_plots()}}.}
+
+\item{variables}{character vector; every covariate of the selected smooth,
+in plotting order. The first two are the x and y axes; the third defines
+facets for three covariates, or facet rows for four covariates; the fourth
+defines facet columns. \code{NULL} uses the order saved with the estimates.
+Drawing rearranges evaluated points without generating a new grid.}
 }
 \description{
 Plot differences of smooths
 }
+\section{Label layout}{
+
+Pass \code{label_control = draw_label_control(...)} to \code{draw()} to wrap discrete
+axis labels and legend text, stagger discrete tick labels, or adjust legend
+and colour-bar layout. Settings apply to each panel, including unwrapped
+plot lists. See \code{\link[=draw_label_control]{draw_label_control()}} for the available settings.
+}
+
 \examples{
-
 load_mgcv()
-# simulate some data; a factor smooth example
-df <- data_sim("eg4", seed = 42)
-# fit GAM
-m <- gam(y ~ fac + s(x2, by = fac) + s(x0), data = df, method = "REML")
+# Fit separate smooths for two groups from a simulated data set.
+dat <- data_sim("eg4", n = 120, seed = 42)
+dat <- droplevels(subset(dat, fac \%in\% c("1", "2")))
+model <- gam(y ~ fac + s(x2, by = fac, k = 5), data = dat, method = "REML")
 
-# calculate the differences between pairs of smooths the f_j(x2) term
-diffs <- difference_smooths(m, select = "s(x2)")
-draw(diffs)
+# Plot the estimated difference between the two smooths.
+differences <- difference_smooths(model, select = "s(x2)", n = 40)
+draw(differences)
 }

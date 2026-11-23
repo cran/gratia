@@ -12,9 +12,12 @@
 #'   renamed `select`
 #' @param data a data frame containing the variables used in `smooth`.
 #' @param n numeric; the number of points over the range of the covariate at
-#'   which to evaluate the smooth.
-#' @param n_2d numeric; the number of new observations for each dimension of a
-#'   bivariate smooth. Not currently used; `n` is used for both dimensions.
+#'   which to evaluate a univariate smooth.
+#' @param n_2d numeric; the number of points along each of the first two axes
+#'   of a smooth surface, including surface panels of higher-dimensional smooths.
+#'   The default is 50 in plotting and plot-preparation functions. If `NULL`,
+#'   use `n` instead. Ignored when evaluation `data` are supplied. Factor levels
+#'   are retained, and curves with only one continuous covariate use `n`.
 #' @param n_3d numeric; the number of new observations to generate for the third
 #'   dimension of a 3D smooth.
 #' @param n_4d numeric; the number of new observations to generate for the
@@ -34,13 +37,32 @@
 #'   the penalty null space.
 #' @param coefficients numeric; vector of values for the coefficients of the
 #'   basis functions.
+#' @param unweighted logical; for fitted models, return basis functions without
+#'   multiplying by fitted coefficients? The default, `FALSE`, returns the
+#'   coefficient-weighted contributions. With `TRUE`, [draw()] shows the shared
+#'   basis once for each factor-by set.
+#' @param variables character; smooth covariates in plotting order. Supply every
+#'   covariate exactly once. The first two define surface axes and the remaining
+#'   covariates define conditioning facets. Selected smooths must have the same
+#'   covariates. If `NULL`, use the usual smooth plotting order.
 #' @param ... other arguments passed to [mgcv::smoothCon()].
 #'
 #' @inheritParams smooth_estimates
 #'
-#' @return A tibble.
+#' @return A tibble with class `basis`. Its `plot_variables` attribute stores
+#'   covariate orders by smooth label for subsequent plotting. When the basis
+#'   is shared across factor levels, `factor_by_groups` records the smooth
+#'   labels that [draw()] combines. The returned rows retain each level.
 #'
 #' @author Gavin L. Simpson
+#'
+#' @details
+#' When evaluating a fitted smooth at explicit data, missing covariates required
+#' by that smooth produce `NA` basis values. Missing values in other model
+#' variables do not discard otherwise evaluable rows.
+#' The covariate order chosen by `variables` also determines which automatically
+#' generated axes use `n_2d`, `n_3d`, and `n_4d`. Supplied `data` or `at` values
+#' are unchanged. Set a resolution argument to `NULL` to use `n` instead.
 #'
 #' @export
 #'
@@ -71,7 +93,6 @@
 #' @importFrom purrr map in_parallel
 #' @importFrom dplyr bind_rows
 #' @importFrom stats coef
-#' @importFrom mirai daemons_set
 `basis.gam` <- function(
   object,
   select = NULL,
@@ -82,13 +103,18 @@
   n_3d = 16,
   n_4d = 4,
   partial_match = FALSE,
-  ...
+  envir = NULL,
+  ..., variables = NULL, unweighted = FALSE
 ) {
+  if (!is.logical(unweighted) || length(unweighted) != 1L || is.na(unweighted)) {
+    cli::cli_abort("`unweighted` must be TRUE or FALSE.")
+  }
+  model_name <- expr_label(substitute(object))
+  object <- with_model_envir(object, envir)
   if (lifecycle::is_present(term)) {
     lifecycle::deprecate_warn("0.8.9.9", "basis(term)", "basis(select)")
     select <- term
   }
-  model_name <- expr_label(substitute(object))
   # if particular smooths selected
   sms <- smooths(object) # vector of smooth labels - "s(x)"
 
@@ -100,6 +126,7 @@
       model_name = model_name
     )
   ids <- which(select)
+  object <- plan_smooth_variables(object, ids, variables = variables)
 
   # extract the mgcv.smooth objects
   smooths <- get_smooths_by_id(object, ids)
@@ -111,18 +138,12 @@
         call. = FALSE
       )
     }
-    check_all_vars(object, data = data, smooths = smooths)
-    data <- delete_response(object, data = data)
+    # Basis construction needs evaluated covariates for selected smooths only.
+    for (sm in smooths) data <- prepare_smooth_data(object, sm, data)
   }
 
-  if (isFALSE(mirai::daemons_set())) {
-    bfuns <- map(
-      seq_along(smooths),
-      tidy_basis_wrapper,
-      ids = ids, data = data, smooths = smooths, model = object, n = n,
-      n_3d = n_3d, n_4d = n_4d, offset = NULL
-    )
-  } else {
+  if (isTRUE(requireNamespace("mirai", quietly = TRUE)) && 
+    isTRUE(mirai::daemons_set())) {
     # parallel version
     bfuns <- map(
       seq_along(smooths),
@@ -130,13 +151,24 @@
         \(i) {
           tidy_basis_wrapper(
             i, ids = ids, data = data, smooths = smooths, model = object, n = n,
-            n_3d = n_3d, n_4d = n_4d, offset = NULL
+            n_2d = n_2d, n_3d = n_3d, n_4d = n_4d, offset = NULL,
+            unweighted = unweighted
           )
         },
         ids = ids, data = data, smooths = smooths, object = object,
-        n = n, n_3d = n_3d, n_4d = n_4d,
+        n = n, n_2d = n_2d, n_3d = n_3d, n_4d = n_4d,
+        unweighted = unweighted,
         tidy_basis_wrapper = tidy_basis_wrapper
       )
+    )
+  } else {
+    # sequential version
+    bfuns <- map(
+      seq_along(smooths),
+      tidy_basis_wrapper,
+      ids = ids, data = data, smooths = smooths, model = object, n = n,
+      n_2d = n_2d, n_3d = n_3d, n_4d = n_4d, offset = NULL,
+      unweighted = unweighted
     )
   }
 
@@ -144,6 +176,12 @@
 
   ## class this up
   class(bfuns) <- append(class(bfuns), c("basis"), after = 0L)
+  attr(bfuns, "plot_variables") <- stats::setNames(
+    lapply(ids, smooth_plot_variables, model = object), sms[ids]
+  )
+  if (unweighted) {
+    attr(bfuns, "factor_by_groups") <- factor_by_basis_groups(smooths)
+  }
 
   bfuns # return
 }
@@ -157,7 +195,7 @@
   data = NULL,
   n = 100, n_2d = 50, n_3d = 16, n_4d = 4,
   partial_match = FALSE,
-  ...
+  ..., variables = NULL, unweighted = FALSE
 ) {
   if (lifecycle::is_present(term)) {
     lifecycle::deprecate_warn("0.8.9.9", "basis(term)", "basis(select)")
@@ -167,7 +205,7 @@
   bfuns <- basis.gam(
     object, select = select, data = data, n = n,
     n_2d = n_2d, n_3d = n_3d, n_4d = n_4d, partial_match = partial_match,
-    ...
+    ..., variables = variables, unweighted = unweighted
   )
   bfuns
 }
@@ -184,7 +222,7 @@
   n_3d = 16,
   n_4d = 4,
   partial_match = FALSE,
-  ...
+  ..., variables = NULL, unweighted = FALSE
 ) {
   if (lifecycle::is_present(term)) {
     lifecycle::deprecate_warn("0.8.9.9", "basis(term)", "basis(select)")
@@ -193,7 +231,7 @@
   basis(object[["gam"]],
     select = select, data = data, n = n,
     n_2d = n_2d, n_3d = n_3d, n_4d = n_4d, partial_match = partial_match,
-    ...
+    ..., variables = variables, unweighted = unweighted
   )
 }
 
@@ -209,39 +247,27 @@
   n_3d = 16,
   n_4d = 4,
   partial_match = FALSE,
-  ...
+  ..., variables = NULL, unweighted = FALSE
 ) {
   if (lifecycle::is_present(term)) {
     lifecycle::deprecate_warn("0.8.9.9", "basis(term)", "basis(select)")
     select <- term
   }
-  basis(object[["gam"]],
+  basis(gamm4_gam(object),
     select = select, data = data, n = n,
     n_2d = n_2d, n_3d = n_3d, n_4d = n_4d, partial_match = partial_match,
-    ...
+    ..., variables = variables, unweighted = unweighted
   )
 }
 
 # wrapper for calling tidy_basis
 `tidy_basis_wrapper` <- function(
   i, smooths, ids, data = NULL, model, n = 100, n_2d = NULL, n_3d = NULL,
-  n_4d = NULL, offset = NULL
+  n_4d = NULL, offset = NULL, unweighted = FALSE
 ) {
   # which coefs belong to this smooth
   take <- smooth_coef_indices(smooths[[i]])
-  betas <- coef(model)[take]
-  # handle scam models - p.ident is a logical vector with length == NCOL(Xp)
-  # where Xp is the Lp matrix of the entire model!
-  p_ident <- model$p.ident
-  if (!is.null(p_ident)) { # must be a scam model
-    # need the 1st element of p_ident == FALSE, & represents the intercept.
-    # In scam, intercept gets returned by the Predict.matrix.<basis>.smooth
-    # functions (from PredictMat() used in tidy_basis()), and we need to
-    # know this to drop it later
-    # p_ident <- p_ident[c(1L, take)]
-    p_ident <- p_ident[c(take)]
-  }
-
+  betas <- if (unweighted) NULL else coef(model)[take]
   if (is.null(data)) {
     data <- smooth_data(
       model, ids[i],
@@ -249,10 +275,11 @@
     )
   }
 
+  data <- prepare_smooth_data(model, smooths[[i]], data)
+  attr(data, "gratia.evaluated") <- TRUE
   tbl <- gratia::tidy_basis(
     smooths[[i]],
-    at = data, coefs = betas,
-    p_ident = p_ident
+    at = data, coefs = betas, envir = model_envir(model)
   )
 
   ## return
@@ -273,13 +300,18 @@
   at = NULL,
   diagonalize = FALSE,
   coefficients = NULL,
-  ...
+  envir = NULL,
+  ..., variables = NULL
 ) {
   # class of object and check for ".smooth.spec"
   cls <- class(object)
   if (str_detect(cls, "smooth.spec", negate = TRUE)) {
     stop("'object' doesn't appear to be a smooth created by {mgcv}.")
   }
+  # A standalone smooth specification has no fitted formula environment.
+  # Evaluate its covariates explicitly before passing them to mgcv.
+  labels <- c(object$term, if (!identical(object$by, "NA")) object$by)
+  data <- evaluate_terms(data, labels, model = NULL, envir = envir)
   ## call smoothCon to create the basis as specified in `x`
   sm <- smoothCon(object,
     data = data, knots = knots,
@@ -293,10 +325,25 @@
   if (is.null(at)) {
     at <- data
   }
-  bfuns <- map(sm, tidy_basis, data = data, at = at)
+  bfuns <- map(sm, tidy_basis, data = data, at = at, envir = envir)
 
   ## rebind
   bfuns <- bind_rows(bfuns)
+  orders <- lapply(sm, function(smooth) {
+    order <- if (inherits(smooth, "fs.interaction")) {
+      reorder_fs_smooth_terms(smooth)
+    } else if (!is.null(smooth[["margin"]])) {
+      reorder_tensor_smooth_terms(smooth)
+    } else smooth_variable(smooth)
+    order <- tensor_plot_variables(order, bfuns)
+    resolved <- validate_plot_variables(variables, order)
+    if (!is.null(variables)) validate_plot_variable_types(resolved, bfuns)
+    if (inherits(smooth, "sos.smooth") &&
+        !identical(unname(resolved), unname(order))) {
+      cli::cli_abort("`variables` cannot reorder latitude and longitude in a spline on the sphere.")
+    }
+    resolved
+  })
 
   # if coefficients not null, then weight the respective basis functions
   if (isFALSE(is.null(coefficients))) {
@@ -333,9 +380,27 @@
 
   ## store the basis definition as an attribute
   attr(bfuns, "smooth_object") <- deparse(substitute(object))
+  attr(bfuns, "plot_variables") <- stats::setNames(
+    orders, vapply(sm, smooth_label, character(1))
+  )
+  attr(bfuns, "factor_by_groups") <- factor_by_basis_groups(sm)
 
   ## return
   bfuns
+}
+
+# A factor-by construction repeats the same basis for each factor level.
+# Keep the level-specific rows in basis(); only drawing combines these groups.
+factor_by_basis_groups <- function(smooths) {
+  groups <- lapply(smooths, function(sm) {
+    if (!is_factor_by_smooth(sm)) return(NULL)
+    if (by_variable(sm) %in% smooth_variable(sm)) return(NULL)
+    label <- smooth_label(sm)
+    level <- as.character(by_level(sm))
+    if (!endsWith(label, level)) return(NULL)
+    stats::setNames(substr(label, 1L, nchar(label) - nchar(level)), label)
+  })
+  unlist(groups, use.names = TRUE)
 }
 
 #' A tidy basis representation of a smooth object
@@ -351,7 +416,9 @@
 #' @param at a data frame containing values of the smooth covariate(s) at which
 #'   the basis should be evaluated.
 #' @param coefs numeric; an optional vector of coefficients for the smooth
-#' @param p_ident logical vector; only used for handling [scam::scam()] smooths.
+#' @inheritParams smooth_estimates
+#' @param p_ident retained for compatibility. Fitted SCAM smooths use their
+#'   stored coefficient constraints to match basis columns to coefficients.
 #'
 #' @return A tibble.
 #' @author Gavin L. Simpson
@@ -388,7 +455,8 @@
   data = NULL,
   at = NULL,
   coefs = NULL,
-  p_ident = NULL
+  p_ident = NULL,
+  envir = NULL
 ) {
   check_is_mgcv_smooth(smooth) # check `smooth` is of the correct type
   if (is_mgcv_smooth(smooth) && is.null(at)) {
@@ -408,14 +476,14 @@
     }
     tbl <- smooth[["X"]] # extract the model matrix
   } else {
-    tbl <- PredictMat(smooth, data = at)
+    at <- evaluate_terms(at, terms_in_smooth(smooth), model = NULL,
+      envir = envir, evaluated = isTRUE(attr(at, "gratia.evaluated")))
+    tbl <- predict_mat_rows(smooth, data = at)
+    if (is_scam_smooth(smooth)) {
+      tbl <- scam_smooth_matrix(smooth, tbl)
+    }
     data <- at
     if (!is.null(coefs)) {
-      # nc <- NCOL(tbl)
-      if (!is.null(p_ident) && any(p_ident)) {
-        stopifnot(identical(sum(p_ident), length(coefs)))
-        tbl <- tbl[, p_ident]
-      }
       stopifnot(identical(NCOL(tbl), length(coefs)))
       # weight the basis functions at supplied coefficients
       tbl <- sweep(tbl, MARGIN = 2, STATS = coefs, FUN = "*")
@@ -434,7 +502,7 @@
   if (is_by_fac) {
     by_var <- by_variable(smooth)
     by_lev <- by_level(smooth)
-    take <- data[[by_var]] == by_lev
+    take <- is.na(data[[by_var]]) | data[[by_var]] == by_lev
     tbl <- tbl[take, ]
     data <- data[take, ]
   }

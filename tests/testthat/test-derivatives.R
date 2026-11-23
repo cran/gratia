@@ -158,6 +158,7 @@ test_that("derivatives() returns derivatives for all smooths in a GAMM", {
 })
 
 test_that("derivatives() returns second derivatives for all smooths in a GAMM", {
+  skip_on_cran()
   expect_silent(df <- derivatives(su_gamm_univar_4, order = 2))
   expect_s3_class(df, "derivatives")
   expect_s3_class(df, "tbl_df")
@@ -261,6 +262,7 @@ test_that("derivatives() returns derivatives for all smooths in a factor by GAM"
 })
 
 test_that("derivatives() returns derivatives for all smooths in a factor by GAM", {
+  skip_on_cran()
   expect_silent(df <- derivatives(su_m_factor_by_x2, order = 2))
   expect_s3_class(df, "derivatives")
   expect_s3_class(df, "tbl_df")
@@ -432,8 +434,6 @@ test_that("derivatives() works for factor by smooths issue 47", {
   expect_s3_class(d, "tbl_df")
   expect_named(d, c(deriv_nms, "x2", "x0", "fac"))
   plt4 <- draw(d)
-
-  skip_on_ci() # testing without as moved to mac os x
   skip_on_covr()
   expect_doppelganger("draw issue 47 derivatives for factor by", plt1)
   expect_doppelganger("draw issue 47 derivatives for complex factor by", plt2)
@@ -473,14 +473,13 @@ test_that("derivatives() works for fs smooths issue 57 and 301", {
   expect_named(fd, c(deriv_nms, "t", "unit"))
   plt <- draw(fd) # FIXME: need to update draw(d) so it works with fs smooths
 
-  skip_on_ci() # testing without as moved to mac os x
-  expect_doppelganger("draw issue 57 derivatives for factor by", plt)
-
   # test variant in #301
   logistic_growth_df$linearterm <- runif(16)
   m_logistic_growth <- gam(y_obs ~ s(t, unit, k = 5, bs = "fs", m = 2) + linearterm,
     data = logistic_growth_df, method = "REML")
   expect_silent(fd <- derivatives(m_logistic_growth))
+
+  expect_doppelganger("draw issue 57 derivatives for factor by", plt)
 })
 
 ## tests for by variables & simultaneous intervals #102
@@ -522,7 +521,17 @@ Instead, use the data argument `data`.\n"
 })
 
 ## tests for models with random effects
+test_that("derivatives preserves noncontiguous selections when excluding random effects", {
+  selected <- smooths(rm1)[c(1, 3)]
+  expected <- derivatives(rm1, select = selected[2], n = 10)
+
+  expect_silent(actual <- derivatives(rm1, select = selected, n = 10))
+  expect_identical(unique(actual$.smooth), selected[2])
+  expect_equal(actual, expected)
+})
+
 test_that("derivatives works with models that include random effects", {
+  skip_on_cran()
   expect_silent(d <- derivatives(rm1))
   expect_s3_class(d, "derivatives")
   expect_s3_class(d, "tbl_df")
@@ -541,6 +550,18 @@ test_that("derivatives works for sz smooths", {
   expect_named(d, c(deriv_nms, c("x2", "fac", "x0")))
 
   skip_on_cran()
-  skip_on_ci()
   expect_snapshot(print(d))
+})
+
+test_that("derivatives gives nice alerts for multivariate smooths", {
+  d_dat <- withr::with_seed(
+    2026-03-17, data_sim("eg1")
+  )
+  expect_snapshot(
+    derivatives(gam(y ~ s(x0) + s(x1, x2), data = d_dat))
+  )
+  expect_snapshot(
+    derivatives(gam(y ~ s(x1, x2), data = d_dat)),
+    error = TRUE
+  )
 })

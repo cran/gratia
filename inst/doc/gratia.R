@@ -6,7 +6,7 @@ knitr::opts_chunk$set(
 
 ## ----setup--------------------------------------------------------------------
 library("gratia")
-library("mgcv")
+load_mgcv()
 
 ## ----data-sim-----------------------------------------------------------------
 df <- data_sim("eg1", seed = 42)
@@ -19,6 +19,13 @@ summary(m)
 ## ----draw-gam-----------------------------------------------------------------
 draw(m)
 
+## ----theme-smooths------------------------------------------------------------
+library("ggplot2")
+draw(m) & theme(
+  geom.gratia.smooth = element_geom(colour = "forestgreen", linewidth = 1.5),
+  geom.gratia.interval = element_geom(fill = "forestgreen")
+)
+
 ## ----smooth-estimates---------------------------------------------------------
 sm <- smooth_estimates(m)
 sm
@@ -27,12 +34,10 @@ sm
 smooths(m)
 
 ## ----smooth-estimates-x2------------------------------------------------------
-sm <- smooth_estimates(m, smooth = "s(x2)")
+sm <- smooth_estimates(m, select = "s(x2)")
 sm
 
 ## ----ggplot-smooth------------------------------------------------------------
-library("ggplot2")
-library("dplyr")
 sm |>
   add_confint() |>
   ggplot(aes(y = .estimate, x = x2)) +

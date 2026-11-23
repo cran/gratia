@@ -110,32 +110,33 @@
 
 #' Names of smooths in a GAM
 #'
+#' @param ... Arguments passed to methods.
+#'
 #' @param object a fitted GAM or related model. Typically the result of a call
 #'   to [mgcv::gam()], [mgcv::bam()], or [mgcv::gamm()].
 #'
 #' @export
-`smooths` <- function(object) {
+`smooths` <- function(object, ...) {
   UseMethod("smooths")
 }
 
 #' @export
 #' @rdname smooths
-`smooths.default` <- function(object) {
+`smooths.default` <- function(object, ...) {
   vapply(object[["smooth"]], FUN = `[[`, FUN.VALUE = character(1), "label")
 }
 
 #' @export
 #' @rdname smooths
-`smooths.gamm` <- function(object) {
+`smooths.gamm` <- function(object, ...) {
   stopifnot(is_gamm(object))
   smooths(object$gam)
 }
 
 #' @export
 #' @rdname smooths
-`smooths.gamm4` <- function(object) {
-  stopifnot(is_gamm4(object))
-  smooths(object$gam)
+`smooths.gamm4` <- function(object, ...) {
+  smooths(gamm4_gam(object))
 }
 
 `smooth_variable` <- function(smooth) {
@@ -253,7 +254,7 @@ stop_if_not_mgcv_smooth <- function(smooth) {
 }
 
 `is.gamm4` <- function(object) {
-  is.list(object) & (!is.null(object[["gam"]]))
+  is_gamm4(object)
 }
 
 `is.gam` <- function(object) {
@@ -267,17 +268,14 @@ stop_if_not_mgcv_smooth <- function(smooth) {
 #' @title Extract an mgcv smooth by name
 #'
 #' @param object a fitted GAM model object.
-#' @param term character; the name of a smooth term to extract
+#' @param term character; the exact name of a smooth term to extract
 #'
 #' @return A single smooth object, or a list of smooths if several match the
 #'   named term.
 #'
 #' @export
 `get_smooth` <- function(object, term) {
-  if (is.gamm(object) || is.gamm4(object)) {
-    object <- object[["gam"]]
-  }
-  smooth <- object[["smooth"]][which_smooth(object, term)]
+  smooth <- get_smooths_by_id(object, which_smooth(object, term))
   if (identical(length(smooth), 1L)) {
     smooth <- smooth[[1L]]
   }
@@ -299,42 +297,34 @@ stop_if_not_mgcv_smooth <- function(smooth) {
 #' @param object a fitted GAM model object.
 #' @param id numeric; the position of the smooth in the model object.
 #'
+#' @param ... Arguments passed to methods.
 #' @export
-`get_smooths_by_id` <- function(object, id) {
+`get_smooths_by_id` <- function(object, id, ...) {
   UseMethod("get_smooths_by_id")
 }
 
 #' @export
 #' @rdname get_smooths_by_id
-`get_smooths_by_id.gam` <- function(object, id) {
+`get_smooths_by_id.gam` <- function(object, id, ...) {
   object[["smooth"]][id]
 }
 
 #' @export
 #' @rdname get_smooths_by_id
-`get_smooths_by_id.scam` <- function(object, id) {
+`get_smooths_by_id.scam` <- function(object, id, ...) {
   object[["smooth"]][id]
 }
 
 #' @export
 #' @rdname get_smooths_by_id
-`get_smooths_by_id.gamm` <- function(object, id) {
+`get_smooths_by_id.gamm` <- function(object, id, ...) {
   object[["gam"]][["smooth"]][id]
 }
 
 #' @export
 #' @rdname get_smooths_by_id
-`get_smooths_by_id.gamm4` <- function(object, id) {
-  object[["gam"]][["smooth"]][id]
-}
-
-#' @export
-#' @rdname get_smooths_by_id
-`get_smooths_by_id.list` <- function(object, id) {
-  if (!is.gamm4(object)) {
-    stop("Not a gamm4 model fit.", call. = FALSE)
-  }
-  object[["gam"]][["smooth"]][id]
+`get_smooths_by_id.gamm4` <- function(object, id, ...) {
+  gamm4_gam(object)[["smooth"]][id]
 }
 
 #' @title Extract an factor-by smooth by name
@@ -510,8 +500,43 @@ stop_if_not_mgcv_smooth <- function(smooth) {
   length(object[["smooth"]])
 }
 
-`get_vcov` <- function(object, unconditional = FALSE, frequentist = FALSE,
-                       term = NULL, by_level = NULL) {
+#' Extract the covariance matrix of the model parameters or a subset of these for
+#' a particular model term
+#'
+#' @param object an R object from which a covariance matrix shall be extracted.
+#' @param unconditional logical; if `TRUE` (and only if `frequentist == FALSE`)
+#'   then the bayesian smoothing parameter uncertainty-corrected covariance
+#'   matrix is returned, if available. Whether it is available depends on which
+#'   smoothness selection method was used to fit the model.
+#' @param frequentist logical; if `FALSE`, the default, the bayesian covariance
+#'   matrix is returned, otherwise the frequentist covariance matrix.
+#' @param term character, length 1; return the subset of the covariance matrix
+#'   for a particular **smooth** term. Only a single term can be selected.
+#' @param by_level character; currently unsued.
+#'
+#' @details For [mgcv::scasm()] fits with linear inequality constraints,
+#'   the Gaussian covariance approximation does not enforce the fitted shapes.
+#'   Pointwise intervals calculated from this matrix can extend outside those
+#'   constraints. See [post_draws()] for sampling and native-bootstrap details.
+#'
+#' @return a matrix containing the selected covariance matrix.
+#' @author Gavin L. Simpson
+#'
+#' @export
+`get_vcov` <- function(
+  object,
+  unconditional = FALSE,
+  frequentist = FALSE,
+  term = NULL,
+  by_level = NULL
+) {
+  UseMethod("get_vcov")
+}
+
+#' @export
+get_vcov.default <- function(object, unconditional = FALSE,
+    frequentist = FALSE, term = NULL, by_level = NULL) {
+  if (inherits(object, "gamm4")) object <- gamm4_gam(object)
   V <- if (frequentist) {
     object$Ve
   } else if (unconditional) {
@@ -542,6 +567,33 @@ stop_if_not_mgcv_smooth <- function(smooth) {
   V
 }
 
+# SCAM supplies covariance for its constrained coefficients, but no correction
+# for uncertainty in the estimated smoothing parameters.
+check_scam_unconditional <- function(object, unconditional = FALSE) {
+  if (!inherits(object, "scam")) return(invisible(NULL))
+  if (!is.logical(unconditional) || length(unconditional) != 1L ||
+      is.na(unconditional)) {
+    stop("`unconditional` must be a single non-missing logical value.",
+      call. = FALSE)
+  }
+  if (unconditional) {
+    stop("Smoothing-parameter uncertainty is not currently supported for SCAM models. Use unconditional = FALSE.",
+      call. = FALSE)
+  }
+  invisible(NULL)
+}
+
+#' @export
+#' @rdname get_vcov
+get_vcov.scam <- function(object, unconditional = FALSE,
+                          frequentist = FALSE, term = NULL, by_level = NULL) {
+  check_scam_unconditional(object, unconditional)
+  object$Vp <- object$Vp.t
+  object$Ve <- object$Ve.t
+  get_vcov.default(object, unconditional = FALSE, frequentist = frequentist,
+    term = term, by_level = by_level)
+}
+
 `has_s` <- function(terms) {
   grepl("^s\\(.+\\)$", terms)
 }
@@ -569,9 +621,10 @@ stop_if_not_mgcv_smooth <- function(smooth) {
 
 #' Fix the names of a data frame containing an offset variable.
 #'
-#' Identifies which variable, if any, is the model offset, and fixed the name
-#'   such that `offset(foo(var))` is converted to `var`, and possibly sets the
-#'   values of that variable to `offset_val`.
+#' Removes evaluated offset columns while retaining their raw input variables.
+#' Raw inputs are recovered from fitting data if needed; transformed offset
+#' values are never renamed as raw values. A scalar `offset_val` overrides the
+#' raw input only for a single offset with one unambiguous input variable.
 ##
 #' @param model a fitted GAM.
 #'
@@ -594,40 +647,32 @@ stop_if_not_mgcv_smooth <- function(smooth) {
 #' names(model.frame(m))
 #' names(fix_offset(m, model.frame(m), offset_val = 1L))
 `fix_offset` <- function(model, newdata, offset_val = NULL) {
-  m.terms <- names(newdata)
-  p.terms <- if (inherits(model, "scam") &&
-    is.null(model[["pred.formula"]])) {
-    attr(model[["terms"]], "term.labels")
-  } else {
-    attr(terms(model[["pred.formula"]]), "term.labels")
-  }
-
-
-  ## remove repsonse from m.terms if it is in there
-  tt <- terms(model)
-  resp <- names(attr(tt, "dataClasses"))[attr(tt, "response")]
-  Y <- m.terms == resp
-  if (any(Y)) {
-    m.terms <- m.terms[!Y]
-  }
-
-  ## is there an offset?
-  off <- is_offset(m.terms)
-  if (any(off)) {
-    ## which cleaned terms not in model terms
-    ind <- m.terms %in% p.terms
-    ## for the cleaned terms not in model terms, match with the offset
-    off_var <- grep(p.terms[!ind], m.terms[off])
-    if (any(off_var)) {
-      take <- which(names(newdata) %in% m.terms)
-      names(newdata)[take][off] <- p.terms[!ind][off_var]
+  # Offset positions index the terms variables, not raw covariate names.
+  tt <- stats::terms(model)
+  positions <- attr(tt, "offset")
+  if (!length(positions)) return(newdata)
+  expressions <- as.list(attr(tt, "variables"))[-1L][positions]
+  labels <- vapply(expressions, function(x) paste(deparse(x), collapse = ""), character(1))
+  inputs <- unique(unlist(lapply(expressions, all.vars)))
+  if (!is.null(offset_val)) {
+    if (length(expressions) != 1L || length(inputs) != 1L) {
+      cli::cli_abort("Supply explicit raw {.arg data} for offsets with multiple inputs; a scalar override is ambiguous.")
     }
-
-    ## change offset?
-    if (!is.null(offset_val)) {
-      newdata[, p.terms[!ind][off_var]] <- offset_val
+    newdata[[inputs]] <- rep(offset_val, length.out = nrow(newdata))
+  } else if (!all(inputs %in% names(newdata))) {
+    # Evaluated offsets cannot be renamed to their unevaluated inputs.
+    raw <- recover_raw_data(model)
+    if (nrow(raw) != nrow(newdata) || !identical(rownames(raw), rownames(newdata))) {
+      cli::cli_abort("Supply raw offset covariates in {.arg newdata}; stored fitting rows do not match.")
     }
+    for (nm in setdiff(inputs, names(newdata))) newdata[[nm]] <- raw[[nm]]
   }
+  order <- names(newdata)
+  if (length(inputs) == 1L && length(labels) == 1L) {
+    order[order == labels] <- inputs
+  }
+  newdata <- newdata[, unique(setdiff(order, labels)), drop = FALSE]
+  attr(newdata, "terms") <- NULL
 
   newdata # return
 }
@@ -746,7 +791,7 @@ stop_if_not_mgcv_smooth <- function(smooth) {
   factor(rep(levs[1L], length.out = n), levels = levs)
 }
 
-#' Vectorized version of `data.class`
+#' Vectorised version of [base::data.class()]
 #'
 #' @param df a data frame or tibble.
 #' @return A named character vector of data classes.
@@ -952,21 +997,9 @@ stop_if_not_mgcv_smooth <- function(smooth) {
 
 ## check if a model is a gamm4 object
 `is_gamm4` <- function(object) {
-  out <- FALSE
-  ## is object a list?
-  if (!inherits(object, "list")) {
-    return(out)
-  }
-  nms <- names(object)
-  if (!all(c("gam", "mer") %in% nms)) {
-    return(out)
-  }
-  if (!(inherits(object[["mer"]], "lmerMod") &&
-    inherits(object[["gam"]], "gam"))) {
-    return(out)
-  }
-  out <- TRUE
-  out
+  inherits(object, "gamm4") && is.list(object) &&
+    inherits(object[["gam"]], "gam") &&
+    inherits(object[["mer"]], "merMod")
 }
 
 ## check is a model is a gamm object
@@ -1037,17 +1070,10 @@ stop_if_not_mgcv_smooth <- function(smooth) {
 #' @rdname is_factor_term
 #' @export
 `is_factor_term.list` <- function(object, term, ...) {
-  if (!is_gamm4(object)) {
-    if (all(vapply(object, inherits, logical(1), "terms"))) {
-      out <- any(unlist(lapply(object, is_factor_term, term)))
-    } else {
-      stop("Don't know how to handle generic list objects.")
-    }
-  } else {
-    object <- terms(object$gam)
-    out <- is_factor_term(object, term, ...)
+  if (!all(vapply(object, inherits, logical(1), "terms"))) {
+    stop("Don't know how to handle generic list objects.", call. = FALSE)
   }
-  out
+  any(vapply(object, is_factor_term, logical(1), term = term, ...))
 }
 
 #' Names of variables involved in a specified model term
@@ -1157,6 +1183,7 @@ vars_from_label <- function(label) {
 #' @importFrom tidyselect any_of
 `transform_fun.smooth_estimates` <- function(object, fun = NULL,
     constant = NULL, ...) {
+  check_shape_effect_transform(attr(object, "interval_info"), constant, fun)
   # If constant supplied, use it to transform est and the upper and lower
   # interval
   if (!is.null(constant)) {
@@ -1332,7 +1359,7 @@ vars_from_label <- function(label) {
 #'
 #' @param model a fitted model from which a `terms` object can be extracted.
 #' @param data a data frame containing variables in the formula of `model`.
-#' @param model_frame logical; if `TRUE`, return as a `model.frame` object with
+#' @param model_frame logical; if `TRUE`, return a [stats::model.frame()] result with
 #'   a `"terms"` attribute. If `FALSE`, return a data frame with the `"terms"`
 #'   attribute removed.
 #'
@@ -1347,18 +1374,8 @@ vars_from_label <- function(label) {
     }
   }
 
-  # some models we want to handle don't have pred.formula, e.g. scam() models
-  tt <- if (is.null(model$pred.formula)) {
-    if (!is.null(model$terms)) {
-      terms(model)
-    } else {
-      stop("`model` has no terms object to work with.", call. = FALSE)
-    }
-  } else {
-    terms(model[["pred.formula"]])
-  }
-  tt <- delete.response(tt)
-  out <- model.frame(tt, data = data)
+  # Build evaluated terms in fitted order without asking for the response.
+  out <- evaluated_model_frame(model, data)
 
   if (identical(model_frame, FALSE)) {
     attr(out, "terms") <- NULL
@@ -1370,7 +1387,7 @@ vars_from_label <- function(label) {
 #' Extract names of all variables needed to fit a GAM or a smooth
 #'
 #' @param object a fitted GAM object (inheriting from class `"gam"` or an
-#'   [mgcv::smooth.construct] smooth object, inheriting from class
+#'   [mgcv::smooth.construct()] smooth object, inheriting from class
 #'   `"mgcv.smooth"`.
 #' @param ... arguments passed to other methods. Not currently used.
 #'
@@ -1542,171 +1559,14 @@ twlss_theta_2_power <- function(theta, a, b) {
 
 reclass_scam_smooth <- function(smooth) {
   stop_if_not_mgcv_smooth(smooth)
-  uni_sm <- c(
-    "mpi.smooth", "mpd.smooth", "cv.smooth", "cx.smooth",
-    "po.smooth", "mdcv.smooth", "mdcx.smooth", "micv.smooth", "micx.smooth",
-    "mifo.smooth", "miso.smooth", "mpdBy.smooth", "cxBy.smooth",
-    "mpiBy.smooth", "cvBy.smooth", "mdcxBy.smooth", "mdcvBy.smooth",
-    "micxBy.smooth", "micvBy.smooth"
-  )
-
-  uni_by_sm <- c(
-    "mpdBy.smooth", "cxBy.smooth", "mpiBy.smooth", "cvBy.smooth",
-    "mdcxBy.smooth", "mdcvBy.smooth", "micxBy.smooth", "micvBy.smooth"
-  )
-
-  uni_zero_sm <- c("mifo.smooth", "miso.smooth")
-
-  tensor_sm <- c(
-    "tedmi.smooth", "tedmd.smooth", "tesmi1.smooth",
-    "tesmi2.smooth", "tesmd1.smooth", "tesmd2.smooth", "temicx.smooth",
-    "temicv.smooth", "tedecx.smooth", "tedecv.smooth", "tescx.smooth",
-    "tescv.smooth", "tecvcv.smooth", "tecxcx.smooth", "tecxcv.smooth"
-  )
-
-  double_mono <- c(
-    "tedmi.smooth", "tedmd.smooth", "temicx.smooth",
-    "temicv.smooth", "tedecx.smooth", "tedecv.smooth", "tecvcv.smooth",
-    "tecxcx.smooth", "tecxcv.smooth"
-  )
-
-  single_mono <- c(
-    "tesmi1.smooth", "tesmi2.smooth", "tesmd1.smooth",
-    "tesmd2.smooth", "tescx.smooth", "tescv.smooth"
-  )
-
-  new_cls <- NULL
-
-  if (inherits(smooth, uni_sm)) {
-    new_cls <- c("univariate_scam_smooth", "scam_smooth")
-
-    if (inherits(smooth, uni_by_sm)) {
-      new_cls <- append(new_cls, "univariate_by_scam_smooth", after = 0)
-    }
-
-    if (inherits(smooth, uni_zero_sm)) {
-      new_cls <- append(new_cls, "zero_point_scam_smooth", after = 0)
-    }
+  if (is_scam_smooth(smooth)) {
+    cls <- if (smooth_dim(smooth) == 1L) {
+      "univariate_scam_smooth"
+    } else "tensor_scam_smooth"
+    class(smooth) <- unique(append(class(smooth), c(cls, "scam_smooth"),
+      after = 1L))
   }
-
-  if (inherits(smooth, tensor_sm)) {
-    new_cls <- c("tensor_scam_smooth", "scam_smooth")
-
-    if (inherits(smooth, double_mono)) {
-      new_cls <- append(new_cls, "double_mono_tensor_scam_smooth",
-        after = 0L
-      )
-    }
-
-    if (inherits(smooth, single_mono)) {
-      new_cls <- append(new_cls, "single_mono_tensor_scam_smooth",
-        after = 0L
-      )
-    }
-  }
-
-  class(smooth) <- append(class(smooth), new_cls, after = 1L)
-
   smooth
-}
-
-`which_exp_scam_coefs` <- function(model) {
-  model$p.ident
-}
-
-`exp_fun` <- function(model) {
-  not_exp <- model$not.exp
-  fun <- exp # set the default
-  if (isTRUE(not_exp)) { # not_exp == NULL --> FALSE (not TRUE)
-    fun <- mgcv::notExp
-  }
-  fun
-}
-
-`scam_beta_se` <- function(smooth, ...) {
-  UseMethod("scam_beta_se")
-}
-
-#' @export
-`scam_beta_se.univariate_scam_smooth` <- function(
-  smooth,
-  X,
-  beta,
-  ndata,
-  V,
-  ...
-) {
-  # extending betas with a 0 - will zero out constant column in Xp
-  # beta <- c(0, beta) # --- doesn't seem needed in scam 1.2-21 
-
-  fv_c <- X %*% beta
-
-  const_dif <- -sum(fv_c) / ndata
-  ones <- matrix(rep(1, times = ndata), nrow = 1, ncol = ndata)
-  A <- ones %*% X
-  qrX <- qr(X)
-  R <- qr.R(qrX)
-  qrA <- qr(t(A))
-  R <- R[-1, ]
-  RZa <- t(qr.qty(qrA, t(R)))[, seq(2, ncol(X))]
-  # FIXME? can we do this & next line better, without inverting?
-  RZa_inv <- solve(RZa)
-  RZaR <- RZa_inv %*% R
-  beta <- qr.qy(qrA, c(0, RZaR %*% beta))
-  idx <- c(1, smooth_coef_indices(smooth))
-  #idx <- smooth_coef_indices(smooth)
-  vc <- vv <- V[idx, idx, drop = FALSE]
-  # vc[, 1] <- rep(0, nrow(vv))
-  # vc[1, ] <- rep(0, ncol(vv))
-  vc <- vc[-1, -1, drop = FALSE] # drop intercept
-
-  XZa <- t(qr.qty(qrA, t(X)))[, seq(2, ncol(X))]
-  Ga <- XZa %*% RZaR
-  se <- sqrt(pmax(0, rowSums((Ga %*% vc) * Ga)))
-
-  list(betas = beta, se = se)
-}
-
-#' @export
-`scam_beta_se.univariate_by_scam_smooth` <- function(
-  smooth,
-  X,
-  beta,
-  V,
-  ...
-) {
-  # return the coefs unmodified, so just compute se
-  idx <- c(1, smooth_coef_indices(smooth))
-  V <- V[idx, idx, drop = FALSE]
-  se <- sqrt(pmax(0, rowSums((X %*% V) * X)))
-  list(betas = beta, se = se)
-}
-
-#' @export
-`scam_beta_se.po.smooth` <- function(smooth, X, beta, V, ...) {
-  # extending betas with a 0 - will zero out constant column in Xp
-  beta <- c(0, beta)
-  idx <- smooth_coef_indices(smooth)
-  vc <- vv <- V[idx, idx, drop = FALSE]
-  vc[, 1] <- rep(0, nrow(vv))
-  vc[1, ] <- rep(0, ncol(vv))
-  se <- sqrt(pmax(0, rowSums((X %*% vc) * X)))
-  list(betas = beta, se = se)
-}
-
-#' @export
-`scam_beta_se.zero_point_scam_smooth` <- function(smooth, X, beta, V, ...) {
-  nz <- smooth$n.zero
-  lnz <- length(nz)
-  beta_z <- rep(0, length(beta) + length(nz))
-  beta_z[-nz] <- beta
-  idx <- smooth_coef_indices(smooth)
-  V <- V[idx, idx, drop = FALSE]
-  ## adding rows and columns of 0's...
-  vc <- matrix(0, nrow(V) + lnz, ncol(V) + lnz)
-  vc[-nz, -nz] <- V
-  se <- sqrt(pmax(0, rowSums((X %*% vc) * X)))
-  list(betas = beta_z, se = se)
 }
 
 # my own version of a label_both to remove '.' prefix when plotting
@@ -1847,6 +1707,7 @@ reclass_scam_smooth <- function(smooth) {
 #' @export
 #' @rdname dispersion
 `dispersion.glm` <- function(model, ...) {
+  model <- model_used_rows(model)
   f <- family(model)
   disp <- f$dispersion
   if (is.null(disp) || is.na(disp)) {
@@ -1874,11 +1735,19 @@ theta_2_power <- function(theta, a, b) {
 
 # extracts the `a` and `b` parameters of the model search over which the power
 # parameter is searched for
-get_tw_ab <- function(family) {
+get_tw_params <- function(family) {
+  # check if family is at least a Tweedie
   ft <- family_type(family)
   if (!ft %in% c("twlss", "tweedie")) {
     stop("'model' wasn't fitted with a Tweedie family.", call. = FALSE)
   }
+  # Fixed-power Tweedie() has no getTheta(). Fitted tw() families can also
+  # be named Tweedie(x.x), so the name alone does not distinguish them.
+  if (is.null(family$getTheta) &&
+    grepl("^Tweedie\\(", family_name(family))) {
+    return(get("p", envir = environment(family$rd)))
+  }
+  # so it is a tweedie but not Tweedie, so tw
   rfun <- if (identical(ft, "twlss")) {
     family$residuals
   } else {
@@ -1933,26 +1802,6 @@ multivariate_y <- function() {
   )
 }
 
-# Until Simon modifies `mgcv::inSide()` to be more programmer-friendly, this is
-# a wrapper that calls it in a way that does work
-# #' @importFrom geometry convhulln inhulln
-#' @importFrom mgcv inSide
-`inside` <- function(..data, bnd, x_var, y_var) {
-  # bnd_mat <- as.data.frame(bnd) |> as.matrix()
-  # ch <- geometry::convhulln(bnd_mat)
-  # ins <- geometry::inhulln(ch, data |> as.matrix())
-  # ins
-
-  # force eerything to have the same coord names `x` and `y`
-  bnd <- lapply(bnd, `names<-`, value = c("x", "y"))
-  ..data <- ..data[c(x_var, y_var)] |> setNames(c("x", "y"))
-  x <- ..data[["x"]]
-  y <- ..data[["y"]]
-  # call mgcv::inSide in a way that doesn't fall foul of the
-  # deparse(substitute()) shenanigans
-  mgcv::inSide(bnd = bnd, x = x, y = y)
-}
-
 # is a smooth a soap film
 `is_soap_film` <- function(object) {
   check_is_mgcv_smooth(object)
@@ -1980,12 +1829,19 @@ multivariate_y <- function() {
   # some people (!) prefix everything with the namespace, so match those too
   smoothers <- c(smoothers, paste0("mgcv::", smoothers))
 
-  # need to apply startsWith(..., smoothers) to each element of x
   vapply(
-    smoothers,
-    FUN = \(prefix, x) startsWith(x, prefix),
-    FUN.VALUE = logical(length(x)),
-    x = x
-  ) |> # an array is returned with 1 row per element of x
-    apply(MARGIN = 1, FUN = any) # do elements of x match any of the prefixes?
+    x,
+    FUN = \(name) any(startsWith(name, smoothers)),
+    FUN.VALUE = logical(1),
+    USE.NAMES = FALSE
+  )
+}
+
+# Decreasing transformations exchange the endpoints of an interval.
+`order_interval_bounds` <- function(object) {
+  lower <- object[[".lower_ci"]]
+  upper <- object[[".upper_ci"]]
+  object[[".lower_ci"]] <- pmin(lower, upper)
+  object[[".upper_ci"]] <- pmax(lower, upper)
+  object
 }

@@ -60,15 +60,18 @@ supplied, a suitable label will be generated from \code{object}.}
 \item{caption}{character or expression; the plot caption. See
 \code{\link[ggplot2:labs]{ggplot2::labs()}}.}
 
-\item{alpha}{numeric; alpha transparency for confidence or simultaneous
+\item{alpha}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Numeric; alpha transparency for confidence or simultaneous
 interval.}
 
-\item{colour}{The colour to use to draw the posterior smooths. Passed to
-\code{\link[ggplot2:geom_path]{ggplot2::geom_line()}} as argument \code{colour}.}
+\item{colour}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. The colour to use to draw the posterior smooths. Passed to
+\code{\link[ggplot2:geom_line]{ggplot2::geom_line()}} as argument \code{colour}.}
 
 \item{contour}{logical; should contour lines be added to smooth surfaces?}
 
-\item{contour_col}{colour specification for contour lines.}
+\item{contour_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specification for contour lines.}
 
 \item{n_contour}{numeric; the number of contour bins. Will result in
 \code{n_contour - 1} contour lines being drawn. See \code{\link[ggplot2:geom_contour]{ggplot2::geom_contour()}}.}
@@ -102,37 +105,24 @@ spread the plots}
 \description{
 Plot posterior smooths
 }
+\section{Label layout}{
+
+Pass \code{label_control = draw_label_control(...)} to \code{draw()} to wrap discrete
+axis labels and legend text, stagger discrete tick labels, or adjust legend
+and colour-bar layout. Settings apply to each panel, including unwrapped
+plot lists. See \code{\link[=draw_label_control]{draw_label_control()}} for the available settings.
+}
+
 \examples{
 load_mgcv()
-dat1 <- data_sim("eg1", n = 400, dist = "normal", scale = 1, seed = 1)
-## a single smooth GAM
-m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat1, method = "REML")
-## posterior smooths from m1
-sm1 <- smooth_samples(m1, n = 15, seed = 23478)
-## plot
-draw(sm1, alpha = 0.7)
-## plot only 5 randomly smapled draws
-draw(sm1, n_samples = 5, alpha = 0.7)
+# Simulate an additive Gaussian response and fit a GAM
+dat <- data_sim("eg1", n = 200, scale = 1, seed = 1)
+m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
 
-## A factor-by smooth example
-dat2 <- data_sim("eg4", n = 400, dist = "normal", scale = 1, seed = 1)
-## a multi-smooth GAM with a factor-by smooth
-m2 <- gam(y ~ fac + s(x2, by = fac) + s(x0), data = dat2, method = "REML")
-## posterior smooths from m1
-sm2 <- smooth_samples(m2, n = 15, seed = 23478)
-## plot, this time selecting only the factor-by smooth
-draw(sm2, select = "s(x2)", partial_match = TRUE, alpha = 0.7)
-
-\donttest{
-## A 2D smooth example
-dat3 <- data_sim("eg2", n = 400, dist = "normal", scale = 1, seed = 1)
-## fit a 2D smooth
-m3 <- gam(y ~ te(x, z), data = dat3, method = "REML")
-## get samples
-sm3 <- smooth_samples(m3, n = 10)
-## plot just 6 of the draws, with contour line overlays
-draw(sm3, n_samples = 6, contour = TRUE, seed = 42)
-}
+# Draw 15 possible curves for the smooth of x2 on a 100-point grid
+sm <- smooth_samples(m, select = "s(x2)", n_grid = 100,
+  n_draws = 15, seed = 23478)
+draw(sm)
 }
 \author{
 Gavin L. Simpson

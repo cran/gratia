@@ -19,12 +19,16 @@ eval_smooth(smooth, ...)
   smooth,
   model,
   n = 100,
+  n_2d = NULL,
   n_3d = NULL,
   n_4d = NULL,
   data = NULL,
   unconditional = FALSE,
+  frequentist = FALSE,
   overall_uncertainty = TRUE,
   dist = NULL,
+  envir = NULL,
+  back_transform = FALSE,
   ...
 )
 
@@ -32,12 +36,16 @@ eval_smooth(smooth, ...)
   smooth,
   model,
   n = 100,
+  n_2d = NULL,
   n_3d = NULL,
   n_4d = NULL,
   data = NULL,
   unconditional = FALSE,
+  frequentist = FALSE,
   overall_uncertainty = TRUE,
   clip = TRUE,
+  envir = NULL,
+  back_transform = FALSE,
   ...
 )
 
@@ -45,12 +53,16 @@ eval_smooth(smooth, ...)
   smooth,
   model,
   n = 100,
+  n_2d = NULL,
   n_3d = NULL,
   n_4d = NULL,
   data = NULL,
   unconditional = FALSE,
+  frequentist = FALSE,
   overall_uncertainty = TRUE,
   dist = NULL,
+  envir = NULL,
+  back_transform = FALSE,
   ...
 )
 
@@ -58,9 +70,13 @@ eval_smooth(smooth, ...)
   smooth,
   model,
   n = 100,
+  n_2d = NULL,
   data = NULL,
   unconditional = FALSE,
+  frequentist = FALSE,
   overall_uncertainty = TRUE,
+  envir = NULL,
+  back_transform = FALSE,
   ...
 )
 
@@ -68,9 +84,13 @@ eval_smooth(smooth, ...)
   smooth,
   model,
   n = 100,
+  n_2d = NULL,
   data = NULL,
   unconditional = FALSE,
+  frequentist = FALSE,
   overall_uncertainty = TRUE,
+  envir = NULL,
+  back_transform = FALSE,
   ...
 )
 
@@ -78,9 +98,13 @@ eval_smooth(smooth, ...)
   smooth,
   model,
   n = 100,
+  n_2d = NULL,
   data = NULL,
   unconditional = FALSE,
+  frequentist = FALSE,
   overall_uncertainty = TRUE,
+  envir = NULL,
+  back_transform = FALSE,
   ...
 )
 
@@ -88,9 +112,13 @@ eval_smooth(smooth, ...)
   smooth,
   model,
   n = 100,
+  n_2d = NULL,
   data = NULL,
   unconditional = FALSE,
+  frequentist = FALSE,
   overall_uncertainty = TRUE,
+  envir = NULL,
+  back_transform = FALSE,
   ...
 )
 
@@ -98,12 +126,16 @@ eval_smooth(smooth, ...)
   smooth,
   model,
   n = 100,
+  n_2d = NULL,
   n_3d = NULL,
   n_4d = NULL,
   data = NULL,
   unconditional = FALSE,
+  frequentist = FALSE,
   overall_uncertainty = TRUE,
   dist = NULL,
+  envir = NULL,
+  back_transform = FALSE,
   ...
 )
 
@@ -111,12 +143,16 @@ eval_smooth(smooth, ...)
   smooth,
   model,
   n = 100,
+  n_2d = NULL,
   n_3d = NULL,
   n_4d = NULL,
   data = NULL,
   unconditional = FALSE,
+  frequentist = FALSE,
   overall_uncertainty = TRUE,
   dist = NULL,
+  envir = NULL,
+  back_transform = FALSE,
   ...
 )
 }
@@ -129,22 +165,30 @@ eval_smooth(smooth, ...)
 models are supported.}
 
 \item{n}{numeric; the number of points over the range of the covariate at
-which to evaluate the smooth.}
+which to evaluate a univariate smooth.}
 
-\item{n_3d, n_4d}{numeric; the number of points over the range of last
-covariate in a 3D or 4D smooth. The default is \code{NULL} which achieves the
-standard behaviour of using \code{n} points over the range of all covariate,
-resulting in \code{n^d} evaluation points, where \code{d} is the dimension of the
-smooth. For \code{d > 2} this can result in very many evaluation points and slow
-performance. For smooths of \code{d > 4}, the value of \code{n_4d} will be used for
-all dimensions \verb{> 4}, unless this is \code{NULL}, in which case the default
-behaviour (using \code{n} for all dimensions) will be observed.}
+\item{n_2d}{numeric; the number of points along each of the first two axes
+of a smooth surface, including surface panels of higher-dimensional smooths.
+The default is 50 in plotting and plot-preparation functions. If \code{NULL},
+use \code{n} instead. Ignored when evaluation \code{data} are supplied. Factor levels
+are retained, and curves with only one continuous covariate use \code{n}.}
+
+\item{n_3d, n_4d}{numeric; the number of points along the third axis of a
+3D smooth (\code{n_3d}, default 16), or each axis after the first two for smooths
+of dimension four or higher (\code{n_4d}, default 4). If \code{NULL}, use \code{n} for
+those axes. For factor conditioning dimensions, retain at most that many
+levels, taking the first in fitted order. The first two surface axes use
+\code{n_2d}. Supplied \code{data} are unchanged.}
 
 \item{data}{an optional data frame of values to evaluate \code{smooth} at.}
 
-\item{unconditional}{logical; should confidence intervals include the
-uncertainty due to smoothness selection? If \code{TRUE}, the corrected Bayesian
-covariance matrix will be used.}
+\item{unconditional}{logical; if \code{TRUE} (and only if \code{frequentist == FALSE})
+then the bayesian smoothing parameter uncertainty-corrected covariance
+matrix is returned, if available. Whether it is available depends on which
+smoothness selection method was used to fit the model.}
+
+\item{frequentist}{logical; if \code{FALSE}, the default, the bayesian covariance
+matrix is returned, otherwise the frequentist covariance matrix.}
 
 \item{overall_uncertainty}{logical; should the uncertainty in the model
 constant term be included in the standard error of the evaluate values of
@@ -155,6 +199,26 @@ a location is too far from data to be plotted when plotting 2-D smooths.
 The data are scaled into the unit square before deciding what to exclude,
 and \code{dist} is a distance within the unit square. See
 \code{\link[mgcv:exclude.too.far]{mgcv::exclude.too.far()}} for further details.}
+
+\item{envir}{an optional environment supplying functions and constants used
+in model expressions. The available model formula environment is used when
+\code{NULL}. Covariate observations should be supplied in \code{data}.}
+
+\item{back_transform}{logical; generate automatic grids on the original
+covariate scale? The default, \code{FALSE}, preserves evenly spaced model-scale
+grids (e.g. in \code{log(x)}). With \code{TRUE}, recover raw fitting covariates and
+generate grids on their original scale, then evaluate the model expressions
+forwards. Each axis must depend on one distinct original model covariate.
+Functions such as \code{foo(x)} require no inverse. Fitted prediction parameters
+are retained where provided by the model, including for \code{scale(x)}.
+When \code{data} are supplied, use those rows without generating a grid; \code{TRUE}
+requires raw coordinates for each axis. Returned model-coordinate columns
+keep their usual names and raw coordinates are retained in auxiliary
+\verb{.gratia_raw_*} columns. Draw these estimates with
+\code{draw(object, back_transform = TRUE)} to display the raw coordinates.
+Estimates containing only transformed coordinates give an informative error
+if drawn on the original scale. This option does not change effect values
+or their intervals at the chosen evaluation points.}
 
 \item{clip}{logical; should evaluation points be clipped to the boundary of
 a soap film smooth? The default is \code{FALSE}, which will return \code{NA} for any

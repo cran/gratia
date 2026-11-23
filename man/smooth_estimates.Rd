@@ -3,6 +3,8 @@
 \name{smooth_estimates}
 \alias{smooth_estimates}
 \alias{smooth_estimates.gam}
+\alias{smooth_estimates.gamlss}
+\alias{smooth_estimates.gjrm}
 \title{Evaluate smooths at covariate values}
 \usage{
 smooth_estimates(object, ...)
@@ -12,47 +14,87 @@ smooth_estimates(object, ...)
   select = NULL,
   smooth = deprecated(),
   n = 100,
+  n_2d = 50,
   n_3d = 16,
   n_4d = 4,
   data = NULL,
   unconditional = FALSE,
+  frequentist = FALSE,
   overall_uncertainty = TRUE,
   dist = NULL,
   unnest = TRUE,
   partial_match = FALSE,
   clip = FALSE,
-  ...
+  envir = NULL,
+  back_transform = FALSE,
+  interval = NULL,
+  ci_level = 0.95,
+  n_sim = 10000,
+  n_cores = 1,
+  seed = NULL,
+  interval_method = c("auto", "gaussian", "bootstrap", "shape"),
+  shape_source = c("gaussian", "bootstrap"),
+  ...,
+  variables = NULL,
+  simultaneous_method = c("simulation", "tube"),
+  simultaneous_domain = NULL,
+  tube_control = list()
+)
+
+\method{smooth_estimates}{gamlss}(
+  object,
+  select = NULL,
+  smooth = deprecated(),
+  ...,
+  partial_match = FALSE
+)
+
+\method{smooth_estimates}{gjrm}(
+  object,
+  select = NULL,
+  smooth = deprecated(),
+  ...,
+  partial_match = FALSE
 )
 }
 \arguments{
-\item{object}{an object of class \code{"gam"} or \code{"gamm"}.}
+\item{object}{a fitted model, including objects of class \code{"gam"}, \code{"gamm"}
+or models fitted by \code{\link[GJRM:gamlss]{GJRM::gamlss()}} or \code{\link[GJRM:gjrm]{GJRM::gjrm()}}.}
 
 \item{...}{arguments passed to other methods.}
 
-\item{select}{character; select which smooth's posterior to draw from.
-The default (\code{NULL}) means the posteriors of all smooths in \code{model}
-will be sampled from. If supplied, a character vector of requested terms.}
+\item{select}{character, numeric or logical; smooths to evaluate, using labels
+from \code{\link[=smooths]{smooths()}} or indices in fitted smooth order. The default (\code{NULL})
+evaluates all smooths.}
 
 \item{smooth}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} Use \code{select} instead.}
 
 \item{n}{numeric; the number of points over the range of the covariate at
-which to evaluate the smooth.}
+which to evaluate a univariate smooth.}
 
-\item{n_3d, n_4d}{numeric; the number of points over the range of last
-covariate in a 3D or 4D smooth. The default is \code{NULL} which achieves the
-standard behaviour of using \code{n} points over the range of all covariate,
-resulting in \code{n^d} evaluation points, where \code{d} is the dimension of the
-smooth. For \code{d > 2} this can result in very many evaluation points and slow
-performance. For smooths of \code{d > 4}, the value of \code{n_4d} will be used for
-all dimensions \verb{> 4}, unless this is \code{NULL}, in which case the default
-behaviour (using \code{n} for all dimensions) will be observed.}
+\item{n_2d}{numeric; the number of points along each of the first two axes
+of a smooth surface, including surface panels of higher-dimensional smooths.
+The default is 50 in plotting and plot-preparation functions. If \code{NULL},
+use \code{n} instead. Ignored when evaluation \code{data} are supplied. Factor levels
+are retained, and curves with only one continuous covariate use \code{n}.}
+
+\item{n_3d, n_4d}{numeric; the number of points along the third axis of a
+3D smooth (\code{n_3d}, default 16), or each axis after the first two for smooths
+of dimension four or higher (\code{n_4d}, default 4). If \code{NULL}, use \code{n} for
+those axes. For factor conditioning dimensions, retain at most that many
+levels, taking the first in fitted order. The first two surface axes use
+\code{n_2d}. Supplied \code{data} are unchanged.}
 
 \item{data}{a data frame of covariate values at which to evaluate the
 smooth.}
 
-\item{unconditional}{logical; should confidence intervals include the
-uncertainty due to smoothness selection? If \code{TRUE}, the corrected Bayesian
-covariance matrix will be used.}
+\item{unconditional}{logical; if \code{TRUE} (and only if \code{frequentist == FALSE})
+then the bayesian smoothing parameter uncertainty-corrected covariance
+matrix is returned, if available. Whether it is available depends on which
+smoothness selection method was used to fit the model.}
+
+\item{frequentist}{logical; if \code{FALSE}, the default, the bayesian covariance
+matrix is returned, otherwise the frequentist covariance matrix.}
 
 \item{overall_uncertainty}{logical; should the uncertainty in the model
 constant term be included in the standard error of the evaluate values of
@@ -73,37 +115,246 @@ and \code{dist} is a distance within the unit square. See
 \item{clip}{logical; should evaluation points be clipped to the boundary of
 a soap film smooth? The default is \code{FALSE}, which will return \code{NA} for any
 point that is deemed to lie outside the boundary of the soap film.}
+
+\item{envir}{an optional environment supplying functions and constants used
+in model expressions. The available model formula environment is used when
+\code{NULL}. Covariate observations should be supplied in \code{data}.}
+
+\item{back_transform}{logical; generate automatic grids on the original
+covariate scale? The default, \code{FALSE}, preserves evenly spaced model-scale
+grids (e.g. in \code{log(x)}). With \code{TRUE}, recover raw fitting covariates and
+generate grids on their original scale, then evaluate the model expressions
+forwards. Each axis must depend on one distinct original model covariate.
+Functions such as \code{foo(x)} require no inverse. Fitted prediction parameters
+are retained where provided by the model, including for \code{scale(x)}.
+When \code{data} are supplied, use those rows without generating a grid; \code{TRUE}
+requires raw coordinates for each axis. Returned model-coordinate columns
+keep their usual names and raw coordinates are retained in auxiliary
+\verb{.gratia_raw_*} columns. Draw these estimates with
+\code{draw(object, back_transform = TRUE)} to display the raw coordinates.
+Estimates containing only transformed coordinates give an informative error
+if drawn on the original scale. This option does not change effect values
+or their intervals at the chosen evaluation points.}
+
+\item{interval}{character or \code{NULL}; \code{NULL} (the default) returns estimates
+and standard errors only. \code{"confidence"} adds pointwise intervals and
+\code{"simultaneous"} adds a band covering, by default, the finite evaluation grid of each
+fitted smooth. \code{"credible"} is an alias for \code{"confidence"}; the default
+Bayesian covariance gives approximate Bayesian credible intervals.}
+
+\item{ci_level}{numeric; interval coverage, strictly between zero and one.}
+
+\item{n_sim, n_cores}{positive integers; coefficient draws and simulation cores
+for simultaneous bands. Parallel simulation requires OpenMP support.}
+
+\item{seed}{integer or \code{NULL}; an explicit simulation seed preserves the
+caller's RNG state. Shared coefficient draws make results independent of
+selected smooth order and parallel evaluation scheduling.}
+
+\item{interval_method}{character; "auto" uses stored \code{\link[mgcv:scasm]{mgcv::scasm()}} bootstrap draws
+for pointwise intervals when available, and Gaussian intervals otherwise.
+Use "gaussian" to request covariance-based limits or "bootstrap" to
+require stored draws. Simultaneous bootstrap bands are not supported.
+\code{"shape"} applies \code{\link[=shape_intervals]{shape_intervals()}} to supported \code{\link[mgcv:scasm]{mgcv::scasm()}} smooth components,
+using the initial limits chosen by \code{shape_source}.}
+
+\item{shape_source}{character; initial uncertainty for \code{interval_method = "shape"}: \code{"gaussian"} (the default) or stored \code{"bootstrap"} pointwise
+limits. Bootstrap sources require \code{frequentist = FALSE} and
+\code{unconditional = FALSE} because the stored draws hold smoothing fixed.}
+
+\item{variables}{Character vector giving every covariate of the selected
+smooths exactly once, in plotting order: x, y, then the conditioning
+covariate for 3D smooths, or facet rows and columns for 4D smooths.
+When supplied, selected smooths must use the same covariates. Use fitted coordinate names,
+such as \code{"log(x)"} for a transformed covariate. The default, \code{NULL}, favours
+a two-variable tensor margin for x and y, otherwise retaining fitted order.
+Grid resolution follows this order. Supplied \code{data} are evaluated unchanged.
+Drawing saved estimates can change the order but uses only points already
+evaluated; evaluate again to change grid resolution or conditioning values.
+Continuous covariates must precede factors. Spherical smooths retain their
+latitude/longitude convention and do not support reordering.}
+
+\item{simultaneous_method}{character; calibration for simultaneous bands.
+The default, \code{"simulation"}, uses coefficient draws on the evaluation
+grid. \code{"tube"} uses a conservative Gaussian threshold-crossing bound
+over a continuous interval for supported one-dimensional cubic splines.
+See \link{simultaneous_bands}.}
+
+\item{simultaneous_domain}{numeric pair of increasing finite endpoints, or
+a named list of such pairs keyed by spline coordinate. For tube bands,
+\code{NULL} uses the range of returned evaluation coordinates, including gaps.
+All returned points must lie inside the interval and the interval must
+lie inside the fitted spline support. Requires tube calibration.}
+
+\item{tube_control}{named list controlling numerical tube calibration:
+\code{rel_tol} (default \code{1e-6}), \code{abs_tol} (\code{1e-8}), \code{subdivisions} (\code{1000L}),
+and \code{root_tol} (\code{1e-8}). Requires tube calibration. Simulation controls
+\code{n_sim}, \code{n_cores} (or \code{ncores}), and \code{seed} are ignored by tube calibration.}
 }
 \value{
 A data frame (tibble), which is of class \code{"smooth_estimates"}.
+Its \code{plot_variables} attribute is a list of resolved covariate orders,
+named by smooth label, used when drawing the saved estimates.
+Its \code{cyclic_info} attribute retains the fitted cycle boundaries for
+supported one-dimensional cyclic components, allowing
+\code{draw(object, cyclic = "polar")} to configure the angular axis.
+This attribute is retained in nested and unnested output.
+When no evaluation rows remain, flat output has zero rows and retains the
+estimate, standard error and predictor columns with their original types.
+With \code{unnest = FALSE}, each selected smooth retains its metadata record
+and a data table with zero rows in the \code{data} list column.
 }
 \description{
 Evaluate a smooth at a grid of evenly spaced value over the range of the
 covariate associated with the smooth. Alternatively, a set of points at which
 the smooth should be evaluated can be supplied. \code{smooth_estimates()} is a new
-implementation of \code{evaluate_smooth()}, and replaces that function, which has
+implementation of \code{\link[=evaluate_smooth]{evaluate_smooth()}}, and replaces that function, which has
 been removed from the package.
+}
+\details{
+For \code{\link[GJRM:gamlss]{GJRM::gamlss()}} and \code{\link[GJRM:gjrm]{GJRM::gjrm()}} models, smooths are evaluated in equation and smooth
+order using the final fitted GJRM coefficients and covariance matrices.
+Selection uses the model-wide labels returned by \code{\link[=smooths]{smooths()}}, including
+suffixes such as \code{s.1(x)} for repeated labels. Equations without smooths
+are skipped; a model without any smooths gives an error. All grid, data,
+environment, coordinate transformation and interval controls are passed to
+the GAM method for each selected equation. \code{frequentist = TRUE} uses the
+final GJRM frequentist covariance. A smoothing-parameter uncertainty
+correction is unavailable: \code{unconditional = TRUE} warns and uses the
+uncorrected final covariance, as for GAMs without that correction.
+
+For distributional and glmmTMB models with multiple linear predictors,
+an optional \code{.model} column identifies the model part or parameter
+associated with each smooth. This display metadata is retained in nested
+output and subsets, allowing \code{\link[=draw]{draw()}} to reproduce model subtitles from saved
+estimates. Smooth labels and selection remain unchanged.
+
+When distinct fitted terms share both their smooth label and type (for
+example, tensor products of soap-film components), \code{.smooth_id} contains
+their fitted smooth indices. This preserves their identity in saved
+estimates and plots without changing the labels supplied by mgcv.
+
+By default, simultaneous coverage is per fitted smooth over its valid evaluation points,
+including all its slices and factor levels. Separate factor-by smooths remain
+separate coverage sets when grouped in one plot. This finite-grid band does
+not claim joint coverage across selected smooths or the full fitted model.
+Increasing grid resolution improves the approximation to whole-curve coverage.
+For supported univariate cubic splines, \code{simultaneous_method = "tube"}
+instead calibrates over a continuous interval; see \link{simultaneous_bands}.
+\code{overall_uncertainty} and covariance options apply to both interval types.
+SCAM smooth estimates retain the fitted centring and coefficient
+transformation when evaluation points are changed. Pointwise intervals use
+the covariance of the constrained coefficients. With
+\code{overall_uncertainty = TRUE}, their standard errors also include intercept
+uncertainty and its covariance with the smooth; estimates remain centred.
+Models without an intercept use smooth-only uncertainty for either setting.
+Native \code{\link[mgcv:scasm]{mgcv::scasm()}} fits use component-only uncertainty by default. Explicitly
+requesting \code{overall_uncertainty = TRUE} warns once if selected smooths lack
+the centring information needed to add mean uncertainty. Ordinary GAM
+defaults are unchanged.
+
+Bootstrap pointwise limits follow mgcv's percentiles and its \code{svar.only}
+correction for smoothing bias. The correction can move limits beyond the
+fitted shape constraints. Estimates and covariance-based standard errors
+are unchanged; \code{.crit} is \code{NA} for asymmetric bootstrap limits. No new
+replicates are generated. Simultaneous intervals use Gaussian draws and
+warn if automatic selection leaves stored bootstrap draws unused.
+
+The \code{interval_info} attribute records the interval source and correction.
+The \code{shape_constraints} attribute identifies requests and retained
+inequalities for each fitted smooth and tensor margin. Captions use
+plotmath arrows for increasing and decreasing constraints while \code{.type}
+and \code{\link[=smooth_type]{smooth_type()}} keep their existing basis names. Unsupported tensor
+requests produce a warning and are labelled as not retained.
+
+SCAM captions describe the basis and its constraints separately from the
+compact \code{.type} values. Increasing and decreasing constraints use plotmath
+arrows. Tensor captions name each covariate and its constraint; local
+constraints include the fitted change point. The \code{scam_smooth_info}
+attribute preserves these descriptions when plotting saved estimates.
+
+Shape enforcement is explicit and leaves the existing interval defaults
+unchanged. It preserves containment of a shape-restricted target whenever
+the entire initial band contains that target on the evaluation grid. This
+does not establish nominal coverage of the initial band, or preserve
+marginal coverage of transformed pointwise limits. The default Gaussian
+source uses approximate Bayesian covariance and does not construct a
+constrained posterior. Standard errors describe the initial calculation;
+\code{.crit} is \code{NA} after shape enforcement. Metadata records the initial source,
+correction, named shapes, model coordinates and whole-grid guarantee.
+
+Every selected term must have retained named \code{\link[mgcv:scasm]{mgcv::scasm()}} restrictions. Supported
+combinations are positivity, monotonicity in any directions and curvature
+in at most one direction. Tensor smooths require \code{te(..., np = FALSE)} with
+univariate B-spline margins (\code{"sc"} or \code{"bs"}). Normal reparameterisation
+and other complementary bases can invalidate the named surface shape even
+when coefficient inequalities were retained. Curvature additionally
+requires equally spaced fitted knots to rounding precision and degree at
+least two. Irregular evaluation
+coordinates are supported. Complete product grids, finite endpoints and
+evaluation inside the fitted B-spline domains are required; use \code{dist = 0}
+for tensors. Numeric \code{by} variables are unsupported; factor-by components
+and separate linear predictors are treated separately.
+Function-valued bases are required; derivative bases are unsupported.
+General \code{pc} inequalities can replace the named coefficient restrictions
+while leaving their original \code{xt} request in the fitted object. These
+replacements are labelled as general constraints and rejected for automatic
+shape intervals. Point equalities that retain the named inequalities are
+supported.
+
+Shape intervals use component-only uncertainty: explicit
+\code{overall_uncertainty = TRUE}, effect shifts and effect transformations are
+rejected. Coordinate transformations used in the model remain supported;
+their named shapes concern model coordinates. The transformed endpoints
+need not belong to the fitted spline space or obey centring equalities.
+See \code{\link[=shape_confidence_set]{shape_confidence_set()}} for explicit coefficient restrictions and the
+\href{https://gavinsimpson.github.io/gratia/articles/shape-constrained-intervals.html}{shape-constrained intervals article}
+for examples.
+
+Smoothing-parameter uncertainty is not currently supported for SCAM models;
+use \code{unconditional = FALSE}.
+
+For explicit \code{data}, missing covariates needed by a smooth produce \code{NA}
+estimates and standard errors at those positions. Missing values in variables
+unrelated to that smooth do not discard its otherwise evaluable rows.
+
+Raw \code{data} may contain \code{x} for a smooth such as \code{s(log(x))}; gratia evaluates
+the expression before constructing the prediction matrix. An evaluated
+column named \code{"log(x)"} can be supplied instead. When both are supplied,
+the raw inputs take precedence, except for stored model frames and grids
+prepared by gratia. Automatic grids are evenly spaced in the smooth
+coordinate (\code{log(x)}), and returned coordinate columns retain that name.
+
+Stored evaluated columns allow automatic plotting even when a local function
+used to fit the model is no longer available. Evaluating that function at new
+raw data requires \code{envir}; training values are never substituted for new
+observations. Arbitrary transformations are not inverted to recover raw data.
+The \code{coordinate_info} attribute identifies retained raw coordinate columns.
+\code{\link[=draw]{draw()}} uses them for \code{back_transform = TRUE}; the usual coordinate
+columns remain on the model scale. Automatic raw grids require recoverable
+fitting rows and matching functions and constants. Supplied raw \code{data}
+instead define the prediction rows directly.
+Typical covariate values added to evaluated grids by \code{include_all = TRUE}
+are not raw axis coordinates. Numeric \code{by} multipliers are set to one on
+automatic grids, even when their name also identifies a raw axis; supplied
+prediction rows retain their actual multipliers. Soap-film boundary rows
+retain model coordinates only. If a boundary axis is transformed, draw the
+estimates with \code{back_transform = FALSE}; raw-scale drawing gives an error
+rather than dropping the boundary.
 }
 \examples{
 load_mgcv()
 \dontshow{
 op <- options(cli.unicode = FALSE, pillar.sigfig = 6)
 }
-dat <- data_sim("eg1", n = 400, dist = "normal", scale = 2, seed = 2)
-m1 <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = dat, method = "REML")
+# Simulate a Gaussian response with smooth effects and fit a GAM.
+dat <- data_sim("eg1", n = 120, dist = "normal", scale = 2, seed = 2)
+m <- gam(y ~ s(x0, k = 5) + s(x1, k = 5) + s(x2, k = 5) + s(x3, k = 5),
+  data = dat, method = "REML"
+)
 
-## evaluate all smooths
-smooth_estimates(m1)
-
-## or selected smooths
-smooth_estimates(m1, select = c("s(x0)", "s(x1)"))
-
-# parallel processing of smooths
-if (requireNamespace("mirai") && requireNamespace("carrier")) {
-  library("mirai")
-  daemons(2)                          # only low for CRAN requirements
-  smooth_estimates(m1)
-}
+# Evaluate each smooth at 30 points along its covariate.
+smooth_estimates(m, n = 30)
 \dontshow{
 options(op)
 }

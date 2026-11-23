@@ -1,5 +1,5 @@
 Package: gratia
-Version: 0.11.2
+Version: 0.12.1
 Title: Graceful 'ggplot'-Based Graphics and Other Functions for GAMs
         Fitted Using 'mgcv'
 Authors@R: c(person(given = "Gavin L.", family = "Simpson",
@@ -10,31 +10,35 @@ Authors@R: c(person(given = "Gavin L.", family = "Simpson",
                     role = "ctb",
                     comment = c(ORCID = "0000-0002-4842-3657")))
 Maintainer: Gavin L. Simpson <ucfagls@gmail.com>
-Depends: R (>= 4.1.0)
-Imports: mgcv (>= 1.9-0), ggplot2 (>= 3.5.0), tibble (>= 3.0.0), dplyr
-        (>= 1.2.0), tidyr, rlang, patchwork (>= 1.2.0), vctrs, grid,
-        mvnfast, purrr (>= 1.1.0), stats, tools, grDevices, stringr,
-        tidyselect (>= 1.2.0), lifecycle, pillar, cli, nlme,
-        ggokabeito, withr, scales, mirai, tweedie (>= 2.3.5)
-Suggests: gamm4, lme4, testthat, vdiffr, MASS, scam (>= 1.2-21),
-        datasets, knitr, rmarkdown, forcats, GJRM, readr, glmmTMB,
-        ggdist, distributional, hexbin, gamair, sf (>= 0.7-3), svglite
-        (>= 2.0.0), curl, marginaleffects, carrier
+Depends: R (>= 4.4.0)
+Imports: Rcpp, parallel, KernSmooth, mgcv (>= 1.9-4), ggplot2 (>=
+        4.0.3), tibble (>= 3.0.0), dplyr (>= 1.2.0), tidyr, rlang,
+        patchwork (>= 1.3.2), vctrs, grid, mvnfast, purrr (>= 1.1.0),
+        stats, grDevices, stringr, tidyselect (>= 1.2.0), lifecycle,
+        pillar, cli, withr, scales, utils
+Suggests: posterior, coda, bayesplot, loo, ggcube (>= 0.3.0), geometry,
+        qgam, tweedie (>= 2.3.5), gamm4 (>= 0.2-7), lme4, nlme,
+        testthat, R6, pkgload, vdiffr, MASS, scam (>= 1.2-21),
+        datasets, knitr, rmarkdown, forcats, GJRM, readr, glmmTMB (>=
+        1.1.15.2), sdmTMB (>= 1.2.0), RTMB, TMB, Matrix, gamair, sf (>=
+        1.0-0), marginaleffects, mirai, carrier
 Description: Graceful 'ggplot'-based graphics and utility functions for working with generalized additive models (GAMs) fitted using the 'mgcv' package. Provides a reimplementation of the plot() method for GAMs that 'mgcv' provides, as well as 'tidyverse' compatible representations of estimated smooths.
 License: MIT + file LICENSE
 LazyData: true
 URL: https://gavinsimpson.github.io/gratia/
 BugReports: https://github.com/gavinsimpson/gratia/issues
-RoxygenNote: 7.3.3
+LinkingTo: Rcpp
 Encoding: UTF-8
+Language: en-GB
 VignetteBuilder: knitr
 Config/testthat/edition: 3
-Config/Needs/website: rmarkdown, ggdist
-Language: en-GB
-NeedsCompilation: no
-Packaged: 2026-02-06 21:36:33 UTC; gavin
+Config/Needs/website: rmarkdown, ggdist, MASS, nlme, lme4, gamm4, GJRM,
+        glmmTMB, sdmTMB, sf, ggcube, distributional, hexbin
+Config/roxygen2/version: 8.1.1
+NeedsCompilation: yes
+Packaged: 2026-11-23 07:48:12 UTC; gavin
 Author: Gavin L. Simpson [aut, cre, cph] (ORCID:
     <https://orcid.org/0000-0002-9084-8413>),
   Henrik Singmann [ctb] (ORCID: <https://orcid.org/0000-0002-4842-3657>)
 Repository: CRAN
-Date/Publication: 2026-02-07 06:10:36 UTC
+Date/Publication: 2026-11-23 08:50:02 UTC

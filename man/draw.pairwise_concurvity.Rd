@@ -50,10 +50,20 @@ result of a call to \code{\link[=model_concurvity]{model_concurvity()}} or its a
 
 \item{...}{arguments passed to other methods.}
 
-\item{bar_col}{colour specification for the bar colour.}
+\item{bar_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specification for the bar colour.}
 
-\item{bar_fill}{colour specification for the bar fill}
+\item{bar_fill}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specification for the bar fill}
 }
 \description{
 Plot concurvity measures
 }
+\section{Label layout}{
+
+Pass \code{label_control = draw_label_control(...)} to \code{draw()} to wrap discrete
+axis labels and legend text, stagger discrete tick labels, or adjust legend
+and colour-bar layout. Settings apply to each panel, including unwrapped
+plot lists. See \code{\link[=draw_label_control]{draw_label_control()}} for the available settings.
+}
+

@@ -16,10 +16,11 @@
   nrow = NULL,
   angle = NULL,
   guides = "keep",
-  contour = FALSE,
+  contour = TRUE,
   n_contour = 10,
   contour_col = "black",
-  ...
+  ...,
+  variables = NULL
 )
 }
 \arguments{
@@ -28,7 +29,7 @@
 \item{legend}{logical; should a legend by drawn to indicate basis functions?}
 
 \item{labeller}{a labeller function with which to label facets. The default
-is to use \code{\link[ggplot2:labellers]{ggplot2::label_both()}}.}
+is to use \code{\link[ggplot2:label_both]{ggplot2::label_both()}}.}
 
 \item{ylab}{character or expression; the label for the y axis. If not
 supplied, a suitable label will be generated from \code{object}.}
@@ -57,9 +58,22 @@ drawn passed to the \code{angle} argument of \code{\link[ggplot2:guide_axis]{ggp
 \item{n_contour}{numeric; the number of contour bins. Will result in
 \code{n_contour - 1} contour lines being drawn. See \code{\link[ggplot2:geom_contour]{ggplot2::geom_contour()}}.}
 
-\item{contour_col}{colour specification for contour lines.}
+\item{contour_col}{Deprecated; use \code{\link[=gratia_theme_get]{gratia_theme_get()}} theme
+settings instead. Colour specification for contour lines.}
 
 \item{...}{arguments passed to other methods. Not used by this method.}
+
+\item{variables}{Character vector giving every covariate of the selected
+smooths exactly once, in plotting order: x, y, then the conditioning
+covariate for 3D smooths, or facet rows and columns for 4D smooths.
+When supplied, selected smooths must use the same covariates. Use fitted coordinate names,
+such as \code{"log(x)"} for a transformed covariate. The default, \code{NULL}, favours
+a two-variable tensor margin for x and y, otherwise retaining fitted order.
+Grid resolution follows this order. Supplied \code{data} are evaluated unchanged.
+Drawing saved estimates can change the order but uses only points already
+evaluated; evaluate again to change grid resolution or conditioning values.
+Continuous covariates must precede factors. Spherical smooths retain their
+latitude/longitude convention and do not support reordering.}
 }
 \value{
 A \code{patchwork} object.
@@ -67,15 +81,40 @@ A \code{patchwork} object.
 \description{
 Plots basis functions using ggplot2
 }
+\details{
+For smooths of three or four covariates, each basis function has its own
+plot. The first two covariates define the surface axes. Three-covariate
+smooths have wrapped facets for the third covariate; four-covariate smooths
+have the third covariate in rows and the fourth in columns. \code{ncol} and \code{nrow}
+control the outer arrangement of plots. Fill scales share a range within
+each smooth. Use \code{variables} in \code{\link[=basis]{basis()}} to choose the axes before grid
+generation, or here to rearrange existing evaluations without resampling.
+Surface plots include contour lines by default, matching \code{\link[=draw.gam]{draw.gam()}}.
+Use \code{contour = FALSE} to draw surfaces without contour lines.
+
+Factor-by bases from smooth specifications are drawn once for the whole
+factor-by set, using evaluations from all available levels. For fitted
+models, \code{basis(model)} returns coefficient-weighted contributions, which
+remain separate for each level. Use \code{basis(model, unweighted = TRUE)} to
+draw the shared basis once. Subsetting the basis before drawing restricts
+the plot to the retained evaluations and basis functions.
+}
+\section{Label layout}{
+
+Pass \code{label_control = draw_label_control(...)} to \code{draw()} to wrap discrete
+axis labels and legend text, stagger discrete tick labels, or adjust legend
+and colour-bar layout. Settings apply to each panel, including unwrapped
+plot lists. See \code{\link[=draw_label_control]{draw_label_control()}} for the available settings.
+}
+
 \examples{
 load_mgcv()
-df <- data_sim("eg1", n = 400, seed = 42)
+# Simulate an additive Gaussian response and fit a GAM
+df <- data_sim("eg1", n = 200, seed = 42)
 m <- gam(y ~ s(x0) + s(x1) + s(x2) + s(x3), data = df, method = "REML")
 
-bf <- basis(m)
-draw(bf)
-
-bf <- basis(m, "s(x2)")
+# Plot the coefficient-weighted basis functions for one smooth
+bf <- basis(m, select = "s(x2)")
 draw(bf)
 }
 \author{

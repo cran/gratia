@@ -6,7 +6,7 @@
 \alias{data_slice.data.frame}
 \alias{data_slice.gam}
 \alias{data_slice.gamm}
-\alias{data_slice.list}
+\alias{data_slice.gamm4}
 \alias{data_slice.scam}
 \title{Prepare a data slice through model covariates}
 \usage{
@@ -14,13 +14,20 @@ data_slice(object, ...)
 
 \method{data_slice}{default}(object, ...)
 
-\method{data_slice}{data.frame}(object, ..., .observed_only = FALSE)
+\method{data_slice}{data.frame}(object, ..., .observed_only = FALSE, .by = NULL)
 
-\method{data_slice}{gam}(object, ..., data = NULL, envir = NULL, .observed_only = FALSE)
+\method{data_slice}{gam}(
+  object,
+  ...,
+  data = NULL,
+  envir = NULL,
+  .observed_only = FALSE,
+  .by = NULL
+)
 
 \method{data_slice}{gamm}(object, ...)
 
-\method{data_slice}{list}(object, ...)
+\method{data_slice}{gamm4}(object, ...)
 
 \method{data_slice}{scam}(object, ...)
 }
@@ -38,9 +45,17 @@ those combinations. If \code{FALSE}, no filtering is done. If \code{.observed_on
 is a character vector, on those variables named in the vector are used to
 in the comparison with the combinations in \code{object}.}
 
+\item{.by}{<\code{\link[dplyr:dplyr_tidy_select]{tidy-select}}> Optional grouping
+variables. With \code{.by = NULL} (the default), expressions are evaluated over
+the full data set. Otherwise, expressions are evaluated separately within
+each observed group and the resulting grids are combined. Grouping variables
+are included automatically; expressions for these variables in \code{...} select
+groups and are evaluated once over the full data set. Unobserved combinations
+are omitted, and selecting no observed groups is an error.}
+
 \item{data}{an alternative data frame of values containing all the variables
 needed to fit the model. If \code{NULL}, the default, the data used to fit the
-model will be recovered using \code{model.frame}. User-supplied expressions
+model will be recovered using \code{\link[stats:model.frame]{stats::model.frame()}}. User-supplied expressions
 passed in \code{...} will be evaluated in \code{data}.}
 
 \item{envir}{the environment within which to recreate the data used to fit
@@ -67,7 +82,7 @@ or the first level (sorted as per the vector returned by \code{\link[base:levels
 if several levels are observed the same number of times.
 }
 
-These values are already computed when calling \code{gam()} or \code{bam()} for example
+These values are already computed when calling \code{\link[mgcv:gam]{mgcv::gam()}} or \code{\link[mgcv:bam]{mgcv::bam()}} for example
 and can be found in the \code{var.summary} component of the fitted model. Function
 \code{\link[=typical_values]{typical_values()}} will extract these values for you if you are interested.
 
@@ -78,6 +93,16 @@ that factor covariates have the correct levels, as needed by
 
 For an extended discussion of \code{\link[=data_slice]{data_slice()}} and further examples, see
 \code{vignette("data-slices", package = "gratia")}.
+
+With \code{.by}, unspecified covariates retain their overall representative
+values. Specify an expression such as \code{z = mean(z)} to use a group-specific
+value instead. Factor levels and ordered status are preserved, and the result
+is an ungrouped tibble. \code{.observed_only} filters exact matches within each
+group; interpolated values need not match observed values.
+
+Grouping limits the default range of \code{\link[=evenly]{evenly()}} to each group's marginal
+range. It does not ensure joint support for multiple continuous covariates.
+Explicit values or \code{lower} and \code{upper} bounds can still request extrapolation.
 }
 \examples{
 \dontshow{
